@@ -10,7 +10,6 @@ import { VALIDATE_REGEX_JOB } from "./constants.js";
 export enum ExistingFlairOverwriteHandling {
     OverwriteNumericSymbol = "overwritenumericsymbol",
     OverwriteNumeric = "overwritenumeric",
-    OverwriteAll = "overwriteall",
     NeverSet = "neverset",
 }
 
@@ -21,7 +20,13 @@ export enum LeaderboardMode {
 }
 
 export enum AppSetting {
-    FlairTemplateText = "FlairTemplateText",
+    PointCapNotMetFlair = "pointCapNotMetFlair",
+    AwardsRequiredToCreateNewPosts = "awardsRequiredToCreateNewPosts",
+    NotifyOnRestorePoints = "notifyOnRestorePoints",
+    ForcePointAwarding = "forcePointAwarding",
+    PostRestrictionMessage = "postRestrictionMessage",
+    RestorePointsCommand = "restorePointsCommand",
+    PointsRestoredMessage = "pointsRestoredMessage",
     NotifyOnSelfAward = "notifyOnSelfAward",
     NotifyUsersWhenAPointIsAwarded = "notifyUsersWhenAPointIsAwarded",
     UsersWhoCannotAwardPointsMessage = "usersWhoCannotAwardPointsMessage",
@@ -48,8 +53,6 @@ export enum AppSetting {
     LeaderboardSize = "leaderboardSize",
     PointSystemHelpPage = "pointSystemHelpPage",
     PostFlairTextToIgnore = "postFlairTextToIgnore",
-    // EnableBackup = "enableBackup",
-    // EnableRestore = "enableRestore",
     PrioritiseScoreFromFlair = "prioritiseScoreFromFlair",
     PointTriggerWords = "pointTriggerWords",
     SuccessMessage = "successMessage",
@@ -77,9 +80,15 @@ export enum AppSetting {
     NotifyOnOPOnlyDisallowed = "notifyOnOPOnlyDisallowed",
     NotifyOnDisallowedFlair = "notifyOnDisallowedFlair",
     NotifyOnUnflairedPost = "notifyOnUnflairedPost",
+    NotifyOpOnPostRestriction = "notifyOpOnPostRestriction",
+    AwardRequirementMessage = "AwardRequirementMessage",
+    ModeratorsExempt = "ModeratorsExempt",
 }
 
 export enum TemplateDefaults {
+    AwardRequirementMessage = "u/{{author}}, you must award {{requirement}} {{name}}s on [your post]({{permalink}}) before you can make new posts on r/{{subreddit}}.",
+    PointsRestoredMessage = "u/{{restoree}}'s points were restored by u/{{restorer}}.",
+    PostRestrictionMessage = "Hello u/{{author}}. Before you can create new posts, you must award {{name}}s to users who respond here.\n\nYou can message the moderators when you have done so and they will use the {{restore_command}} command to restore your flair and allow you to make more posts.",
     UnflairedPostMessage = "Points cannot be awarded on posts without flair. Please award only on flaired posts.",
     OPOnlyDisallowedMessage = "Only moderators, approved users, and Post Authors (OPs) can award {{name}}s.",
     ApproveMessage = "A moderator gave an award! u/{{awardee}} now has {{total}}{{symbol}} {{name}}s.",
@@ -103,14 +112,18 @@ export enum AutoSuperuserReplyOptions {
     ReplyAsComment = "replybycomment",
 }
 
+export enum NotifyOnPointRestoreReplyOptions {
+    ReplyByPM = "replybypm",
+    ReplyAsComment = "replybycomment",
+}
+
 export enum NotifyOnPointAlreadyAwardedReplyOptions {
     NoReply = "none",
     ReplyByPM = "replybypm",
     ReplyAsComment = "replybycomment",
 }
 
-export enum NotifyOnDuplicateAwardReplyOptions {
-    NoReply = "none",
+export enum NotifyOn {
     ReplyByPM = "replybypm",
     ReplyAsComment = "replybycomment",
 }
@@ -217,23 +230,29 @@ const NotifyUsersWhoCannotAwardPointsReplyOptionChoices = [
     },
 ];
 
-const NotifyOnDuplicateAwardReplyOptionChoices = [
-    {
-        label: "No Notification",
-        value: NotifyOnDuplicateAwardReplyOptions.NoReply,
-    },
+const NotifyOnPointRestoreOptions = [
     {
         label: "Send user a private message",
-        value: NotifyOnDuplicateAwardReplyOptions.ReplyByPM,
+        value: NotifyOnPointRestoreReplyOptions.ReplyByPM,
     },
     {
         label: "Reply as comment",
-        value: NotifyOnDuplicateAwardReplyOptions.ReplyAsComment,
+        value: NotifyOnPointRestoreReplyOptions.ReplyAsComment,
+    },
+];
+
+const NotifyOpOnPostRestriction = [
+    {
+        label: "Send user a private message",
+        value: NotifyOnPointRestoreReplyOptions.ReplyByPM,
+    },
+    {
+        label: "Reply as comment",
+        value: NotifyOnPointRestoreReplyOptions.ReplyAsComment,
     },
 ];
 
 const NotifyOnBotAwardReplyOptionChoices = [
-    { label: "No Notification", value: NotifyOnBotAwardReplyOptions.NoReply },
     {
         label: "Send user a private message",
         value: NotifyOnBotAwardReplyOptions.ReplyByPM,
@@ -414,6 +433,65 @@ export const appSettings: SettingsFormField[] = [
     // === POINT SYSTEM ===
     {
         type: "group",
+        label: "Post Management Settings",
+        helpText: "Settings to force point awarding before OP can create new posts",
+        fields: [
+            {
+                type: "boolean",
+                name: AppSetting.ForcePointAwarding,
+                label: "Force Point Awarding?",
+                helpText: "Force OP to award points before they can make new posts",
+                defaultValue: false,
+            },
+            {
+                //Mods exempt
+                type: "boolean",
+                name: AppSetting.ModeratorsExempt,
+                label: "Moderators Exempt",
+                helpText: "Decide whether or not point awarding is required for moderators as well",
+                defaultValue: true,
+            },
+            {
+                type: "select",
+                name: AppSetting.NotifyOpOnPostRestriction,
+                options: NotifyOpOnPostRestriction,
+                label: "How to notify OP when their post restriction flair is set or they try to make a new post",
+            },
+            {
+                //Message notifying user of the restriction
+                type: "paragraph",
+                name: AppSetting.AwardRequirementMessage,
+                label: "Award Requirement Message",
+                helpText: "Message informing OP of the requirement to award points to users. Placeholders: {{requirement}}, {{author}}, {{name}}, {{subreddit}}, {{permalink}}",
+                defaultValue: TemplateDefaults.AwardRequirementMessage,
+            },
+            {
+                type:"number",
+                name: AppSetting.AwardsRequiredToCreateNewPosts,
+                label: "Awards Required To Create New Posts",
+                helpText: "Amount of awarded points required before a user can make a new post. Set to 0 to disable.",
+                defaultValue: 0,
+                onValidate: numberFieldHasValidOption,
+            },
+            {
+                type: "string",
+                name: AppSetting.PointCapNotMetFlair,
+                label: "Point Cap Not Met Flair",
+                helpText: `Flair to give a user until they award the minimum number of points required in the "Awards Required To Create New Posts" section. This will not activate if "Force Point Awarding" is turned off.`,
+                defaultValue: "Restricted Poster",
+                onValidate: validatePointCapNotMetFlair,
+            },
+            {
+                type: "paragraph",
+                name: AppSetting.PostRestrictionMessage,
+                label: "Post Restriction Message",
+                helpText: "Message informing OP they must award points before they can continue to post to the subreddit. Placeholders supported: {{author}}",
+                defaultValue: TemplateDefaults.PostRestrictionMessage,
+            },
+        ],
+    },
+    {
+        type: "group",
         label: "Point System Settings",
         fields: [
             {
@@ -568,20 +646,6 @@ export const appSettings: SettingsFormField[] = [
                 helpText:
                     "Optional. Please choose either a CSS class or flair template, not both",
             },
-            {
-                name: AppSetting.FlairTemplateText,
-                type: "string",
-                label: "Template for points flair text",
-                defaultValue: "{{points}}",
-                helpText: "The template for the flair text. Must include a placeholder {{points}}",
-                onValidate: ({ value }) => {
-                    const regex = /{{points}}/g;
-                    const matches = value?.match(regex);
-                    if (!matches || matches.length > 1) {
-                        return "You must provide a flair text template that includes exactly one placeholder {{points}}";
-                    }
-                },
-            },
         ],
     },
     {
@@ -632,8 +696,7 @@ export const appSettings: SettingsFormField[] = [
                 label: "Point Already Awarded Message",
                 helpText:
                     "Shown when a user tries to award a message they've already awarded. Placeholders Supported: {{name}}, {{awarder}}",
-                defaultValue:
-                    TemplateDefaults.DuplicateAwardMessage,
+                defaultValue: TemplateDefaults.DuplicateAwardMessage,
             },
             {
                 type: "select",
@@ -915,4 +978,26 @@ export async function validateRegexJobHandler(
     // This is an example: you can extend with actual validation logic.
     // For demo, just log.
     console.log(`Validating regex commands for user ${username}`);
+}
+
+// 🧮 Validate "Awards Required To Create New Posts"
+export function numberFieldHasValidOption(
+    event: SettingsFormFieldValidatorEvent<number>
+) {
+    if (typeof event.value !== 'number' || isNaN(event.value)) {
+        return 'Value must be a number.';
+    }
+
+    if (event.value <= 0) {
+        return 'A non-negative number must be entered into the "Awards Required To Create New Posts" even if "Force Point Awarding" is disabled';
+    }
+}
+
+// 🏷️ Validate "Point Cap Not Met Flair"
+export function validatePointCapNotMetFlair(
+    event: SettingsFormFieldValidatorEvent<string>
+) {
+    if (!event.value || event.value.trim() === '') {
+        return 'Box cannot be empty even if "Force Point Awarding" is disabled';
+    }
 }

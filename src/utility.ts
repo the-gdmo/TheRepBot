@@ -26,6 +26,10 @@ export async function getSubredditName (context: TriggerContext): Promise<string
 }
 
 export async function replacePlaceholders(template: string, placeholders: {
+    author: string;
+    restoree: string;
+    restorer: string;
+    restoreCommand: string;
     awardee: string;
     awarder: string;
     point: string;
@@ -36,6 +40,10 @@ export async function replacePlaceholders(template: string, placeholders: {
     command: string;
 }): Promise<string> {
     let result = template;
+    result = replaceAll(result, "{{restore_command}}", placeholders.restoreCommand)
+    result = replaceAll(result, "{{restoree}}", placeholders.restoree)
+    result = replaceAll(result, "{{restorer}}", placeholders.restorer)
+    result = replaceAll(result, "{{author}}", placeholders.author);
     result = replaceAll(result, "{{awardee}}", placeholders.awardee);
     result = replaceAll(result, "{{awarder}}", placeholders.awarder);
     result = replaceAll(result, "{{name}}", placeholders.point);

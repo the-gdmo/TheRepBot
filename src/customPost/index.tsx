@@ -43,6 +43,23 @@ function formatMessage(
     return result;
 }
 
+export const restoreUserPostCapabilitiesForm: Form = {
+    title: "Allow User To Post Again",
+    fields: [
+        {
+            label: "Confirm you wish to allow this user to post again",
+            name: "allowUserToPostAgain",
+            helpText: 'Enter "CONFIRM" in all caps to confirm',
+            type: "string",
+            defaultValue: "",
+        },
+    ],
+}
+
+export interface RestoreUserPostCapabilities {
+    user: string;
+}
+
 export const customPostForm: Form = {
     title: "Create Leaderboard Post",
     fields: [
@@ -149,6 +166,68 @@ export async function createCustomPostFormHandler(
         appearance: "success",
     });
     context.ui.navigateTo(post);
+}
+
+// --- Form handler ---
+export async function restoreUserPostCapabilitiesFormHandler(
+    event: FormOnSubmitEvent<JSONObject>,
+    context: Context,
+    userData: RestoreUserPostCapabilities
+) {
+    const confirmation = (event.values.allowUserToPostAgain as string | undefined)?.trim();
+    const redisKey = `restrictedUser:${userData.user}`;
+
+    // --- Validate confirmation input ---
+    if (confirmation !== 'CONFIRM') {
+        context.ui.showToast({
+            text: 'You must type "CONFIRM" (in all caps) to proceed.',
+        });
+        return;
+    }
+
+    // --- Check if user is actually restricted ---
+    const existingRestriction = await context.redis.get(redisKey);
+    if (!existingRestriction) {
+        context.ui.showToast({
+            text: `User u/${userData.user} is not currently restricted.`,
+        });
+        return;
+    }
+
+    // --- Remove restriction ---
+    await context.redis.del(redisKey);
+
+    // --- Optionally update user flair if you use one for restrictions ---
+    const settings = await context.settings.getAll();
+    const flairText = settings[AppSetting.PointCapNotMetFlair] as string | undefined;
+
+    try {
+        const user = await context.reddit.getUserByUsername(userData.user);
+        // Remove the "restricted" flair if one exists
+        if (flairText) {
+            const subredditName =
+                context.subredditName ?? (await context.reddit.getCurrentSubredditName());
+            await context.reddit.setUserFlair({
+                subredditName,
+                username: userData.user,
+                text: '', // remove flair
+            });
+        }
+
+        // --- Notify via toast & optional mod log comment ---
+        context.ui.showToast({
+            text: `u/${userData.user} has been allowed to post again.`,
+            appearance: 'success',
+        });
+
+        // Optionally comment in a mod log or sticky post:
+        // await context.reddit.submitComment({ ... });
+    } catch (err) {
+        console.error('Failed to restore user posting capability:', err);
+        context.ui.showToast({
+            text: `Error restoring user u/${userData.user}: ${String(err)}`,
+        });
+    }
 }
 
 export function createCustomPostMenuHandler(

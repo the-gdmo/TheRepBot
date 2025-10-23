@@ -7,7 +7,7 @@ import {
     TriggerContext,
     User,
 } from "@devvit/public-api";
-import { CommentSubmit, CommentUpdate } from "@devvit/protos";
+import { CommentSubmit, CommentUpdate, PostCreate } from "@devvit/protos";
 import { isModerator } from "./utility.js";
 import {
     ExistingFlairOverwriteHandling,
@@ -16,12 +16,14 @@ import {
     NotifyOnSuccessReplyOptions,
     NotifyOnSelfAwardReplyOptions,
     NotifyOnPointAlreadyAwardedReplyOptions,
+    NotifyOnPointRestoreReplyOptions,
 } from "./settings.js";
 import { setCleanupForUsers } from "./cleanupTasks.js";
 import { isLinkId } from "@devvit/shared-types/tid.js";
 import { logger } from "./logger.js";
 import { manualSetPointsForm } from "./main.js";
 import { updateLeaderboard } from "./leaderboard.js";
+import { UserV2 } from "@devvit/protos/types/devvit/reddit/v2alpha/userv2.js";
 
 const POINTS_STORE_KEY = "thanksPointsStore";
 
@@ -123,10 +125,11 @@ async function setUserScore(
         member: username,
         score: newScore,
     });
-    // Queue user for cleanup checks in 24 hours, overwriting existing value.
+
+    // Queue user for cleanup checks in 24 hours
     await setCleanupForUsers([username], context);
 
-    // Queue a leaderboard update.
+    // Queue a leaderboard update
     await context.scheduler.runJob({
         name: "updateLeaderboard",
         runAt: new Date(),
@@ -141,43 +144,59 @@ async function setUserScore(
         ExistingFlairOverwriteHandling.OverwriteNumeric,
     ])[0] as ExistingFlairOverwriteHandling;
 
-    const shouldSetUserFlair =
-        flairSetting !== ExistingFlairOverwriteHandling.NeverSet;
+    // Check if the user is restricted (hasn't met award requirement)
+    const awardsRequired =
+        (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) || 0;
+    const restrictedText =
+        (settings[AppSetting.PointCapNotMetFlair] as string) ||
+        "Restricted Poster";
 
-    if (shouldSetUserFlair) {
+    let isRestricted = false;
+    if (awardsRequired > 0) {
+        const user = await context.reddit.getUserByUsername(username);
+        if (user) {
+            const { currentScore } = await getCurrentScore(
+                user,
+                context,
+                settings
+            );
+            isRestricted = currentScore < awardsRequired;
+        }
+    }
+
+    if (flairSetting) {
         const pointSymbol = (settings[AppSetting.PointSymbol] as string) ?? "";
         let flairText = "";
+
         switch (flairSetting) {
             case ExistingFlairOverwriteHandling.OverwriteNumericSymbol:
-                flairText = `${newScore}${pointSymbol}`;
+                flairText = isRestricted
+                    ? `${restrictedText} | ${newScore}${pointSymbol}`
+                    : `${newScore}${pointSymbol}`;
                 break;
             case ExistingFlairOverwriteHandling.OverwriteNumeric:
-                flairText = `${newScore}`;
+                flairText = isRestricted
+                    ? `${restrictedText} | ${newScore}`
+                    : `${newScore}`;
+                break;
+            case ExistingFlairOverwriteHandling.NeverSet:
+                flairText = isRestricted
+                    ? `${restrictedText} | ${newScore}`
+                    : "";
                 break;
         }
 
-        console.log(
-            `Setting points flair for ${username}. New score: ${flairText}`
-        );
+        console.log(`Setting points flair for ${username}: ${flairText}`);
 
         let cssClass = settings[AppSetting.CSSClass] as string | undefined;
-        // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
-        if (!cssClass) {
-            cssClass = undefined;
-        }
+        if (!cssClass) cssClass = undefined;
 
         let flairTemplate = settings[AppSetting.FlairTemplate] as
             | string
             | undefined;
-        // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
-        if (!flairTemplate) {
-            flairTemplate = undefined;
-        }
+        if (!flairTemplate) flairTemplate = undefined;
 
-        if (flairTemplate && cssClass) {
-            // Prioritise flair templates over CSS classes.
-            cssClass = undefined;
-        }
+        if (flairTemplate && cssClass) cssClass = undefined; // prioritize template
 
         const subredditName = (await context.reddit.getCurrentSubreddit()).name;
 
@@ -193,6 +212,89 @@ async function setUserScore(
             `${username}: Flair not set (option disabled or flair in wrong state)`
         );
     }
+}
+
+export async function onPostSubmit(event: PostCreate, context: TriggerContext) {
+    const settings = (await context.settings.getAll()) as SettingsValues;
+
+    if (!event.subreddit) return;
+    if (!event.author) return;
+    if (!event.post) return;
+
+    const isMod = await isModerator(
+        context,
+        event.subreddit.name,
+        event.author.name
+    );
+
+    // Check if force point awarding is enabled
+    const forcePointAwarding = settings[
+        AppSetting.ForcePointAwarding
+    ] as boolean;
+    if (!forcePointAwarding) return;
+
+    const awardsRequired =
+        (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) || 0;
+    if (awardsRequired <= 0) return;
+
+    // Ensure author exists
+    const authorV2 = event.author;
+
+    // Moderators exempt check
+    const moderatorsExempt = settings[AppSetting.ModeratorsExempt] as boolean;
+    if (moderatorsExempt && isMod) return;
+
+    // Fetch full User object from username
+    const author = await context.reddit.getUserByUsername(authorV2.name);
+    if (!author) return;
+
+    // Get the OP's current score
+    const { currentScore } = await getCurrentScore(author, context, settings);
+
+    if (currentScore >= awardsRequired) {
+        // OP has enough points, allow post
+        return;
+    }
+
+    // OP doesn't meet the required points
+    const subredditName = event.subreddit.name;
+    const restrictedFlair = settings[AppSetting.PointCapNotMetFlair] as string;
+
+    // Set the restricted flair
+    await context.reddit.setUserFlair({
+        subredditName,
+        username: author.username,
+        text: restrictedFlair,
+    });
+
+    // Notify OP
+    const notifyMode = settings[AppSetting.NotifyOpOnPostRestriction] as string;
+    const messageTemplate =
+        (settings[AppSetting.PostRestrictionMessage] as string) ||
+        TemplateDefaults.PostRestrictionMessage;
+    const message = messageTemplate
+        .replace("{{author}}", author.username)
+        .replace("{{requirement}}", awardsRequired.toString())
+        .replace("{{subreddit}}", subredditName)
+        .replace("{{name}}", event.post.title || "")
+        .replace("{{permalink}}", `https://reddit.com${event.post.permalink}`);
+
+    if (notifyMode === "replybypm") {
+        await context.reddit.sendPrivateMessage({
+            to: author.username,
+            subject: "Post Restricted",
+            text: message,
+        });
+    } else if (notifyMode === "replyascomment") {
+        await context.reddit.submitComment({
+            id: event.post.id,
+            text: message,
+        });
+    }
+
+    console.log(
+        `OP ${author.username} restricted from posting until ${awardsRequired} points are awarded.`
+    );
 }
 
 async function getUserIsSuperuser(
@@ -485,7 +587,7 @@ export async function handleThanksEvent(
         : userCommands.some((c) => commentBody.includes(c));
 
     const containsModCommand = modCommand && commentBody.includes(modCommand);
-    
+
     if ((isSuperuser || isMod) && containsModCommand && modAlreadyAwarded) {
         logger.warn("❌ Mod/Superuser attempted duplicate mod-award.");
 
@@ -517,8 +619,6 @@ export async function handleThanksEvent(
     const redisKey = `${POINTS_STORE_KEY}`;
     const newScore = await context.redis.zIncrBy(redisKey, recipient, 1);
 
-
-    
     // Check for mod or user command awarding
     if ((isSuperuser || isMod) && containsModCommand) {
         // Set modAlreadyAwarded key
@@ -681,7 +781,11 @@ export async function manualSetPointsFormHandler(
     }
 
     const newScore = event.values.newScore as number | undefined;
-    if (typeof newScore !== "number" || isNaN(newScore) || parseInt(newScore.toString(), 10) < 0) {
+    if (
+        typeof newScore !== "number" ||
+        isNaN(newScore) ||
+        parseInt(newScore.toString(), 10) < 0
+    ) {
         context.ui.showToast("You must enter a new score (0 or higher)");
         return;
     }

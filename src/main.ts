@@ -1,5 +1,5 @@
 import { Devvit, FormField } from "@devvit/public-api";
-import { handleManualPointSetting, handleThanksEvent, manualSetPointsFormHandler } from "./thanksPoints.js";
+import { handleManualPointSetting, handleThanksEvent, manualSetPointsFormHandler, onPostSubmit } from "./thanksPoints.js";
 import { appSettings, validateRegexJobHandler } from "./settings.js";
 import { onAppFirstInstall, onAppInstallOrUpgrade } from "./installEvents.js";
 import { updateLeaderboard } from "./leaderboard.js";
@@ -12,6 +12,11 @@ Devvit.addSettings(appSettings);
 Devvit.addTrigger({
     events: ["CommentSubmit", "CommentUpdate"],
     onEvent: handleThanksEvent,
+});
+
+Devvit.addTrigger({
+    events: ["PostCreate"],
+    onEvent: onPostSubmit,
 });
 
 Devvit.addTrigger({

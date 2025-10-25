@@ -39,12 +39,9 @@ NOTE: If you update settings, you will have to uninstall to be able to reimpleme
 
 ## Version History
 ### 10.0.0
-* Make it so that a user's flair will be updated only if it contains the default template for the flair (ie not the restricted posting flair)
 * Make it so that a user's flair can be set to force them to award points on their own post before being allowed to make new posts
-* Add a restore command so moderators can restore a user's score to them so that they can make new posts
 * Add a toggle for whether or not to enable the feature mentioned above
-* Add a message to the restore command telling users that OP's score has been restored by a moderator
-* Allow a template to tell the user they must award points on their post and then they can message the moderators to approve their post to remove the restricted posting flair
+* Allow a template to tell the user they must award points on their post to remove the restricted posting flair
 * Make a customizable message that the bot will send on new posts to inform users of how the restriction system works
 ### 9.0.0
 * Make it so a user can only receive a point once per comment

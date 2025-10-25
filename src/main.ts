@@ -1,8 +1,9 @@
 import { Devvit, FormField } from "@devvit/public-api";
 import {
     handleManualPointSetting,
-    handlePostRestrictionRemoval,
+    handleManualPostRestrictionRemoval,
     handleThanksEvent,
+    manualPostRestrictionRemovalHandler,
     manualSetPointsFormHandler,
     onPostSubmit,
 } from "./thanksPoints.js";
@@ -70,11 +71,16 @@ export const manualSetPointsForm = Devvit.createForm(
     manualSetPointsFormHandler
 );
 
+export const manualPostRestrictionRemovalForm = Devvit.createForm(
+    (data) => ({ fields: data.fields as FormField[] }),
+    manualPostRestrictionRemovalHandler
+);
+
 Devvit.addMenuItem({
     label: "Remove post restriction from user",
     forUserType: "moderator",
     location: "post",
-    onPress: handlePostRestrictionRemoval,
+    onPress: handleManualPostRestrictionRemoval,
 });
 
 Devvit.addMenuItem({

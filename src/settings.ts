@@ -24,7 +24,6 @@ export enum AppSetting {
     AwardsRequiredToCreateNewPosts = "awardsRequiredToCreateNewPosts",
     NotifyOnRestorePoints = "notifyOnRestorePoints",
     ForcePointAwarding = "forcePointAwarding",
-    PostRestrictionMessage = "postRestrictionMessage",
     RestorePointsCommand = "restorePointsCommand",
     PointsRestoredMessage = "pointsRestoredMessage",
     NotifyOnSelfAward = "notifyOnSelfAward",
@@ -86,9 +85,8 @@ export enum AppSetting {
 }
 
 export enum TemplateDefaults {
-    AwardRequirementMessage = "u/{{author}}, you must award {{requirement}} {{name}}s on [your post]({{permalink}}) before you can make new posts on r/{{subreddit}}.",
+    AwardRequirementMessage = "Hello u/{{author}}. Before you can create new posts, you must award {{requirement}} {{name}}s to users who respond on [your post]({{permalink}}).\n\nYour {{flair}} flair will be removed automatically once you have awarded the {{requirement}} people.",
     PointsRestoredMessage = "u/{{restoree}}'s points were restored by u/{{restorer}}.",
-    PostRestrictionMessage = "Hello u/{{author}}. Before you can create new posts, you must award {{name}}s to users who respond here.\n\nYou can message the moderators when you have done so and they will use the {{restore_command}} command to restore your flair and allow you to make more posts.",
     UnflairedPostMessage = "Points cannot be awarded on posts without flair. Please award only on flaired posts.",
     OPOnlyDisallowedMessage = "Only moderators, approved users, and Post Authors (OPs) can award {{name}}s.",
     ApproveMessage = "A moderator gave an award! u/{{awardee}} now has {{total}}{{symbol}} {{name}}s.",
@@ -112,7 +110,7 @@ export enum AutoSuperuserReplyOptions {
     ReplyAsComment = "replybycomment",
 }
 
-export enum NotifyOnPointRestoreReplyOptions {
+export enum NotifyOpOnPostRestrictionReplyOptions {
     ReplyByPM = "replybypm",
     ReplyAsComment = "replybycomment",
 }
@@ -230,25 +228,14 @@ const NotifyUsersWhoCannotAwardPointsReplyOptionChoices = [
     },
 ];
 
-const NotifyOnPointRestoreOptions = [
-    {
-        label: "Send user a private message",
-        value: NotifyOnPointRestoreReplyOptions.ReplyByPM,
-    },
-    {
-        label: "Reply as comment",
-        value: NotifyOnPointRestoreReplyOptions.ReplyAsComment,
-    },
-];
-
 const NotifyOpOnPostRestriction = [
     {
         label: "Send user a private message",
-        value: NotifyOnPointRestoreReplyOptions.ReplyByPM,
+        value: NotifyOpOnPostRestrictionReplyOptions.ReplyByPM,
     },
     {
         label: "Reply as comment",
-        value: NotifyOnPointRestoreReplyOptions.ReplyAsComment,
+        value: NotifyOpOnPostRestrictionReplyOptions.ReplyAsComment,
     },
 ];
 
@@ -456,13 +443,14 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.NotifyOpOnPostRestriction,
                 options: NotifyOpOnPostRestriction,
                 label: "How to notify OP when their post restriction flair is set or they try to make a new post",
+                onValidate: selectFieldHasOptionChosen,
             },
             {
                 //Message notifying user of the restriction
                 type: "paragraph",
                 name: AppSetting.AwardRequirementMessage,
                 label: "Award Requirement Message",
-                helpText: "Message informing OP of the requirement to award points to users. Placeholders: {{requirement}}, {{author}}, {{name}}, {{subreddit}}, {{permalink}}",
+                helpText: "Message informing OP of the requirement to award points to users. Placeholders: {{requirement}}, {{author}}, {{name}}, {{subreddit}}, {{permalink}}, {{flair}}",
                 defaultValue: TemplateDefaults.AwardRequirementMessage,
             },
             {
@@ -480,13 +468,6 @@ export const appSettings: SettingsFormField[] = [
                 helpText: `Flair to give a user until they award the minimum number of points required in the "Awards Required To Create New Posts" section. This will not activate if "Force Point Awarding" is turned off.`,
                 defaultValue: "Restricted Poster",
                 onValidate: validatePointCapNotMetFlair,
-            },
-            {
-                type: "paragraph",
-                name: AppSetting.PostRestrictionMessage,
-                label: "Post Restriction Message",
-                helpText: "Message informing OP they must award points before they can continue to post to the subreddit. Placeholders supported: {{author}}",
-                defaultValue: TemplateDefaults.PostRestrictionMessage,
             },
         ],
     },
@@ -932,7 +913,7 @@ function selectFieldHasOptionChosen(
     event: SettingsFormFieldValidatorEvent<string[]>
 ) {
     if (!event.value || event.value.length !== 1) {
-        return "You must choose an option";
+        return "You must choose an option (even if this is an irrelevant setting)";
     }
 }
 

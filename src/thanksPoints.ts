@@ -7,23 +7,24 @@ import {
     TriggerContext,
     User,
 } from "@devvit/public-api";
-import { CommentSubmit, CommentUpdate, PostCreate } from "@devvit/protos";
+import {
+    CommentSubmit,
+    CommentUpdate,
+    PostCreate,
+    PostSubmit,
+} from "@devvit/protos";
 import { isModerator } from "./utility.js";
 import {
     ExistingFlairOverwriteHandling,
     AppSetting,
     TemplateDefaults,
-    NotifyOnSuccessReplyOptions,
     NotifyOnSelfAwardReplyOptions,
-    NotifyOnPointAlreadyAwardedReplyOptions,
-    NotifyOnPointRestoreReplyOptions,
+    NotifyOpOnPostRestrictionReplyOptions,
 } from "./settings.js";
 import { setCleanupForUsers } from "./cleanupTasks.js";
 import { isLinkId } from "@devvit/shared-types/tid.js";
 import { logger } from "./logger.js";
 import { manualSetPointsForm } from "./main.js";
-import { updateLeaderboard } from "./leaderboard.js";
-import { UserV2 } from "@devvit/protos/types/devvit/reddit/v2alpha/userv2.js";
 
 const POINTS_STORE_KEY = "thanksPointsStore";
 
@@ -114,187 +115,275 @@ async function getCurrentScore(
     };
 }
 
-async function setUserScore(
+export async function setUserScore(
     username: string,
     newScore: number,
     context: TriggerContext,
     settings: SettingsValues
 ) {
-    // Store the user's new score
+    // 🔹 Store user's total score in leaderboard
     await context.redis.zAdd(POINTS_STORE_KEY, {
         member: username,
         score: newScore,
     });
 
-    // Queue user for cleanup checks in 24 hours
+    // 🔹 Queue cleanup & leaderboard updates
     await setCleanupForUsers([username], context);
-
-    // Queue a leaderboard update
     await context.scheduler.runJob({
         name: "updateLeaderboard",
         runAt: new Date(),
         data: {
-            reason: `Awarded a point to ${username}. New score: ${newScore}`,
+            reason: `Updated ${username} to ${newScore} points.`,
         },
     });
 
+    // 🔹 Settings
     const flairSetting = ((settings[AppSetting.ExistingFlairHandling] as
         | string[]
         | undefined) ?? [
         ExistingFlairOverwriteHandling.OverwriteNumeric,
     ])[0] as ExistingFlairOverwriteHandling;
 
-    // Check if the user is restricted (hasn't met award requirement)
     const awardsRequired =
         (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) || 0;
+
     const restrictedText =
         (settings[AppSetting.PointCapNotMetFlair] as string) ||
         "Restricted Poster";
 
-    let isRestricted = false;
+    const pointSymbol = (settings[AppSetting.PointSymbol] as string) ?? "";
+
+    const redisKey = `restrictedUser:${username}`;
+    let userIsRestricted = false;
+
     if (awardsRequired > 0) {
-        const user = await context.reddit.getUserByUsername(username);
-        if (user) {
-            const { currentScore } = await getCurrentScore(
-                user,
-                context,
-                settings
+        // Fetch existing restriction info
+        const restrictionExists = await context.redis.exists(redisKey);
+
+        // If user was restricted before but now meets or exceeds the requirement, lift restriction
+        if (restrictionExists && newScore >= awardsRequired) {
+            await context.redis.del(redisKey);
+            userIsRestricted = false;
+            console.log(
+                `✅ ${username} restriction lifted — now at ${newScore}/${awardsRequired} points.`
             );
-            isRestricted = currentScore < awardsRequired;
+        }
+        // If user is below threshold, ensure restriction key exists
+        else if (newScore < awardsRequired) {
+            await context.redis.set(redisKey, "restricted");
+            userIsRestricted = true;
+            console.log(
+                `🚫 ${username} remains restricted — ${newScore}/${awardsRequired} points.`
+            );
         }
     }
 
-    if (flairSetting) {
-        const pointSymbol = (settings[AppSetting.PointSymbol] as string) ?? "";
-        let flairText = "";
-
-        switch (flairSetting) {
-            case ExistingFlairOverwriteHandling.OverwriteNumericSymbol:
-                flairText = isRestricted
-                    ? `${restrictedText} | ${newScore}${pointSymbol}`
-                    : `${newScore}${pointSymbol}`;
-                break;
-            case ExistingFlairOverwriteHandling.OverwriteNumeric:
-                flairText = isRestricted
-                    ? `${restrictedText} | ${newScore}`
-                    : `${newScore}`;
-                break;
-            case ExistingFlairOverwriteHandling.NeverSet:
-                flairText = isRestricted
-                    ? `${restrictedText} | ${newScore}`
-                    : "";
-                break;
-        }
-
-        console.log(`Setting points flair for ${username}: ${flairText}`);
-
-        let cssClass = settings[AppSetting.CSSClass] as string | undefined;
-        if (!cssClass) cssClass = undefined;
-
-        let flairTemplate = settings[AppSetting.FlairTemplate] as
-            | string
-            | undefined;
-        if (!flairTemplate) flairTemplate = undefined;
-
-        if (flairTemplate && cssClass) cssClass = undefined; // prioritize template
-
-        const subredditName = (await context.reddit.getCurrentSubreddit()).name;
-
-        await context.reddit.setUserFlair({
-            subredditName,
-            username,
-            cssClass,
-            flairTemplateId: flairTemplate,
-            text: flairText,
-        });
-    } else {
-        console.log(
-            `${username}: Flair not set (option disabled or flair in wrong state)`
-        );
+    // 🔹 Build flair text
+    let flairText = "";
+    switch (flairSetting) {
+        case ExistingFlairOverwriteHandling.OverwriteNumericSymbol:
+            flairText = userIsRestricted
+                ? `${restrictedText} | ${newScore}${pointSymbol}`
+                : `${newScore}${pointSymbol}`;
+            break;
+        case ExistingFlairOverwriteHandling.OverwriteNumeric:
+            flairText = userIsRestricted
+                ? `${restrictedText} | ${newScore}`
+                : `${newScore}`;
+            break;
+        case ExistingFlairOverwriteHandling.NeverSet:
+            flairText = userIsRestricted ? `${restrictedText}` : "";
+            break;
     }
+
+    // 🔹 Apply flair
+    const subredditName = (await context.reddit.getCurrentSubreddit()).name;
+    let cssClass = settings[AppSetting.CSSClass] as string | undefined;
+    let flairTemplate = settings[AppSetting.FlairTemplate] as
+        | string
+        | undefined;
+    if (flairTemplate && cssClass) cssClass = undefined;
+
+    await context.reddit.setUserFlair({
+        subredditName,
+        username,
+        cssClass,
+        flairTemplateId: flairTemplate,
+        text: flairText,
+    });
+
+    console.log(
+        userIsRestricted
+            ? `🚫 Flair applied: ${username} restricted (${flairText})`
+            : `✅ Flair applied: ${username} unrestricted (${flairText})`
+    );
 }
 
-export async function onPostSubmit(event: PostCreate, context: TriggerContext) {
+export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
     const settings = (await context.settings.getAll()) as SettingsValues;
+    logger.debug("✅ onPostSubmit triggered", { event });
 
-    if (!event.subreddit) return;
-    if (!event.author) return;
-    if (!event.post) return;
-
-    const isMod = await isModerator(
-        context,
-        event.subreddit.name,
-        event.author.name
-    );
-
-    // Check if force point awarding is enabled
-    const forcePointAwarding = settings[
-        AppSetting.ForcePointAwarding
-    ] as boolean;
-    if (!forcePointAwarding) return;
-
-    const awardsRequired =
-        (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) || 0;
-    if (awardsRequired <= 0) return;
-
-    // Ensure author exists
-    const authorV2 = event.author;
-
-    // Moderators exempt check
-    const moderatorsExempt = settings[AppSetting.ModeratorsExempt] as boolean;
-    if (moderatorsExempt && isMod) return;
-
-    // Fetch full User object from username
-    const author = await context.reddit.getUserByUsername(authorV2.name);
-    if (!author) return;
-
-    // Get the OP's current score
-    const { currentScore } = await getCurrentScore(author, context, settings);
-
-    if (currentScore >= awardsRequired) {
-        // OP has enough points, allow post
+    if (!event.subreddit || !event.author || !event.post) {
+        logger.warn("❌ Missing required event data", { event });
         return;
     }
 
-    // OP doesn't meet the required points
     const subredditName = event.subreddit.name;
-    const restrictedFlair = settings[AppSetting.PointCapNotMetFlair] as string;
+    const authorName = event.author.name;
+    logger.debug("ℹ️ Subreddit and author identified", { subredditName, authorName });
 
-    // Set the restricted flair
-    await context.reddit.setUserFlair({
-        subredditName,
-        username: author.username,
-        text: restrictedFlair,
-    });
+    // Fetch full User object
+    const author = await context.reddit.getUserByUsername(authorName);
+    if (!author) {
+        logger.warn("❌ Could not fetch full user object", { authorName });
+        return;
+    }
+    logger.debug("✅ Fetched full User object", { author });
 
-    // Notify OP
-    const notifyMode = settings[AppSetting.NotifyOpOnPostRestriction] as string;
-    const messageTemplate =
-        (settings[AppSetting.PostRestrictionMessage] as string) ||
-        TemplateDefaults.PostRestrictionMessage;
-    const message = messageTemplate
-        .replace("{{author}}", author.username)
-        .replace("{{requirement}}", awardsRequired.toString())
-        .replace("{{subreddit}}", subredditName)
-        .replace("{{name}}", event.post.title || "")
-        .replace("{{permalink}}", `https://reddit.com${event.post.permalink}`);
-
-    if (notifyMode === "replybypm") {
-        await context.reddit.sendPrivateMessage({
-            to: author.username,
-            subject: "Post Restricted",
-            text: message,
-        });
-    } else if (notifyMode === "replyascomment") {
-        await context.reddit.submitComment({
-            id: event.post.id,
-            text: message,
-        });
+    // Check moderator exemption
+    const isMod = await isModerator(context, subredditName, authorName);
+    const moderatorsExempt = settings[AppSetting.ModeratorsExempt] as boolean;
+    logger.debug("ℹ️ Moderator status checked", { isMod, moderatorsExempt });
+    if (moderatorsExempt && isMod) {
+        logger.info("ℹ️ Moderator exempt from point restriction", { authorName });
+        return;
     }
 
-    console.log(
-        `OP ${author.username} restricted from posting until ${awardsRequired} points are awarded.`
-    );
+    // Force point awarding enabled?
+    const forcePointAwarding = (settings[AppSetting.ForcePointAwarding] as boolean) ?? false;
+    logger.debug("ℹ️ Force point awarding check", { forcePointAwarding });
+    if (!forcePointAwarding) return;
+
+    const awardsRequired = (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) || 0;
+    logger.debug("ℹ️ Awards required for new post", { awardsRequired });
+    if (awardsRequired <= 0) return;
+
+    // 🔹 Get current score
+    const { currentScore } = await getCurrentScore(author, context, settings);
+    logger.info("ℹ️ Current score retrieved", { authorName, currentScore });
+
+    const userRedisKey = `restrictedUser:${authorName}`;
+    await context.redis.set(userRedisKey, currentScore.toString());
+    logger.debug("✅ User score stored in Redis", { userRedisKey, currentScore });
+
+    const lastValidPostKey = `lastValidPost:${authorName}`;
+    let userIsRestricted = false;
+
+    // 🔹 Restriction logic
+    const storedScoreRaw = await context.redis.get(userRedisKey);
+    const storedScore = storedScoreRaw ? parseInt(storedScoreRaw, 10) : 0;
+    logger.debug("ℹ️ Stored score fetched from Redis", { storedScoreRaw, storedScore });
+
+    if (storedScore < awardsRequired) {
+        userIsRestricted = true;
+        logger.warn("🚫 User restricted from posting", { authorName, storedScore, awardsRequired });
+
+        // Remove post
+        try {
+            await context.reddit.remove(event.post.id, true);
+            logger.info("🗑 Post removed due to restriction", { postId: event.post.id });
+        } catch (err) {
+            logger.error("❌ Failed to remove post", { err });
+        }
+
+        // Get last valid post for {{permalink}}
+        let lastValidPermalink = await context.redis.get(lastValidPostKey);
+        if (!lastValidPermalink) {
+            lastValidPermalink = event.post.permalink; // fallback
+        }
+
+        const pointName = (settings[AppSetting.PointName] as string) ?? "point";
+        const restrictedFlair = (settings[AppSetting.PointCapNotMetFlair] as string) ?? "Restricted Poster";
+
+        const messageTemplate = (settings[AppSetting.AwardRequirementMessage] as string) ?? TemplateDefaults.AwardRequirementMessage;
+        const message = messageTemplate
+            .replace(/{{author}}/g, author.username)
+            .replace(/{{requirement}}/g, awardsRequired.toString())
+            .replace(/{{subreddit}}/g, subredditName)
+            .replace(/{{name}}/g, `${capitalize(pointName || "point")}`)
+            .replace(/{{flair}}/g, restrictedFlair)
+            .replace(/{{permalink}}/g, `https://reddit.com${lastValidPermalink}`);
+
+        const notifyModeRaw = settings[AppSetting.NotifyOpOnPostRestriction] as string[] | NotifyOpOnPostRestrictionReplyOptions.ReplyByPM;
+        const notifyModeStr = (Array.isArray(notifyModeRaw) ? notifyModeRaw[0] : notifyModeRaw ?? "").toLowerCase();
+
+        try {
+            if (notifyModeStr === NotifyOpOnPostRestrictionReplyOptions.ReplyByPM) {
+                console.log("MessageAsPM:", message);
+                await context.reddit.sendPrivateMessage({
+                    to: author.username,
+                    subject: "Post Restricted",
+                    text: message,
+                });
+                logger.info("✉️ Restriction PM sent", { authorName });
+            } else if (notifyModeStr === NotifyOpOnPostRestrictionReplyOptions.ReplyAsComment) {
+                console.log("MessageAsComment:", message);
+                await context.reddit.submitComment({
+                    id: event.post.id,
+                    text: message,
+                });
+                logger.info("💬 Restriction comment posted", { postId: event.post.id });
+            } else {
+                logger.warn("⚠️ Unknown notification mode, skipping message", { notifyModeStr });
+            }
+        } catch (err) {
+            logger.error("❌ Failed to send restriction message", { err });
+        }
+    } else {
+        // User is allowed → store last valid post
+        await context.redis.set(lastValidPostKey, event.post.permalink);
+
+        const restrictionExists = await context.redis.exists(userRedisKey);
+        if (restrictionExists) {
+            await context.redis.del(userRedisKey);
+            logger.info("✅ User restriction lifted", { authorName, storedScore, awardsRequired });
+        }
+    }
+
+    // 🔹 Update leaderboard
+    await context.redis.zAdd(POINTS_STORE_KEY, { member: authorName, score: currentScore });
+    logger.info("🏆 Leaderboard updated", { authorName, currentScore });
+
+    // Queue leaderboard update
+    await context.scheduler.runJob({
+        name: "updateLeaderboard",
+        runAt: new Date(),
+        data: { reason: `Updated ${authorName} to ${currentScore} points.` },
+    });
+    logger.debug("📅 Scheduled leaderboard update job", { authorName });
+
+    // 🔹 Build flair text
+    const flairSetting = ((settings[AppSetting.ExistingFlairHandling] as string[] | undefined) ?? [ExistingFlairOverwriteHandling.OverwriteNumeric])[0] as ExistingFlairOverwriteHandling;
+    const restrictedText = (settings[AppSetting.PointCapNotMetFlair] as string) ?? "Restricted Poster";
+    const pointSymbol = (settings[AppSetting.PointSymbol] as string) ?? "";
+
+    let flairText = "";
+    switch (flairSetting) {
+        case ExistingFlairOverwriteHandling.OverwriteNumericSymbol:
+            flairText = userIsRestricted ? `${restrictedText} | ${currentScore}${pointSymbol}` : `${currentScore}${pointSymbol}`;
+            break;
+        case ExistingFlairOverwriteHandling.OverwriteNumeric:
+            flairText = userIsRestricted ? `${restrictedText} | ${currentScore}` : `${currentScore}`;
+            break;
+        case ExistingFlairOverwriteHandling.NeverSet:
+            flairText = userIsRestricted ? `${restrictedText}` : "";
+            break;
+    }
+    logger.debug("ℹ️ Flair text built", { flairText, flairSetting });
+
+    // 🔹 Apply flair
+    let cssClass = settings[AppSetting.CSSClass] as string | undefined;
+    let flairTemplate = settings[AppSetting.FlairTemplate] as string | undefined;
+    if (flairTemplate && cssClass) cssClass = undefined;
+
+    await context.reddit.setUserFlair({
+        subredditName,
+        username: authorName,
+        cssClass,
+        flairTemplateId: flairTemplate,
+        text: flairText,
+    });
+    logger.info("🎨 Flair applied", { authorName, userIsRestricted, flairText, cssClass, flairTemplate });
 }
 
 async function getUserIsSuperuser(
@@ -367,7 +456,6 @@ export async function handleThanksEvent(
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
     const pointSymbol = (settings[AppSetting.PointSymbol] as string) ?? "";
 
-    // Parse user & mod commands
     const userCommandRaw = settings[AppSetting.PointTriggerWords] as
         | string
         | undefined;
@@ -383,7 +471,6 @@ export async function handleThanksEvent(
     const allCommands = [...userCommands, ...(modCommand ? [modCommand] : [])];
 
     const commentBody = event.comment.body?.toLowerCase() ?? "";
-
     const containsCommand = allCommands.some((cmd) =>
         commentBody.includes(cmd)
     );
@@ -401,105 +488,9 @@ export async function handleThanksEvent(
         return;
     }
 
-    const botAwardMessage = formatMessage(
-        (settings[AppSetting.BotAwardMessage] as string) ??
-            TemplateDefaults.BotAwardMessage,
-        {
-            name: pointName,
-        }
-    );
-
-    const recipient = parentComment.authorName;
-    const awardeeIsBot = recipient === context.appName;
-
-    if (awardeeIsBot) {
-        logger.debug("❌ Bot cannot award itself points");
-        const newComment = await context.reddit.submitComment({
-            id: event.comment.id,
-            text: botAwardMessage,
-        });
-
-        await Promise.all([newComment.distinguish()]);
-        return;
-    }
-
-    // Permission check
-    const accessControl = ((settings[AppSetting.AccessControl] as string[]) ?? [
-        "moderators-only",
-    ])[0];
-    const isMod = await isModerator(
-        context,
-        event.subreddit.name,
-        event.author.name
-    );
-
-    const superUsers = ((settings[AppSetting.SuperUsers] as string) ?? "")
-        .split("\n")
-        .map((u) => u.trim().toLowerCase())
-        .filter(Boolean);
-
-    const authorName = event.author.name.toLowerCase();
-    const isSuperUser = superUsers.includes(authorName);
-    const isOP = event.author.id === event.post.authorId;
-
-    const hasPermission =
-        accessControl === "everyone" ||
-        (accessControl === "moderators-only" && isMod) ||
-        (accessControl === "moderators-and-superusers" &&
-            (isMod || isSuperUser)) ||
-        (accessControl === "moderators-superusers-and-op" &&
-            (isMod || isSuperUser || isOP));
-
+    // ──────────────── Permission Checks ────────────────
     const awarder = event.author.name;
-
-    if (!hasPermission) {
-        if (accessControl === "moderators-only") {
-            const disallowedMessage = formatMessage(
-                `You must be a moderator to award {{name}}s.`,
-                {
-                    name: pointName,
-                }
-            );
-
-            const newComment = await context.reddit.submitComment({
-                id: event.comment.id,
-                text: disallowedMessage,
-            });
-            await Promise.all([newComment.distinguish()]);
-        } else if (accessControl === "moderators-and-superusers") {
-            const disallowedMessage = formatMessage(
-                `You must be a moderator or superuser to award {{name}}s.`,
-                {
-                    name: pointName,
-                }
-            );
-
-            const newComment = await context.reddit.submitComment({
-                id: event.comment.id,
-                text: disallowedMessage,
-            });
-
-            await Promise.all([newComment.distinguish()]);
-        } else if (accessControl === "moderators-superusers-and-op") {
-            const disallowedMessage = formatMessage(
-                `You must be a moderator, superuser, or OP to award {{name}}s.`,
-                {
-                    name: pointName,
-                }
-            );
-
-            const newComment = await context.reddit.submitComment({
-                id: event.comment.id,
-                text: disallowedMessage,
-            });
-
-            await Promise.all([newComment.distinguish()]);
-        }
-
-        logger.warn("❌ Author does not have permission");
-        return;
-    }
-
+    const recipient = parentComment.authorName;
     if (!recipient) {
         logger.warn("❌ No recipient found.");
         return;
@@ -511,7 +502,6 @@ export async function handleThanksEvent(
                 TemplateDefaults.NotifyOnSelfAwardTemplate,
             { awarder, name: pointName }
         );
-
         const notify = ((settings[
             AppSetting.NotifyOnSelfAward
         ] as string[]) ?? [NotifyOnSelfAwardReplyOptions.NoReply])[0];
@@ -521,8 +511,7 @@ export async function handleThanksEvent(
                 id: event.comment.id,
                 text: selfMsg,
             });
-
-            await Promise.all([newComment.distinguish()]);
+            await newComment.distinguish();
         } else if (notify === NotifyOnSelfAwardReplyOptions.ReplyByPM) {
             await context.reddit.sendPrivateMessage({
                 to: awarder,
@@ -530,201 +519,151 @@ export async function handleThanksEvent(
                 text: selfMsg,
             });
         }
-
         logger.debug("❌ User tried to award themselves.");
         return;
     }
 
-    // Check if already awarded
+    // ──────────────── Already Awarded Checks ────────────────
     const alreadyKey = `thanks-${parentComment.id}`;
-    const modAlreadyAwardedKey = `modthanks-${parentComment.id}`;
-
     const alreadyAwarded = await context.redis.exists(alreadyKey);
-
     if (alreadyAwarded) {
-        const alreadyMsg = formatMessage(
-            (settings[AppSetting.DuplicateAwardMessage] as string) ??
-                TemplateDefaults.DuplicateAwardMessage,
-            { name: pointName }
-        );
-
-        const notify = ((settings[
-            AppSetting.NotifyOnPointAlreadyAwarded
-        ] as string[]) ?? ["none"])[0];
-
-        if (notify === NotifyOnPointAlreadyAwardedReplyOptions.ReplyByPM) {
-            await context.reddit.sendPrivateMessage({
-                to: awarder,
-                subject: `You've already awarded this comment`,
-                text: alreadyMsg,
-            });
-        } else if (
-            notify === NotifyOnPointAlreadyAwardedReplyOptions.ReplyAsComment
-        ) {
-            const newComment = await context.reddit.submitComment({
-                id: event.comment.id,
-                text: alreadyMsg,
-            });
-
-            await Promise.all([newComment.distinguish()]);
-        }
-    }
-
-    const modAlreadyAwarded = await context.redis.exists(modAlreadyAwardedKey);
-
-    // Check if it's a mod/superuser trying a second mod-award
-    const isSuperuser = await getUserIsSuperuser(awarder, context);
-    const notify = ((settings[
-        AppSetting.NotifyOnPointAlreadyAwarded
-    ] as string[]) ?? ["none"])[0];
-
-    // Detect trigger
-    const usesRegex = settings[AppSetting.ThanksCommandUsesRegex];
-    const containsUserCommand = usesRegex
-        ? userCommands
-              .map((c) => new RegExp(c, "i"))
-              .some((r) => r.test(commentBody))
-        : userCommands.some((c) => commentBody.includes(c));
-
-    const containsModCommand = modCommand && commentBody.includes(modCommand);
-
-    if ((isSuperuser || isMod) && containsModCommand && modAlreadyAwarded) {
-        logger.warn("❌ Mod/Superuser attempted duplicate mod-award.");
-
-        const modDuplicateMsg = formatMessage(
-            `This comment has already received a moderator-approved {{name}}.`,
-            { name: pointName }
-        );
-
-        if (notify === NotifyOnPointAlreadyAwardedReplyOptions.ReplyByPM) {
-            await context.reddit.sendPrivateMessage({
-                to: awarder,
-                subject: `Already awarded with mod approval`,
-                text: modDuplicateMsg,
-            });
-        } else if (
-            notify === NotifyOnPointAlreadyAwardedReplyOptions.ReplyAsComment
-        ) {
-            const newComment = await context.reddit.submitComment({
-                id: event.comment.id,
-                text: modDuplicateMsg,
-            });
-            await Promise.all([newComment.distinguish()]);
-        }
-        logger.info("❌ Award was already given. Skipping.");
+        logger.info(`❌ ${awarder} already awarded this comment`);
         return;
     }
 
-    // Awarding the point
-    const redisKey = `${POINTS_STORE_KEY}`;
+    // ──────────────── Award the Point ────────────────
+    const redisKey = POINTS_STORE_KEY;
     const newScore = await context.redis.zIncrBy(redisKey, recipient, 1);
 
-    // Check for mod or user command awarding
-    if ((isSuperuser || isMod) && containsModCommand) {
-        // Set modAlreadyAwarded key
-        await context.redis.set(modAlreadyAwardedKey, "1");
+    // Mark as awarded
+    await context.redis.set(alreadyKey, "1");
 
-        const scoreboard = settings[AppSetting.ScoreboardName];
-        const modAwardMsg = formatMessage(
-            (settings[AppSetting.ApproveMessage] as string) ??
-                TemplateDefaults.ApproveMessage,
-            {
-                scoreboard: `https://reddit.com/r/${context.subredditName}/wiki/${scoreboard}`,
-                awardee: recipient,
-                total: newScore.toString(),
-                name: pointName,
-                symbol: pointSymbol,
-            }
-        );
+    logger.info(
+        `✅ ${awarder} awarded 1 ${pointName} to ${recipient} (new score: ${newScore})`
+    );
 
-        const notifyOnModAward = ((settings[
-            AppSetting.NotifyOnApprove
-        ] as string[]) ?? ["none"])[0];
+    // ──────────────── Dynamic Restriction & Flair ────────────────
+    const awardsRequired =
+        (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) || 0;
+    const userRedisKey = `restrictedUser:${recipient}`;
 
-        if (notifyOnModAward === NotifyOnSuccessReplyOptions.ReplyByPM) {
-            await context.reddit.sendPrivateMessage({
-                to: awarder,
-                subject: `You awarded 1 ${pointName}`,
-                text: modAwardMsg,
-            });
-        } else if (
-            notifyOnModAward === NotifyOnSuccessReplyOptions.ReplyAsComment
-        ) {
-            const newComment = await context.reddit.submitComment({
-                id: event.comment.id,
-                text: modAwardMsg,
-            });
+    // Store/update the user's current score in Redis
+    await context.redis.set(userRedisKey, newScore.toString());
 
-            await Promise.all([newComment.distinguish()]);
-            await context.redis.set(modAlreadyAwardedKey, "1");
+    // Fetch the score from Redis (ensures numeric comparison)
+    const storedScoreRaw = await context.redis.get(userRedisKey);
+    const storedScore = storedScoreRaw ? parseInt(storedScoreRaw, 10) : 0;
+
+    //TODO: Make it so that if OP is restricted, it doesn't also make normal users the OP is awarding be restricted
+    let userIsRestricted = false;
+    const author = await context.reddit.getUserByUsername(recipient);
+    if (!author) return;
+    if (storedScore < awardsRequired) {
+        userIsRestricted = true;
+
+        // Optional: remove post if the user is restricted
+        if (event.post.authorId === author.id) {
+            await context.reddit.remove(event.post.id, true);
         }
-    } else if (!isSuperuser && !isMod && containsModCommand) {
+
+        const notifyMode = settings[
+            AppSetting.NotifyOpOnPostRestriction
+        ] as string;
+        const messageTemplate =
+            (settings[AppSetting.AwardRequirementMessage] as string) ??
+            TemplateDefaults.AwardRequirementMessage;
+        const message = messageTemplate
+            .replace("{{author}}", author.username)
+            .replace("{{requirement}}", awardsRequired.toString())
+            .replace("{{subreddit}}", event.subreddit.name)
+            .replace("{{name}}", event.post.title || "")
+            .replace(
+                "{{permalink}}",
+                `https://reddit.com${event.post.permalink}`
+            );
+
+        if (notifyMode === "replybypm") {
+            await context.reddit.sendPrivateMessage({
+                to: author.username,
+                subject: "Post Restricted",
+                text: message,
+            });
+        } else if (notifyMode === "replybycomment") {
+            await context.reddit.submitComment({
+                id: event.post.id,
+                text: message,
+            });
+        }
+
         logger.info(
-            "❌ User is trying to use modCommand, but isn't a Moderator or Superuser."
+            `🚫 ${recipient} restricted from posting (${storedScore}/${awardsRequired})`
         );
-
-        const modDenyMsg = formatMessage(
-            `You do not have permission to use the "{{command}}" command.`,
-            { command: modCommand }
-        );
-
-        const newComment = await context.reddit.submitComment({
-            id: event.comment.id,
-            text: modDenyMsg,
-        });
-
-        await Promise.all([newComment.distinguish()]);
-
-        return;
-    } else if (containsUserCommand) {
-        const notifySuccess = ((settings[
-            AppSetting.NotifyOnSuccess
-        ] as string[]) ?? ["none"])[0];
-
-        const scoreboard = `https://reddit.com/r/${event.subreddit.name}/wiki/${
-            settings[AppSetting.ScoreboardName] ?? "leaderboard"
-        }`;
-
-        const successMessage = formatMessage(
-            (settings[AppSetting.SuccessMessage] as string) ??
-                TemplateDefaults.NotifyOnSuccessTemplate,
-            {
-                awardee: recipient,
-                awarder,
-                total: newScore.toString(),
-                name: pointName,
-                symbol: pointSymbol,
-                scoreboard,
-            }
-        );
-
-        if (notifySuccess === NotifyOnSuccessReplyOptions.ReplyByPM) {
-            await context.reddit.sendPrivateMessage({
-                to: awarder,
-                subject: `You awarded a ${pointName}`,
-                text: successMessage,
-            });
-            await context.reddit.sendPrivateMessage({
-                to: recipient,
-                subject: `You were awarded a ${pointName}`,
-                text: successMessage,
-            });
-        } else if (
-            notifySuccess === NotifyOnSuccessReplyOptions.ReplyAsComment
-        ) {
-            const newComment = await context.reddit.submitComment({
-                id: event.comment.id,
-                text: successMessage,
-            });
-
-            await Promise.all([newComment.distinguish()]);
+    } else {
+        // User meets threshold → lift restriction
+        const restrictionExists = await context.redis.exists(userRedisKey);
+        if (restrictionExists) {
+            await context.redis.del(userRedisKey);
+            logger.info(
+                `✅ ${recipient} restriction lifted (${storedScore}/${awardsRequired})`
+            );
         }
-
-        await context.redis.set(alreadyKey, "1");
     }
 
-    // 🧼 Final step: update flair
-    await setUserScore(recipient, newScore, context, settings);
+    // ──────────────── Update Flair ────────────────
+    const flairSetting = ((settings[AppSetting.ExistingFlairHandling] as
+        | string[]
+        | undefined) ?? [
+        ExistingFlairOverwriteHandling.OverwriteNumeric,
+    ])[0] as ExistingFlairOverwriteHandling;
+    const restrictedText =
+        (settings[AppSetting.PointCapNotMetFlair] as string) ??
+        "Restricted Poster";
+
+    let flairText = "";
+    switch (flairSetting) {
+        case ExistingFlairOverwriteHandling.OverwriteNumericSymbol:
+            flairText = userIsRestricted
+                ? `${restrictedText} | ${newScore}${pointSymbol}`
+                : `${newScore}${pointSymbol}`;
+            break;
+        case ExistingFlairOverwriteHandling.OverwriteNumeric:
+            flairText = userIsRestricted
+                ? `${restrictedText} | ${newScore}`
+                : `${newScore}`;
+            break;
+        case ExistingFlairOverwriteHandling.NeverSet:
+            flairText = userIsRestricted ? `${restrictedText}` : "";
+            break;
+    }
+
+    let cssClass = settings[AppSetting.CSSClass] as string | undefined;
+    let flairTemplate = settings[AppSetting.FlairTemplate] as
+        | string
+        | undefined;
+    if (flairTemplate && cssClass) cssClass = undefined;
+
+    await context.reddit.setUserFlair({
+        subredditName: event.subreddit.name,
+        username: recipient,
+        cssClass,
+        flairTemplateId: flairTemplate,
+        text: flairText,
+    });
+
+    logger.info(
+        userIsRestricted
+            ? `🚫 Flair applied: ${recipient} restricted (${flairText})`
+            : `✅ Flair applied: ${recipient} unrestricted (${flairText})`
+    );
+
+    // ──────────────── Update Leaderboard ────────────────
+    await context.scheduler.runJob({
+        name: "updateLeaderboard",
+        runAt: new Date(),
+        data: {
+            reason: `Updated ${recipient} to ${newScore} points.`,
+        },
+    });
 }
 
 function capitalize(word: string): string {

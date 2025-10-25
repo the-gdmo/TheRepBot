@@ -1,11 +1,26 @@
 import { Devvit, FormField } from "@devvit/public-api";
-import { handleManualPointSetting, handleThanksEvent, manualSetPointsFormHandler, onPostSubmit } from "./thanksPoints.js";
+import {
+    handleManualPointSetting,
+    handleThanksEvent,
+    manualSetPointsFormHandler,
+    onPostSubmit,
+} from "./thanksPoints.js";
 import { appSettings, validateRegexJobHandler } from "./settings.js";
 import { onAppFirstInstall, onAppInstallOrUpgrade } from "./installEvents.js";
 import { updateLeaderboard } from "./leaderboard.js";
 import { cleanupDeletedAccounts } from "./cleanupTasks.js";
-import { leaderboardCustomPost, createCustomPostMenuHandler, customPostForm, createCustomPostFormHandler } from "./customPost/index.js";
-import { ADHOC_CLEANUP_JOB, CLEANUP_JOB, UPDATE_LEADERBOARD_JOB, VALIDATE_REGEX_JOB } from "./constants.js";
+import {
+    leaderboardCustomPost,
+    createCustomPostMenuHandler,
+    customPostForm,
+    createCustomPostFormHandler,
+} from "./customPost/index.js";
+import {
+    ADHOC_CLEANUP_JOB,
+    CLEANUP_JOB,
+    UPDATE_LEADERBOARD_JOB,
+    VALIDATE_REGEX_JOB,
+} from "./constants.js";
 
 Devvit.addSettings(appSettings);
 
@@ -15,7 +30,7 @@ Devvit.addTrigger({
 });
 
 Devvit.addTrigger({
-    events: ["PostCreate"],
+    events: ["PostSubmit"],
     onEvent: onPostSubmit,
 });
 
@@ -49,7 +64,10 @@ Devvit.addSchedulerJob({
     onRun: validateRegexJobHandler,
 });
 
-export const manualSetPointsForm = Devvit.createForm(data => ({ fields: data.fields as FormField[] }), manualSetPointsFormHandler);
+export const manualSetPointsForm = Devvit.createForm(
+    (data) => ({ fields: data.fields as FormField[] }),
+    manualSetPointsFormHandler
+);
 
 Devvit.addMenuItem({
     label: "Set TheRepBot score manually",
@@ -67,7 +85,10 @@ Devvit.addMenuItem({
     onPress: createCustomPostMenuHandler,
 });
 
-export const customPostFormKey = Devvit.createForm(customPostForm, createCustomPostFormHandler);
+export const customPostFormKey = Devvit.createForm(
+    customPostForm,
+    createCustomPostFormHandler
+);
 
 Devvit.configure({
     redditAPI: true,

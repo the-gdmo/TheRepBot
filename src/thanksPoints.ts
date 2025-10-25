@@ -230,7 +230,10 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
 
     const subredditName = event.subreddit.name;
     const authorName = event.author.name;
-    logger.debug("ℹ️ Subreddit and author identified", { subredditName, authorName });
+    logger.debug("ℹ️ Subreddit and author identified", {
+        subredditName,
+        authorName,
+    });
 
     // Fetch full User object
     const author = await context.reddit.getUserByUsername(authorName);
@@ -245,16 +248,20 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
     const moderatorsExempt = settings[AppSetting.ModeratorsExempt] as boolean;
     logger.debug("ℹ️ Moderator status checked", { isMod, moderatorsExempt });
     if (moderatorsExempt && isMod) {
-        logger.info("ℹ️ Moderator exempt from point restriction", { authorName });
+        logger.info("ℹ️ Moderator exempt from point restriction", {
+            authorName,
+        });
         return;
     }
 
     // Force point awarding enabled?
-    const forcePointAwarding = (settings[AppSetting.ForcePointAwarding] as boolean) ?? false;
+    const forcePointAwarding =
+        (settings[AppSetting.ForcePointAwarding] as boolean) ?? false;
     logger.debug("ℹ️ Force point awarding check", { forcePointAwarding });
     if (!forcePointAwarding) return;
 
-    const awardsRequired = (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) || 0;
+    const awardsRequired =
+        (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) || 0;
     logger.debug("ℹ️ Awards required for new post", { awardsRequired });
     if (awardsRequired <= 0) return;
 
@@ -264,7 +271,10 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
 
     const userRedisKey = `restrictedUser:${authorName}`;
     await context.redis.set(userRedisKey, currentScore.toString());
-    logger.debug("✅ User score stored in Redis", { userRedisKey, currentScore });
+    logger.debug("✅ User score stored in Redis", {
+        userRedisKey,
+        currentScore,
+    });
 
     const lastValidPostKey = `lastValidPost:${authorName}`;
     let userIsRestricted = false;
@@ -272,16 +282,25 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
     // 🔹 Restriction logic
     const storedScoreRaw = await context.redis.get(userRedisKey);
     const storedScore = storedScoreRaw ? parseInt(storedScoreRaw, 10) : 0;
-    logger.debug("ℹ️ Stored score fetched from Redis", { storedScoreRaw, storedScore });
+    logger.debug("ℹ️ Stored score fetched from Redis", {
+        storedScoreRaw,
+        storedScore,
+    });
 
     if (storedScore < awardsRequired) {
         userIsRestricted = true;
-        logger.warn("🚫 User restricted from posting", { authorName, storedScore, awardsRequired });
+        logger.warn("🚫 User restricted from posting", {
+            authorName,
+            storedScore,
+            awardsRequired,
+        });
 
         // Remove post
         try {
             await context.reddit.remove(event.post.id, true);
-            logger.info("🗑 Post removed due to restriction", { postId: event.post.id });
+            logger.info("🗑 Post removed due to restriction", {
+                postId: event.post.id,
+            });
         } catch (err) {
             logger.error("❌ Failed to remove post", { err });
         }
@@ -293,22 +312,38 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         }
 
         const pointName = (settings[AppSetting.PointName] as string) ?? "point";
-        const restrictedFlair = (settings[AppSetting.PointCapNotMetFlair] as string) ?? "Restricted Poster";
+        const restrictedFlair =
+            (settings[AppSetting.PointCapNotMetFlair] as string) ??
+            "Restricted Poster";
 
-        const messageTemplate = (settings[AppSetting.AwardRequirementMessage] as string) ?? TemplateDefaults.AwardRequirementMessage;
+        const messageTemplate =
+            (settings[AppSetting.AwardRequirementMessage] as string) ??
+            TemplateDefaults.AwardRequirementMessage;
         const message = messageTemplate
             .replace(/{{author}}/g, author.username)
             .replace(/{{requirement}}/g, awardsRequired.toString())
             .replace(/{{subreddit}}/g, subredditName)
             .replace(/{{name}}/g, `${capitalize(pointName || "point")}`)
             .replace(/{{flair}}/g, restrictedFlair)
-            .replace(/{{permalink}}/g, `https://reddit.com${lastValidPermalink}`);
+            .replace(
+                /{{permalink}}/g,
+                `https://reddit.com${lastValidPermalink}`
+            );
 
-        const notifyModeRaw = settings[AppSetting.NotifyOpOnPostRestriction] as string[] | NotifyOpOnPostRestrictionReplyOptions.ReplyByPM;
-        const notifyModeStr = (Array.isArray(notifyModeRaw) ? notifyModeRaw[0] : notifyModeRaw ?? "").toLowerCase();
+        const notifyModeRaw = settings[AppSetting.NotifyOpOnPostRestriction] as
+            | string[]
+            | NotifyOpOnPostRestrictionReplyOptions.ReplyByPM;
+        const notifyModeStr = (
+            Array.isArray(notifyModeRaw)
+                ? notifyModeRaw[0]
+                : notifyModeRaw ?? ""
+        ).toLowerCase();
 
         try {
-            if (notifyModeStr === NotifyOpOnPostRestrictionReplyOptions.ReplyByPM) {
+            if (
+                notifyModeStr ===
+                NotifyOpOnPostRestrictionReplyOptions.ReplyByPM
+            ) {
                 console.log("MessageAsPM:", message);
                 await context.reddit.sendPrivateMessage({
                     to: author.username,
@@ -316,15 +351,22 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
                     text: message,
                 });
                 logger.info("✉️ Restriction PM sent", { authorName });
-            } else if (notifyModeStr === NotifyOpOnPostRestrictionReplyOptions.ReplyAsComment) {
+            } else if (
+                notifyModeStr ===
+                NotifyOpOnPostRestrictionReplyOptions.ReplyAsComment
+            ) {
                 console.log("MessageAsComment:", message);
                 await context.reddit.submitComment({
                     id: event.post.id,
                     text: message,
                 });
-                logger.info("💬 Restriction comment posted", { postId: event.post.id });
+                logger.info("💬 Restriction comment posted", {
+                    postId: event.post.id,
+                });
             } else {
-                logger.warn("⚠️ Unknown notification mode, skipping message", { notifyModeStr });
+                logger.warn("⚠️ Unknown notification mode, skipping message", {
+                    notifyModeStr,
+                });
             }
         } catch (err) {
             logger.error("❌ Failed to send restriction message", { err });
@@ -336,12 +378,19 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         const restrictionExists = await context.redis.exists(userRedisKey);
         if (restrictionExists) {
             await context.redis.del(userRedisKey);
-            logger.info("✅ User restriction lifted", { authorName, storedScore, awardsRequired });
+            logger.info("✅ User restriction lifted", {
+                authorName,
+                storedScore,
+                awardsRequired,
+            });
         }
     }
 
     // 🔹 Update leaderboard
-    await context.redis.zAdd(POINTS_STORE_KEY, { member: authorName, score: currentScore });
+    await context.redis.zAdd(POINTS_STORE_KEY, {
+        member: authorName,
+        score: currentScore,
+    });
     logger.info("🏆 Leaderboard updated", { authorName, currentScore });
 
     // Queue leaderboard update
@@ -353,17 +402,27 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
     logger.debug("📅 Scheduled leaderboard update job", { authorName });
 
     // 🔹 Build flair text
-    const flairSetting = ((settings[AppSetting.ExistingFlairHandling] as string[] | undefined) ?? [ExistingFlairOverwriteHandling.OverwriteNumeric])[0] as ExistingFlairOverwriteHandling;
-    const restrictedText = (settings[AppSetting.PointCapNotMetFlair] as string) ?? "Restricted Poster";
+    const flairSetting = ((settings[AppSetting.ExistingFlairHandling] as
+        | string[]
+        | undefined) ?? [
+        ExistingFlairOverwriteHandling.OverwriteNumeric,
+    ])[0] as ExistingFlairOverwriteHandling;
+    const restrictedText =
+        (settings[AppSetting.PointCapNotMetFlair] as string) ??
+        "Restricted Poster";
     const pointSymbol = (settings[AppSetting.PointSymbol] as string) ?? "";
 
     let flairText = "";
     switch (flairSetting) {
         case ExistingFlairOverwriteHandling.OverwriteNumericSymbol:
-            flairText = userIsRestricted ? `${restrictedText} | ${currentScore}${pointSymbol}` : `${currentScore}${pointSymbol}`;
+            flairText = userIsRestricted
+                ? `${restrictedText} | ${currentScore}${pointSymbol}`
+                : `${currentScore}${pointSymbol}`;
             break;
         case ExistingFlairOverwriteHandling.OverwriteNumeric:
-            flairText = userIsRestricted ? `${restrictedText} | ${currentScore}` : `${currentScore}`;
+            flairText = userIsRestricted
+                ? `${restrictedText} | ${currentScore}`
+                : `${currentScore}`;
             break;
         case ExistingFlairOverwriteHandling.NeverSet:
             flairText = userIsRestricted ? `${restrictedText}` : "";
@@ -373,7 +432,9 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
 
     // 🔹 Apply flair
     let cssClass = settings[AppSetting.CSSClass] as string | undefined;
-    let flairTemplate = settings[AppSetting.FlairTemplate] as string | undefined;
+    let flairTemplate = settings[AppSetting.FlairTemplate] as
+        | string
+        | undefined;
     if (flairTemplate && cssClass) cssClass = undefined;
 
     await context.reddit.setUserFlair({
@@ -383,7 +444,13 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         flairTemplateId: flairTemplate,
         text: flairText,
     });
-    logger.info("🎨 Flair applied", { authorName, userIsRestricted, flairText, cssClass, flairTemplate });
+    logger.info("🎨 Flair applied", {
+        authorName,
+        userIsRestricted,
+        flairText,
+        cssClass,
+        flairTemplate,
+    });
 }
 
 async function getUserIsSuperuser(
@@ -672,6 +739,13 @@ function capitalize(word: string): string {
 
 function markdownEscape(input: string): string {
     return input.replace(/([\\`*_{}\[\]()#+\-.!])/g, "\\$1");
+}
+
+export async function handlePostRestrictionRemoval(
+    event: MenuItemOnPressEvent,
+    context: Context
+) {
+    //TODO: implement this to make it possible for mods to remove post restriction requirements from a user
 }
 
 export async function handleManualPointSetting(

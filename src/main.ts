@@ -1,6 +1,7 @@
 import { Devvit, FormField } from "@devvit/public-api";
 import {
     handleManualPointSetting,
+    handlePostRestrictionRemoval,
     handleThanksEvent,
     manualSetPointsFormHandler,
     onPostSubmit,
@@ -68,6 +69,13 @@ export const manualSetPointsForm = Devvit.createForm(
     (data) => ({ fields: data.fields as FormField[] }),
     manualSetPointsFormHandler
 );
+
+Devvit.addMenuItem({
+    label: "Remove post restriction from user",
+    forUserType: "moderator",
+    location: "post",
+    onPress: handlePostRestrictionRemoval,
+});
 
 Devvit.addMenuItem({
     label: "Set TheRepBot score manually",

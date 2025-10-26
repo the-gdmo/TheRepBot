@@ -33,7 +33,7 @@ If the application is removed from a subreddit, all data is deleted although the
 
 ## About
 
-This app is open source and licenced under the BSD 3-Clause Licence. You can find the source code on GitHub [here](https://github.com/the-gdmo/TheRepBot).
+This app is open source and licensed under the BSD 3-Clause License. You can find the source code on GitHub [here](https://github.com/the-gdmo/TheRepBot).
 
 NOTE: If you update settings, you will have to uninstall to be able to reimplement the content that you want in whatever you are editing.
 

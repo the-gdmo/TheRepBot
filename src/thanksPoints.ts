@@ -150,6 +150,17 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
     const awardsRequired =
         (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) || 0;
 
+    // ──────────────── Decide whether or not moderators should have the restriction applied to them ────────────────
+
+    const modsExempt = settings[AppSetting.ModeratorsExempt] as boolean ?? "true";
+    const isMod = await isModerator(context, subredditName, authorName);
+    if (isMod && modsExempt) {
+        logger.info(
+            `✅ ${author.username} is a moderator and is exempt from being restricted`
+        );
+        return;
+    }
+
     // ──────────────── Use Helper to Determine Restriction ────────────────
     const restrictedFlagExists = await restrictedKeyExists(context, authorName);
     const requiredFlagExists = await requiredKeyExists(context, authorName);

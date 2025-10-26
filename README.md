@@ -6,8 +6,6 @@ The app gets triggered when a comment is posted or edited, but only never award 
 
 You can also set an optional post flair if a point is awarded, such as to mark the question as "Resolved".
 
-The app has backup and restore functionality, which enables points to be preserved if you uninstall the app or if you want to import data from a previous reputation points app. For technical details of this function, please [see here](https://www.reddit.com/r/fsvapps/wiki/reputatorbotbackup/). THIS BIT IS FROM u/fsv'S CODE AND TAKEN STRAIGHT FROM THEIR REPUTATORBOT PROJECT.
-
 ## Limitations
 
 * The optional leaderboard will not pull in points for users until this app awards one. If you have previously used /u/Clippy_Office_Asst or a similar bot to award reputation points in the past, this will make the leaderboard misleading unless you restore from a backup.
@@ -38,6 +36,8 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you update settings, you will have to uninstall to be able to reimplement the content that you want in whatever you are editing.
 
 ## Version History
+### 11.0.0
+* Make it so that it can be toggled whether or not mods have the award requirement associated with them if point awarding is required
 ### 10.0.0
 * Make it so that a user's flair can be set to force them to award points on their own post before being allowed to make new posts
 * Add a toggle for whether or not to enable the feature mentioned above

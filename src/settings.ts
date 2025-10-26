@@ -20,7 +20,6 @@ export enum LeaderboardMode {
 }
 
 export enum AppSetting {
-    PointCapNotMetFlair = "pointCapNotMetFlair",
     AwardsRequiredToCreateNewPosts = "awardsRequiredToCreateNewPosts",
     NotifyOnRestorePoints = "notifyOnRestorePoints",
     ForcePointAwarding = "forcePointAwarding",
@@ -85,7 +84,7 @@ export enum AppSetting {
 }
 
 export enum TemplateDefaults {
-    AwardRequirementMessage = "Hello u/{{author}}. Before you can create new posts, you must award {{requirement}} {{name}}s to users who respond on [your post]({{permalink}}).\n\nYour {{flair}} flair will be removed automatically once you have awarded the {{requirement}} people.",
+    AwardRequirementMessage = "Hello u/{{author}}. Before you can create new posts, you must award **{{requirement}}** {{name}}s to users who respond on [your post]({{permalink}}).\n\nYour **{{flair}}** flair will be removed automatically once you have awarded the **{{requirement}}** people.",
     PointsRestoredMessage = "u/{{restoree}}'s points were restored by u/{{restorer}}.",
     UnflairedPostMessage = "Points cannot be awarded on posts without flair. Please award only on flaired posts.",
     OPOnlyDisallowedMessage = "Only moderators, approved users, and Post Authors (OPs) can award {{name}}s.",
@@ -460,14 +459,6 @@ export const appSettings: SettingsFormField[] = [
                 helpText: "Amount of awarded points required before a user can make a new post. Set to 0 to disable.",
                 defaultValue: 0,
                 onValidate: numberFieldHasValidOption,
-            },
-            {
-                type: "string",
-                name: AppSetting.PointCapNotMetFlair,
-                label: "Point Cap Not Met Flair",
-                helpText: `Flair to give a user until they award the minimum number of points required in the "Awards Required To Create New Posts" section. This will not activate if "Force Point Awarding" is turned off.`,
-                defaultValue: "Restricted Poster",
-                onValidate: validatePointCapNotMetFlair,
             },
         ],
     },
@@ -971,14 +962,5 @@ export function numberFieldHasValidOption(
 
     if (event.value <= 0) {
         return 'A non-negative number must be entered into the "Awards Required To Create New Posts" even if "Force Point Awarding" is disabled';
-    }
-}
-
-// 🏷️ Validate "Point Cap Not Met Flair"
-export function validatePointCapNotMetFlair(
-    event: SettingsFormFieldValidatorEvent<string>
-) {
-    if (!event.value || event.value.trim() === '') {
-        return 'Box cannot be empty even if "Force Point Awarding" is disabled';
     }
 }

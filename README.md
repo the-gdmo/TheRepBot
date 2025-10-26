@@ -41,7 +41,9 @@ NOTE: If you update settings, you will have to uninstall to be able to reimpleme
 ### 10.0.0
 * Make it so that a user's flair can be set to force them to award points on their own post before being allowed to make new posts
 * Add a toggle for whether or not to enable the feature mentioned above
-* Allow a template to tell the user they must award points on their post to remove the restricted posting flair
+* Make it possible to permalink to the author's most recent valid post
+* Make it possible for moderators to remove the post restriction from a user
+* Allow a template to tell the user they must award points on their most recent valid post to remove the restricted posting flair
 * Make a customizable message that the bot will send on new posts to inform users of how the restriction system works
 ### 9.0.0
 * Make it so a user can only receive a point once per comment

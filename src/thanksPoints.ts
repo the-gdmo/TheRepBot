@@ -7,11 +7,7 @@ import {
     TriggerContext,
     User,
 } from "@devvit/public-api";
-import {
-    CommentSubmit,
-    CommentUpdate,
-    PostSubmit,
-} from "@devvit/protos";
+import { CommentSubmit, CommentUpdate, PostSubmit } from "@devvit/protos";
 import { isModerator } from "./utility.js";
 import {
     ExistingFlairOverwriteHandling,
@@ -29,8 +25,9 @@ import {
     manualPostRestrictionRemovalForm,
     manualSetPointsForm,
 } from "./main.js";
+import { UPDATE_LEADERBOARD_JOB } from "./constants.js";
 
-const POINTS_STORE_KEY = "thanksPointsStore";
+export const POINTS_STORE_KEY = "thanksPointsStore";
 
 function formatMessage(
     template: string,
@@ -152,7 +149,8 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
 
     // ──────────────── Decide whether or not moderators should have the restriction applied to them ────────────────
 
-    const modsExempt = settings[AppSetting.ModeratorsExempt] as boolean ?? "true";
+    const modsExempt =
+        (settings[AppSetting.ModeratorsExempt] as boolean) ?? "true";
     const isMod = await isModerator(context, subredditName, authorName);
     if (isMod && modsExempt) {
         logger.info(
@@ -183,6 +181,13 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         logger.info(
             `✅ First post allowed for ${author.username}, future posts restricted until ${awardsRequired} awards.`
         );
+        await context.scheduler.runJob({
+            name: "updateLeaderboard",
+            runAt: new Date(),
+            data: {
+                reason: `Awarded a point to ${authorName}.}`,
+            },
+        });
         return;
     }
 
@@ -246,6 +251,14 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         } catch (err) {
             logger.error("❌ Failed to send restriction message", { err });
         }
+        
+        await context.scheduler.runJob({
+            name: UPDATE_LEADERBOARD_JOB,
+            runAt: new Date(),
+            data: {
+                reason: `Awarded a point to ${authorName}.`,
+            },
+        });
     } else {
         logger.info(
             `✅ ${author.username} meets posting requirement (${count}/${awardsRequired}) or is no longer restricted.`
@@ -807,8 +820,7 @@ async function updateAwardeeFlair(
     let flairText = "";
     switch (flairSetting) {
         case ExistingFlairOverwriteHandling.OverwriteNumericSymbol:
-            flairText =
-                `${newScore}${pointSymbol}`;
+            flairText = `${newScore}${pointSymbol}`;
             break;
         case ExistingFlairOverwriteHandling.OverwriteNumeric:
             flairText = `${newScore}`;
@@ -1084,9 +1096,7 @@ export async function manualPostRestrictionRemovalHandler(
         await updateAuthorRedisManualRequirementRemoval(context, authorName);
     }
     // ──────────────── Remove All Restriction Data ────────────────
-    await Promise.all([
-        context.redis.del(lastValidPostKey),
-    ]);
+    await Promise.all([context.redis.del(lastValidPostKey)]);
 
     logger.info("✅ Restriction fully removed from Redis", {
         username: user.username,

@@ -36,6 +36,10 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you update settings, you will have to uninstall to be able to reimplement the content that you want in whatever you are editing.
 
 ## Version History
+### 13.0.0
+* Reimplement code to properly edit the leaderboard wiki page
+### 12.0.0
+* Remove {{flair}} placeholder from being usable in the award requirement message
 ### 11.0.0
 * Make it so that it can be toggled whether or not mods have the award requirement associated with them if point awarding is required
 ### 10.0.0

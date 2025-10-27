@@ -84,7 +84,7 @@ export enum AppSetting {
 }
 
 export enum TemplateDefaults {
-    AwardRequirementMessage = "Hello u/{{author}}. Before you can create new posts, you must award **{{requirement}}** {{name}}s to users who respond on [your post]({{permalink}}).\n\nYour **{{flair}}** flair will be removed automatically once you have awarded the **{{requirement}}** people.",
+    AwardRequirementMessage = "Hello u/{{author}}. Before you can create new posts, you must award **{{requirement}}** {{name}}s to users who respond on [your most recent post]({{permalink}}).",
     PointsRestoredMessage = "u/{{restoree}}'s points were restored by u/{{restorer}}.",
     UnflairedPostMessage = "Points cannot be awarded on posts without flair. Please award only on flaired posts.",
     OPOnlyDisallowedMessage = "Only moderators, approved users, and Post Authors (OPs) can award {{name}}s.",
@@ -383,7 +383,7 @@ const LeaderboardModeOptionChoices = [
     { label: "Off", value: LeaderboardMode.Off },
     { label: "Mod Only", value: LeaderboardMode.ModOnly },
     {
-        label: "Default settings for wiki",
+        label: "Public",
         value: LeaderboardMode.Public,
     },
 ];
@@ -449,7 +449,7 @@ export const appSettings: SettingsFormField[] = [
                 type: "paragraph",
                 name: AppSetting.AwardRequirementMessage,
                 label: "Award Requirement Message",
-                helpText: "Message informing OP of the requirement to award points to users. Placeholders: {{requirement}}, {{author}}, {{name}}, {{subreddit}}, {{permalink}}, {{flair}}",
+                helpText: "Message informing OP of the requirement to award points to users. Placeholders: {{requirement}}, {{author}}, {{name}}, {{subreddit}}, {{permalink}}",
                 defaultValue: TemplateDefaults.AwardRequirementMessage,
             },
             {

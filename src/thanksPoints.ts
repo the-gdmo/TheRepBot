@@ -289,6 +289,48 @@ async function getUserIsSuperuser(
     }
 }
 
+export function getIgnoredContextType(
+    commentBody: string,
+    command: string
+): "quote" | "alt" | "spoiler" | undefined {
+    const quoteBlock = `> .*${command}.*`;
+    const altText = `\`.*${command}.*\``;
+    const spoilerText = `>!.*${command}.*!<`;
+
+    const patterns: { type: "quote" | "alt" | "spoiler"; regex: RegExp }[] = [
+        { type: "quote", regex: new RegExp(`${quoteBlock}`, "i") },
+        { type: "alt", regex: new RegExp(`${altText}`, "i") },
+        { type: "spoiler", regex: new RegExp(`${spoilerText}`, "i") },
+    ];
+
+    for (const { type, regex } of patterns) {
+        if (regex.test(commentBody)) return type;
+    }
+    return undefined;
+}
+// Detect if trigger word is inside quote (> ), alt text [text](url), or spoiler (>! !<)
+function commandUsedInIgnoredContext(
+    commentBody: string,
+    command: string
+): boolean {
+    const quoteBlock = `> .*${command}.*`;
+    const altText = `\`.*${command}.*\``;
+    const spoilerText = `>!.*${command}.*!<`;
+
+    const patterns = [
+        // Quote block: > anything with command
+        new RegExp(`${quoteBlock}`, "i"),
+
+        // Alt text: [anything including command using `grave accent`]
+        new RegExp(`${altText}`, "i"),
+
+        // Spoiler block: >! anything with command !<
+        new RegExp(`${spoilerText}`, "i"),
+    ];
+
+    return patterns.some((p) => p.test(commentBody));
+}
+
 export async function handleThanksEvent(
     event: CommentSubmit | CommentUpdate,
     context: TriggerContext
@@ -347,6 +389,11 @@ export async function handleThanksEvent(
     );
     const containsModCommand = modCommand && commentBody.includes(modCommand);
 
+    const commandList = Array.from(
+        new Set([...userCommands, modCommand].filter((c): c is string => !!c))
+    );
+
+    console.log("commandListVals", commandList);
     // System user check
     if (
         ["AutoModerator", context.appName].includes(event.author.name) &&
@@ -361,6 +408,64 @@ export async function handleThanksEvent(
         return;
     }
 
+    for (const trigger of commandList) {
+        const triggerMatch = new RegExp(`${trigger}`, "i").test(commentBody);
+        if (!triggerMatch) continue;
+
+        // 🔹 Check if used in ignored context (quote, alt/code, or spoiler)
+        if (commandUsedInIgnoredContext(commentBody, trigger)) {
+            const ignoredText = getIgnoredContextType(commentBody, trigger);
+            if (ignoredText) {
+                const ignoreKey = `ignoreDM:${event.author.name.toLowerCase()}:${ignoredText}`;
+                const alreadyConfirmed = await context.redis.exists(ignoreKey);
+
+                if (!alreadyConfirmed) {
+                    const contextLabel =
+                        ignoredText === "quote"
+                            ? "a quote block (`\> this`)"
+                            : ignoredText === "alt"
+                            ? "alt text (`\`this\``)"
+                            : "a spoiler block (`\>\!this\!\<`)";
+
+                    const dmText = `Hey u/${event.author.name}, I noticed you used the command **${trigger}** inside ${contextLabel}.\n\nIf this was intentional, reply with **CONFIRM** (in all caps) on [the comment that triggered this](${event.comment.permalink}) and you will not receive this message again for ${ignoredText} text.\n\n---\n\n^(I am a bot - please contact the mods of ${event.subreddit.name} with any questions)\n\n---`;
+
+                    await context.reddit.sendPrivateMessage({
+                        to: event.author.name,
+                        subject: `Your ${trigger} command was ignored`,
+                        text: dmText,
+                    });
+
+                    // Optional: mark pending confirmation
+                    await context.redis.set(
+                        `pendingConfirm:${event.author.name.toLowerCase()}`,
+                        ignoredText
+                    );
+
+                    logger.info(
+                        "⚠️ Ignored command inside quote/alt/spoiler and sent DM",
+                        {
+                            user: event.author.name,
+                            trigger,
+                            ignoredText,
+                        }
+                    );
+                }
+
+                logger.info(
+                        "ℹ️ Ignored command inside quote/alt/spoiler. User has already confirmed they don't want updates on this matter",
+                        {
+                            user: event.author.name,
+                            trigger,
+                            ignoredText,
+                        }
+                    );
+
+                return; // stop here — do NOT award points
+            }
+
+            // ✅ Continue normal award flow if not ignored
+        }
+    }
     // ──────────────── Bot Award Handling ────────────────
     const botAwardMessage = formatMessage(
         (settings[AppSetting.BotAwardMessage] as string) ??
@@ -399,11 +504,20 @@ export async function handleThanksEvent(
         (accessControl === "moderators-superusers-and-op" &&
             (isMod || isSuperUser || isOP));
 
+    const moderatorOnlyMessage =
+        (settings[AppSetting.ModOnlyDisallowedMessage] as string) ??
+        `You must be a moderator to award {{name}}s.`;
+    const superUserMessage =
+        (settings[AppSetting.ApprovedOnlyDisallowedMessage] as string) ??
+        `You must be a moderator or superuser to award {{name}}s.`;
+    const OPSuperUserMessage =
+        (settings[AppSetting.OPOnlyDisallowedMessage] as string) ??
+        `You must be a moderator, superuser, or OP to award {{name}}s.`;
     if (!hasPermission) {
         const permissionMessages: Record<string, string> = {
-            "moderators-only": `You must be a moderator to award {{name}}s.`,
-            "moderators-and-superusers": `You must be a moderator or superuser to award {{name}}s.`,
-            "moderators-superusers-and-op": `You must be a moderator, superuser, or OP to award {{name}}s.`,
+            "moderators-only": moderatorOnlyMessage,
+            "moderators-and-superusers": superUserMessage,
+            "moderators-superusers-and-op": OPSuperUserMessage,
         };
 
         const disallowedMessage = formatMessage(
@@ -485,6 +599,7 @@ export async function handleThanksEvent(
     }
 
     // ──────────────── Award Logic ────────────────
+
     const redisKey = POINTS_STORE_KEY;
     const authorUser = await context.reddit.getUserByUsername(awarder);
     const newScore = await context.redis.zIncrBy(redisKey, recipient, 1);
@@ -615,94 +730,11 @@ export async function handleThanksEvent(
             settings
         );
 
-        // const restrictedFlagExists = await restrictedKeyExists(
-        //     context,
-        //     authorUser.username
-        // );
-        // const requiredFlagExists = await requiredKeyExists(
-        //     context,
-        //     authorUser.username
-        // );
-
-        // const isRestricted = restrictedFlagExists || requiredFlagExists;
-        // if (isRestricted === 0) {
-        //     await updateAuthorFlair(
-        //         context,
-        //         subredditName,
-        //         authorUser.username,
-        //         currentScore,
-        //         settings,
-        //         false
-        //     );
-        // } else if (isRestricted > 0){
-        //     await updateAuthorFlair(
-        //         context,
-        //         subredditName,
-        //         authorUser.username,
-        //         currentScore,
-        //         settings,
-        //         true
-        //     );
-        // }
-
         logger.debug(
             `🧩 OP ${authorUser.username} restriction counter incremented`
         );
     }
 }
-
-// async function updateAuthorFlair(
-//     context: TriggerContext,
-//     subredditName: string,
-//     username: string,
-//     score: number,
-//     settings: SettingsValues,
-//     userIsRestricted: boolean
-// ) {
-//     const pointSymbol = (settings[AppSetting.PointSymbol] as string) ?? "";
-//     const flairSetting = ((settings[AppSetting.ExistingFlairHandling] as
-//         | string[]
-//         | undefined) ?? [
-//         ExistingFlairOverwriteHandling.OverwriteNumeric,
-//     ])[0] as ExistingFlairOverwriteHandling;
-
-//     let flairText = "";
-//     switch (flairSetting) {
-//         case ExistingFlairOverwriteHandling.OverwriteNumericSymbol:
-//             flairText = userIsRestricted
-//                 ? `${restrictedText} | ${score}${pointSymbol}`
-//                 : `${score}${pointSymbol}`;
-//             break;
-//         case ExistingFlairOverwriteHandling.OverwriteNumeric:
-//             flairText = userIsRestricted
-//                 ? `${restrictedText} | ${score}`
-//                 : `${score}`;
-//             break;
-//         case ExistingFlairOverwriteHandling.NeverSet:
-//             flairText = userIsRestricted ? `${restrictedText}` : "";
-//             break;
-//     }
-
-//     let cssClass = settings[AppSetting.CSSClass] as string | undefined;
-//     let flairTemplate = settings[AppSetting.FlairTemplate] as
-//         | string
-//         | undefined;
-//     if (flairTemplate && cssClass) cssClass = undefined;
-
-//     await context.reddit.setUserFlair({
-//         subredditName,
-//         username,
-//         cssClass,
-//         flairTemplateId: flairTemplate,
-//         text: flairText,
-//     });
-
-//     logger.info(
-//         userIsRestricted
-//             ? `🚫 Author flair applied (restricted): ${username} (${flairText})`
-//             : `✅ Author flair applied: ${username} (${flairText})`
-//     );
-// }
 
 export async function requiredKeyExists(
     context: TriggerContext,

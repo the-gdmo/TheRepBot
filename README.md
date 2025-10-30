@@ -36,6 +36,9 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you update settings, you will have to uninstall to be able to reimplement the content that you want in whatever you are editing.
 
 ## Version History
+### 12.3.0
+* Make it so users are informed in private messages if they use alt text (`this`), spoiler text(>!this!<), or quote text(> this) when using an award command
+* Make it so users can stop the bot from informing them of using these spoiler types (must be done on individual types as they are used)
 ### 12.2.0
 * Made leaderboard links using the {{scoreboard}} placeholder link to the Old Reddit version of that link (New Reddit can be weird with wiki pages not being created or displayed)
 * Simplify leaderboard logic

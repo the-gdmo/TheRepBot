@@ -23,6 +23,7 @@ import {
     UPDATE_LEADERBOARD_JOB,
     VALIDATE_REGEX_JOB,
 } from "./constants.js";
+import { handleConfirmReply } from "./utility.js";
 
 Devvit.addSettings(appSettings);
 
@@ -45,6 +46,12 @@ Devvit.addTrigger({
     events: ["AppInstall", "AppUpgrade"],
     onEvent: onAppInstallOrUpgrade,
 });
+
+Devvit.addTrigger({
+    event: "CommentUpdate",
+    onEvent: handleConfirmReply,
+});
+
 
 Devvit.addSchedulerJob({
     name: UPDATE_LEADERBOARD_JOB,

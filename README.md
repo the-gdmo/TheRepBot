@@ -36,6 +36,14 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you update settings, you will have to uninstall to be able to reimplement the content that you want in whatever you are editing.
 
 ## Version History
+### 12.2.0
+* Made leaderboard links using the {{scoreboard}} placeholder link to the Old Reddit version of that link (New Reddit can be weird with wiki pages not being created or displayed)
+* Simplify leaderboard logic
+### 12.1.0
+* Make it so users can use a link to their subreddit's discord
+* Simplify wiki page declaration for specifying what page explains the point system (no longer requires full link)
+* Add setting to set a default message to send on OP's first post if point awarding is required for OPs (cannot be empty even if point awarding isn't required)
+* If point awarding is required, the above message will be pinned on OP's post
 ### 13.0.0
 * Reimplement code to properly edit the leaderboard wiki page
 ### 12.0.0

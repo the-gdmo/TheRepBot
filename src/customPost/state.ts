@@ -114,35 +114,3 @@ export class LeaderboardState {
 function capitalize(word: string): string {
     return word.charAt(0).toUpperCase() + word.slice(1);
 }
-
-// Optional helper to fetch scores from wiki
-export async function getScoresFromWiki(
-    context: Context
-): Promise<Record<string, number>> {
-    const subredditName = await context.reddit.getCurrentSubredditName();
-    const settings = await context.settings.getAll();
-    const pageName =
-        (settings[AppSetting.ScoreboardName] as string) ?? "leaderboard";
-
-    const wiki = await context.reddit.getWikiPage(subredditName, pageName);
-    const content = wiki.content ?? "";
-
-    const scores: Record<string, number> = {};
-    const lines = content
-        .split("\n")
-        .map((l) => l.trim())
-        .filter((l) => l.length > 0);
-
-    const startIndex = lines.findIndex((l) => l.startsWith("-|"));
-    for (let i = startIndex + 1; i < lines.length; i++) {
-        const parts = lines[i].split("|").map((p) => p.trim());
-        if (parts.length >= 2) {
-            const username = parts[0].replace(/^u\//, "");
-            const score = parseInt(parts[1], 10);
-            if (!isNaN(score)) {
-                scores[username] = score;
-            }
-        }
-    }
-    return scores;
-}

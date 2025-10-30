@@ -133,6 +133,16 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         return;
     }
 
+    const { currentScore } = await getCurrentScore(author, context, settings);
+
+    await context.scheduler.runJob({
+        name: "updateLeaderboard",
+        runAt: new Date(),
+        data: {
+            reason: `Awarded a point to ${authorName}. New score: ${currentScore}`,
+        },
+    });
+
     // ──────────────── Redis Keys ────────────────
     const restrictedFlagKey = `restrictedUser:${author.username}`;
     const requiredKey = `awardsRequired:${author.username}`;
@@ -174,94 +184,70 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
     });
 
     // ✅ First post allowed — mark user as restricted after posting
-    if (isRestricted === 0) {
+    if (!isRestricted) {
+        const restrictionTemplate =
+            (settings[AppSetting.MessageToRestrictedUsers] as string) ??
+            TemplateDefaults.MessageToRestrictedUsers;
+
+        const PointTriggerWords =
+            (settings[AppSetting.PointTriggerWords] as string) ??
+            "!award\n.award";
+
+        const triggerWordsArray = PointTriggerWords.split(/\r?\n/)
+            .map((word) => word.trim())
+            .filter(Boolean);
+
+        const commandList = triggerWordsArray.join(", ");
+        const pointName = (settings[AppSetting.PointName] as string) ?? "point";
+
+        const helpPage = settings[AppSetting.PointSystemHelpPage] as
+            | string
+            | undefined;
+        const discordLink = settings[AppSetting.DiscordServerLink] as
+            | string
+            | undefined;
+        const subredditName = event.subreddit.name;
+
+        // 🧩 Build the base text replacement
+        let restrictionText = restrictionTemplate
+            .replace(/{{name}}/g, pointName)
+            .replace(/{{commands}}/g, commandList)
+            .replace(
+                /{{markdown_guide}}/g,
+                "https://www.reddit.com/wiki/markdown"
+            )
+            .replace(/{{subreddit}}/g, subredditName);
+
+        // Add help page and/or discord links as needed
+        if (helpPage) {
+            restrictionText = restrictionText.replace(
+                /{{help}}/g,
+                `https://www.reddit.com/r/${subredditName}/wiki/${helpPage}`
+            );
+        }
+        if (discordLink) {
+            restrictionText = restrictionText.replace(
+                /{{discord}}/g,
+                discordLink
+            );
+        }
+
+        // 🗨️ Post comment
+        const postRestrictionComment = await context.reddit.submitComment({
+            id: event.post.id,
+            text: restrictionText,
+        });
+
+        // 🏅 Distinguish and pin the comment
+        await postRestrictionComment.distinguish(true);
+
+        // 🧠 Update Redis keys
         await context.redis.set(lastValidPostKey, event.post.permalink);
         await updateAuthorRedis(context, authorName);
         await context.redis.set(restrictedFlagKey, "0");
+
         logger.info(
-            `✅ First post allowed for ${author.username}, future posts restricted until ${awardsRequired} awards.`
-        );
-        await context.scheduler.runJob({
-            name: "updateLeaderboard",
-            runAt: new Date(),
-            data: {
-                reason: `Awarded a point to ${authorName}.}`,
-            },
-        });
-        return;
-    }
-
-    // 🚫 Restrict posting if requirement not yet met
-    //TODO: figure out why this happens even if the user's restriction is removed manually
-    if (isRestricted === 1 && count < awardsRequired) {
-        logger.warn(
-            `🚫 Removing post — ${author.username} has ${count}/${awardsRequired} (${remaining} left)`
-        );
-        await context.reddit.remove(event.post.id, false);
-
-        const pointName = (settings[AppSetting.PointName] as string) ?? "point";
-        const messageTemplate =
-            (settings[AppSetting.AwardRequirementMessage] as string) ??
-            TemplateDefaults.AwardRequirementMessage;
-        const lastValidPermalink = await context.redis.get(lastValidPostKey);
-
-        const message = messageTemplate
-            .replace(/{{author}}/g, author.username)
-            .replace(/{{requirement}}/g, awardsRequired.toString())
-            .replace(/{{subreddit}}/g, subredditName)
-            .replace(/{{name}}/g, capitalize(pointName))
-            .replace(
-                /{{permalink}}/g,
-                lastValidPermalink
-                    ? `https://reddit.com${lastValidPermalink}`
-                    : `https://reddit.com${event.post.permalink}`
-            );
-
-        // Determine notification mode
-        const notifyRaw = settings[AppSetting.NotifyOpOnPostRestriction];
-        const notify =
-            Array.isArray(notifyRaw) && notifyRaw.length > 0
-                ? notifyRaw[0].toLowerCase()
-                : (notifyRaw as string)?.toLowerCase() ?? "";
-
-        try {
-            if (notify === NotifyOpOnPostRestrictionReplyOptions.ReplyByPM) {
-                await context.reddit.sendPrivateMessage({
-                    to: author.username,
-                    subject: "Post Restricted 🚫",
-                    text: message,
-                });
-                logger.info(`✉️ Sent restriction PM to ${author.username}`);
-            } else if (
-                notify === NotifyOpOnPostRestrictionReplyOptions.ReplyAsComment
-            ) {
-                const comment = await context.reddit.submitComment({
-                    id: event.post.id,
-                    text: message,
-                });
-                await comment.distinguish(true);
-                logger.info(
-                    `💬 Posted restriction comment on ${event.post.id}`
-                );
-            } else {
-                logger.warn("⚠️ Unknown notify mode, skipping message", {
-                    notify,
-                });
-            }
-        } catch (err) {
-            logger.error("❌ Failed to send restriction message", { err });
-        }
-        
-        await context.scheduler.runJob({
-            name: UPDATE_LEADERBOARD_JOB,
-            runAt: new Date(),
-            data: {
-                reason: `Awarded a point to ${authorName}.`,
-            },
-        });
-    } else {
-        logger.info(
-            `✅ ${author.username} meets posting requirement (${count}/${awardsRequired}) or is no longer restricted.`
+            `✅ First post allowed for ${author.username}. Restriction notice pinned. Future posts restricted until ${awardsRequired} awards.`
         );
     }
 }
@@ -501,11 +487,20 @@ export async function handleThanksEvent(
     // ──────────────── Award Logic ────────────────
     const redisKey = POINTS_STORE_KEY;
     const authorUser = await context.reddit.getUserByUsername(awarder);
-    let newScore = await context.redis.zIncrBy(redisKey, recipient, 1);
+    const newScore = await context.redis.zIncrBy(redisKey, recipient, 1);
     await context.redis.set(alreadyKey, "1");
 
-    const scoreboard = `https://reddit.com/r/${event.subreddit.name}/wiki/${
-        settings[AppSetting.ScoreboardName] ?? "leaderboard"
+    await setCleanupForUsers([recipient], context);
+    await context.scheduler.runJob({
+        name: "updateLeaderboard",
+        runAt: new Date(),
+        data: {
+            reason: `Awarded a point to ${recipient}. New score: ${newScore}`,
+        },
+    });
+
+    const scoreboard = `https://old.reddit.com/r/${event.subreddit.name}/wiki/${
+        settings[AppSetting.LeaderboardName] ?? "leaderboard"
     }`;
 
     const successMessage = formatMessage(
@@ -654,14 +649,6 @@ export async function handleThanksEvent(
             `🧩 OP ${authorUser.username} restriction counter incremented`
         );
     }
-
-    // 🏆 Schedule leaderboard update
-    await context.scheduler.runJob({
-        name: "updateLeaderboard",
-        runAt: new Date(),
-        data: { reason: `Updated ${recipient} to ${newScore} points.` },
-    });
-    logger.info(`📈 Leaderboard update scheduled for ${recipient}`);
 }
 
 // async function updateAuthorFlair(

@@ -54,7 +54,7 @@ export const restoreUserPostCapabilitiesForm: Form = {
             defaultValue: "",
         },
     ],
-}
+};
 
 export interface RestoreUserPostCapabilities {
     user: string;
@@ -89,7 +89,8 @@ export const customPostForm: Form = {
         },
         {
             label: "Lock comment by bot?",
-            helpText: "The bot will post a comment explaining the post and how to refresh it if the post is empty. This option decides whether or not users can reply to that comment.",
+            helpText:
+                "The bot will post a comment explaining the post and how to refresh it if the post is empty. This option decides whether or not users can reply to that comment.",
             name: "lockBotComment",
             type: "boolean",
             defaultValue: true,
@@ -142,11 +143,13 @@ export async function createCustomPostFormHandler(
     }
 
     const settings = await context.settings.getAll();
-    const pointName = pluralize(settings[AppSetting.PointName] as string ?? "point");
+    const pointName = pluralize(
+        (settings[AppSetting.PointName] as string) ?? "point"
+    );
     // --- NEW: Bot posts a message to the newly created leaderboard post ---
     const botMessage = formatMessage(
-        `This post displays the top **${newData.numberOfUsers}** users with the most ${pointName} in this subreddit.\n\n`
-        + `It is updated periodically, but you can also refresh it manually by clicking the refresh button at the top of the leaderboard.`,
+        `This post displays the top **${newData.numberOfUsers}** users with the most ${pointName} in this subreddit.\n\n` +
+            `It is updated periodically, but you can also refresh it manually by clicking the refresh button at the top of the leaderboard.`,
         {}
     );
     const comment = await context.reddit.submitComment({
@@ -174,11 +177,13 @@ export async function restoreUserPostCapabilitiesFormHandler(
     context: Context,
     userData: RestoreUserPostCapabilities
 ) {
-    const confirmation = (event.values.allowUserToPostAgain as string | undefined)?.trim();
+    const confirmation = (
+        event.values.allowUserToPostAgain as string | undefined
+    )?.trim();
     const redisKey = `restrictedUser:${userData.user}`;
 
     // --- Validate confirmation input ---
-    if (confirmation !== 'CONFIRM') {
+    if (confirmation !== "CONFIRM") {
         context.ui.showToast({
             text: 'You must type "CONFIRM" (in all caps) to proceed.',
         });
@@ -199,31 +204,16 @@ export async function restoreUserPostCapabilitiesFormHandler(
 
     // --- Optionally update user flair if you use one for restrictions ---
     const settings = await context.settings.getAll();
-    const flairText = settings[AppSetting.PointCapNotMetFlair] as string | undefined;
 
     try {
         const user = await context.reddit.getUserByUsername(userData.user);
-        // Remove the "restricted" flair if one exists
-        if (flairText) {
-            const subredditName =
-                context.subredditName ?? (await context.reddit.getCurrentSubredditName());
-            await context.reddit.setUserFlair({
-                subredditName,
-                username: userData.user,
-                text: '', // remove flair
-            });
-        }
-
-        // --- Notify via toast & optional mod log comment ---
+        // --- Remove the "restricted" flair if one exists and notify via toast & optional mod log comment ---
         context.ui.showToast({
             text: `u/${userData.user} has been allowed to post again.`,
-            appearance: 'success',
+            appearance: "success",
         });
-
-        // Optionally comment in a mod log or sticky post:
-        // await context.reddit.submitComment({ ... });
     } catch (err) {
-        console.error('Failed to restore user posting capability:', err);
+        console.error("Failed to restore user posting capability:", err);
         context.ui.showToast({
             text: `Error restoring user u/${userData.user}: ${String(err)}`,
         });
@@ -325,9 +315,9 @@ export const leaderboardCustomPost: CustomPostType = {
                         >
                             {pageEntries.map((entry) => (
                                 <LeaderboardRow
-                                    pointName={capitalize(pluralize(
-                                        entry.pointName || "point"
-                                    ))}
+                                    pointName={capitalize(
+                                        pluralize(entry.pointName || "point")
+                                    )}
                                     username={entry.username}
                                     score={entry.score}
                                     rank={entry.rank}
@@ -375,36 +365,3 @@ export const leaderboardCustomPost: CustomPostType = {
         );
     },
 };
-
-export async function getScoresFromWiki(
-    context: Context
-): Promise<Record<string, number>> {
-    const subredditName = await context.reddit.getCurrentSubredditName();
-    const settings = await context.settings.getAll();
-    const pageName =
-        (settings[AppSetting.ScoreboardName] as string) ?? "leaderboard";
-
-    const wiki = await context.reddit.getWikiPage(subredditName, pageName);
-    const content = wiki.content ?? "";
-
-    const scores: Record<string, number> = {};
-
-    const lines = content
-        .split("\n")
-        .map((l) => l.trim())
-        .filter((l) => l.length > 0);
-
-    // Find the start of the markdown table
-    const startIndex = lines.findIndex((l) => l.startsWith("-|"));
-    for (let i = startIndex + 1; i < lines.length; i++) {
-        const parts = lines[i].split("|").map((p) => p.trim());
-        if (parts.length >= 2) {
-            const username = parts[0].replace(/^u\//, "");
-            const score = parseInt(parts[1], 10);
-            if (!isNaN(score)) {
-                scores[username] = score;
-            }
-        }
-    }
-    return scores;
-}

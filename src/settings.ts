@@ -6,6 +6,7 @@ import {
     TriggerContext,
 } from "@devvit/public-api";
 import { VALIDATE_REGEX_JOB } from "./constants.js";
+import { selectorFromJSON } from "@devvit/protos/types/devvit/options/options.js";
 
 export enum ExistingFlairOverwriteHandling {
     OverwriteNumericSymbol = "overwritenumericsymbol",
@@ -47,7 +48,7 @@ export enum AppSetting {
     SetPostFlairCSSClass = "setPostFlairOnThanksCSSClass",
     SetPostFlairTemplate = "setPostFlairOnThanksTemplate",
     LeaderboardMode = "leaderboardMode",
-    ScoreboardName = "ScoreboardName",
+    LeaderboardName = "leaderboardName",
     LeaderboardSize = "leaderboardSize",
     PointSystemHelpPage = "pointSystemHelpPage",
     PostFlairTextToIgnore = "postFlairTextToIgnore",
@@ -78,9 +79,11 @@ export enum AppSetting {
     NotifyOnOPOnlyDisallowed = "notifyOnOPOnlyDisallowed",
     NotifyOnDisallowedFlair = "notifyOnDisallowedFlair",
     NotifyOnUnflairedPost = "notifyOnUnflairedPost",
-    NotifyOpOnPostRestriction = "notifyOpOnPostRestriction",
-    AwardRequirementMessage = "AwardRequirementMessage",
-    ModeratorsExempt = "ModeratorsExempt",
+    AwardRequirementMessage = "awardRequirementMessage",
+    ModeratorsExempt = "moderatorsExempt",
+    MessageToRestrictedUsers = "messageToRestrictedUsers",
+    DiscordServerLink = "discordServerLink",
+    HowToNotifyOpOnPostRestriction = "howToNotifyOpOnPostRestriction",
 }
 
 export enum TemplateDefaults {
@@ -101,6 +104,7 @@ export enum TemplateDefaults {
     NotifyOnSelfAwardTemplate = "Hello {{awarder}}, you cannot award a {{name}} to yourself.",
     NotifyOnSuccessTemplate = "+1 {{name}} awarded to u/{{awardee}} by u/{{awarder}}. Total: {{total}}{{symbol}}. Scoreboard is located [here]({{scoreboard}}).",
     NotifyOnSuperuserTemplate = 'Hello {{awardee}},\n\nNow that you have reached {{threshold}} points you can now award points yourself, even if normal users do not have permission to. Please use the command "{{command}}" if you\'d like to do this.',
+    MessageToRestrictedUsers = "***ATTENTION to OP: You must award {{name}}s by replying to the successful comments. Valid command(s) are **{{commands}}**. Failure to do so may result in a ban.***\n\n***Commenters MUST put the location in spoiler tags.***\n\n*To hide text, write it like this `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({{markdown_guide}})*.",
 }
 
 export enum AutoSuperuserReplyOptions {
@@ -227,7 +231,7 @@ const NotifyUsersWhoCannotAwardPointsReplyOptionChoices = [
     },
 ];
 
-const NotifyOpOnPostRestriction = [
+const NotifyOpOnPostRestrictionOptions = [
     {
         label: "Send user a private message",
         value: NotifyOpOnPostRestrictionReplyOptions.ReplyByPM,
@@ -439,26 +443,35 @@ export const appSettings: SettingsFormField[] = [
             },
             {
                 type: "select",
-                name: AppSetting.NotifyOpOnPostRestriction,
-                options: NotifyOpOnPostRestriction,
-                label: "How to notify OP when their post restriction flair is set or they try to make a new post",
+                name: AppSetting.HowToNotifyOpOnPostRestriction,
+                label: "How to notify OP on post restriction",
+                helpText: "Must have an option selected even if post restriction is disabled",
+                options: NotifyOpOnPostRestrictionOptions,
+                defaultValue: [NotifyOpOnPostRestrictionReplyOptions.ReplyByPM],
                 onValidate: selectFieldHasOptionChosen,
             },
             {
-                //Message notifying user of the restriction
                 type: "paragraph",
                 name: AppSetting.AwardRequirementMessage,
-                label: "Award Requirement Message",
-                helpText: "Message informing OP of the requirement to award points to users. Placeholders: {{requirement}}, {{author}}, {{name}}, {{subreddit}}, {{permalink}}",
+                label: "Award requirement message",
+                helpText: "Sent on posts after initial post restriction. Message informing OP of the requirement to award points to users. Placeholders: {{requirement}}, {{author}}, {{name}}, {{subreddit}}, {{permalink}}",
                 defaultValue: TemplateDefaults.AwardRequirementMessage,
             },
             {
                 type:"number",
                 name: AppSetting.AwardsRequiredToCreateNewPosts,
-                label: "Awards Required To Create New Posts",
+                label: "Awards required to create new posts",
                 helpText: "Amount of awarded points required before a user can make a new post. Set to 0 to disable.",
                 defaultValue: 0,
                 onValidate: numberFieldHasValidOption,
+            },
+            {
+                type: "paragraph",
+                name: AppSetting.MessageToRestrictedUsers,
+                label: "Message to restricted users",
+                helpText: "Sent on initial post. Required even if not used. Placeholders: {{name}}, {{commands}}, {{markdown_guide}}, {{subreddit}}, {{help}}, {{discord}}",
+                defaultValue: TemplateDefaults.MessageToRestrictedUsers,
+                onValidate: paragraphFieldContainsText,
             },
         ],
     },
@@ -469,7 +482,7 @@ export const appSettings: SettingsFormField[] = [
             {
                 type: "select",
                 name: AppSetting.AccessControl,
-                label: "Who Can Award Points",
+                label: "Who can award points?",
                 helpText: "Choose who is allowed to award points",
                 options: AccessControlOptionChoices,
                 defaultValue: ["moderators-superusers-and-op"],
@@ -486,7 +499,7 @@ export const appSettings: SettingsFormField[] = [
             {
                 type: "paragraph",
                 name: AppSetting.ModOnlyDisallowedMessage,
-                label: "Mod Only Disallowed Message",
+                label: "Mod only disallowed message",
                 helpText:
                     "Message shown when a user tries to award a point but only moderators can award points",
                 defaultValue: TemplateDefaults.ModOnlyDisallowedMessage,
@@ -512,9 +525,7 @@ export const appSettings: SettingsFormField[] = [
             {
                 type: "select",
                 name: AppSetting.NotifyOnOPOnlyDisallowed,
-                label: "OP Only Disallowed Message",
-                helpText:
-                    "Notify users when only Moderators, Approved Users, and Post Authors (OPs) can award points",
+                label: "Notify Users When Only OP, Approved Users, And Moderators Can Award Points",
                 options: NotifyOnOPOnlyDisallowedReplyOptionChoices,
                 defaultValue: [NotifyOnOPOnlyDisallowedReplyOptions.NoReply],
                 onValidate: selectFieldHasOptionChosen,
@@ -822,9 +833,16 @@ export const appSettings: SettingsFormField[] = [
                 },
             },
             {
-                name: AppSetting.ScoreboardName,
+                //DiscordServerLink
+                name: AppSetting.DiscordServerLink,
                 type: "string",
-                label: "Scoreboard Wiki Name",
+                label: "Discord Server Link",
+                helpText: "Optional. Link to your subreddit's discord server. A non-expiring link is recommended."
+            },
+            {
+                name: AppSetting.LeaderboardName,
+                type: "string",
+                label: "Leaderboard Wiki Name",
                 helpText:
                     "Name of the wiki page for your subreddit's scoreboard (e.g. leaderboard). Singular form is recommended as there is only one scoreboard per subreddit",
                 defaultValue: "leaderboard",
@@ -839,7 +857,7 @@ export const appSettings: SettingsFormField[] = [
                 type: "string",
                 label: "Point System Help Page",
                 helpText:
-                    "Optional. Please use a full URL, (e.g. https://www.reddit.com/r/yourSubreddit/wiki/yourPointSystemExplanation)",
+                    "Optional. Name of the wiki page for explaining your subreddit's point system (e.g. pointsystem)."
             },
             {
                 type: "select",
@@ -961,6 +979,16 @@ export function numberFieldHasValidOption(
     }
 
     if (event.value <= 0) {
-        return 'A non-negative number must be entered into the "Awards Required To Create New Posts" even if "Force Point Awarding" is disabled';
+        return 'A non-negative number must be entered into the "Awards Required To Create New Posts" even if "Force Point Awarding" is disabled.';
+    }
+}
+
+function paragraphFieldContainsText(event: SettingsFormFieldValidatorEvent<string>, context: TriggerContext): string | void | Promise<string | void> {
+    if (typeof event.value !== "string") {
+        return 'Value must be a string.';
+    }
+
+    if (event.value.length === 0) {
+        return "Field cannot be empty even if point awarding isn't forced.";
     }
 }

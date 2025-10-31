@@ -36,6 +36,8 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you update settings, you will have to uninstall to be able to reimplement the content that you want in whatever you are editing.
 
 ## Version History
+### 13.0.0
+* Make point setting actually update the redisKey for the user so that their score is actually updated instead of just saying it is
 ### 12.3.0
 * Make it so users are informed in private messages if they use alt text (`this`), spoiler text(>!this!<), or quote text(> this) when using an award command
 * Make it so users can stop the bot from informing them of using these spoiler types (must be done on individual types as they are used)

@@ -422,10 +422,10 @@ export async function handleThanksEvent(
                 if (!alreadyConfirmed) {
                     const contextLabel =
                         ignoredText === "quote"
-                            ? "a quote block (`\> this`)"
+                            ? "a quote block (`> this`)"
                             : ignoredText === "alt"
-                            ? "alt text (`\`this\``)"
-                            : "a spoiler block (`\>\!this\!\<`)";
+                            ? "alt text (``this``)"
+                            : "a spoiler block (`>!this!<`)";
 
                     const dmText = `Hey u/${event.author.name}, I noticed you used the command **${trigger}** inside ${contextLabel}.\n\nIf this was intentional, reply with **CONFIRM** (in all caps) on [the comment that triggered this](${event.comment.permalink}) and you will not receive this message again for ${ignoredText} text.\n\n---\n\n^(I am a bot - please contact the mods of ${event.subreddit.name} with any questions)\n\n---`;
 
@@ -452,13 +452,13 @@ export async function handleThanksEvent(
                 }
 
                 logger.info(
-                        "ℹ️ Ignored command inside quote/alt/spoiler. User has already confirmed they don't want updates on this matter",
-                        {
-                            user: event.author.name,
-                            trigger,
-                            ignoredText,
-                        }
-                    );
+                    "ℹ️ Ignored command inside quote/alt/spoiler. User has already confirmed they don't want updates on this matter",
+                    {
+                        user: event.author.name,
+                        trigger,
+                        ignoredText,
+                    }
+                );
 
                 return; // stop here — do NOT award points
             }
@@ -954,11 +954,11 @@ export async function manualSetPointsFormHandler(
         return;
     }
 
-    const newScore = event.values.newScore as number | undefined;
+    const entry = event.values.newScore as number | undefined;
     if (
-        typeof newScore !== "number" ||
-        isNaN(newScore) ||
-        parseInt(newScore.toString(), 10) < 0
+        typeof entry !== "number" ||
+        isNaN(entry) ||
+        parseInt(entry.toString(), 10) < 0
     ) {
         context.ui.showToast("You must enter a new score (0 or higher)");
         return;
@@ -984,6 +984,16 @@ export async function manualSetPointsFormHandler(
         context
     );
     const subreddit = await context.reddit.getCurrentSubredditName();
+
+    const redisKey = POINTS_STORE_KEY;
+
+    const zMemberUser = await context.redis.zScore(redisKey, user.username);
+
+    const newScore = await context.redis.zAdd(redisKey, {
+        member: user.username,
+        score: entry,
+    });
+
     await updateAwardeeFlair(
         context,
         subreddit,
@@ -992,6 +1002,15 @@ export async function manualSetPointsFormHandler(
         settings,
         recipientIsRestricted
     );
+
+    await context.scheduler.runJob({
+        name: "updateLeaderboard",
+        runAt: new Date(),
+        data: {
+            reason: `Updated score for ${comment.authorName}. New score: ${newScore}`,
+        },
+    });
+
     context.ui.showToast(`Score for ${comment.authorName} is now ${newScore}`);
 }
 

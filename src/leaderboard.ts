@@ -49,7 +49,7 @@ export async function updateLeaderboard (event: ScheduledJobEvent<JSONObject | u
     
     let wikiContents = "";
     if (helpPage) {
-        wikiContents += `# ${capitalize(pointName)}board for ${subredditName}\n\n[How to award points on /r/${subredditName}](https://www.reddit.com/r/${subredditName}/wiki/${helpPage})\n\nUser | ${capitalize(pointName)}s Earned\n-|-\n`;
+        wikiContents += `# ${capitalize(pointName)}board for ${subredditName}\n\n[How to award points on /r/${subredditName}](https://old.reddit.com/r/${subredditName}/wiki/${helpPage})\n\nUser | ${capitalize(pointName)}s Earned\n-|-\n`;
     } else {
         wikiContents += `# ${capitalize(pointName)}board for ${subredditName}\n\nUser | ${capitalize(pointName)}s Earned\n-|-\n`;
     }

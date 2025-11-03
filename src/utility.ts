@@ -58,7 +58,7 @@ export async function replacePlaceholders(
         point: string;
         total: number;
         symbol: string;
-        scoreboard: string;
+        leaderboard: string;
         permalink: string;
         command: string;
     }
@@ -72,7 +72,7 @@ export async function replacePlaceholders(
     result = replaceAll(result, "{{name}}", placeholders.point);
     result = replaceAll(result, "{{total}}", placeholders.total.toString());
     result = replaceAll(result, "{{symbol}}", placeholders.symbol);
-    result = replaceAll(result, "{{leaderboard}}", placeholders.scoreboard);
+    result = replaceAll(result, "{{leaderboard}}", placeholders.leaderboard);
     result = replaceAll(result, "{{permalink}}", placeholders.permalink);
     result = replaceAll(result, "{{command}}", placeholders.command);
     return result;

@@ -105,11 +105,11 @@ export enum TemplateDefaults {
     BotAwardMessage = "You can't award u/TheRepBot a {{name}}.",
     InvalidPostMessage = "Points cannot be awarded on this post because the recipient is suspended or shadowbanned.",
     NotifyOnSelfAwardTemplate = "Hello {{awarder}}, you cannot award a {{name}} to yourself.",
-    NotifyOnSuccessTemplate = "+1 {{name}} awarded to u/{{awardee}} by u/{{awarder}}. Total: {{total}}{{symbol}}. Scoreboard is located [here]({{leaderboard}}).",
+    NotifyOnSuccessTemplate = "+1 {{name}} awarded to u/{{awardee}} by u/{{awarder}}. Total: {{total}}{{symbol}}. Leaderboard is located [here]({{leaderboard}}).",
     NotifyOnSuperuserTemplate = 'Hello {{awardee}},\n\nNow that you have reached {{threshold}} points you can now award points yourself, even if normal users do not have permission to. Please use the command "{{command}}" if you\'d like to do this.',
     MessageToRestrictedUsers = "***ATTENTION to OP: You must award {{name}}s by replying to the successful comments. Valid command(s) are **{{commands}}**. Failure to do so may result in a ban.***\n\n***Commenters MUST put the location in spoiler tags.***\n\n*To hide text, write it like this `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({{markdown_guide}})*.",
-    AlternateCommandSuccess = "+1 {{name}} awarded to u/{{awardee}} by u/{{awarder}}. Scoreboard is located [here]({{scoreboard}}).",
-    AlternateCommandFail = "You do not have permission to use {{altCommand}} in r/{{subreddit}}.",
+    AlternateCommandSuccess = "+1 {{name}} awarded to u/{{awardee}} by u/{{awarder}}. Leaderboard is located [here]({{leaderboard}}).",
+    AlternateCommandFail = "You do not have permission to use **{{altCommand}}** on specific users.",
 }
 
 export enum AutoSuperuserReplyOptions {
@@ -459,7 +459,7 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.AwardRequirementMessage,
                 label: "Award requirement message",
                 helpText:
-                    "Sent on posts after initial post restriction. Message informing OP of the requirement to award points to users. Placeholders: {{requirement}}, {{author}}, {{name}}, {{subreddit}}, {{permalink}}",
+                    "Sent on posts after initial post restriction. Message informing OP of the requirement to award points to users. Placeholders Supported: {{requirement}}, {{author}}, {{name}}, {{subreddit}}, {{permalink}}",
                 defaultValue: TemplateDefaults.AwardRequirementMessage,
             },
             {
@@ -476,7 +476,7 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.MessageToRestrictedUsers,
                 label: "Message to restricted users",
                 helpText:
-                    "Sent on initial post. Required even if not used. Placeholders: {{name}}, {{commands}}, {{markdown_guide}}, {{subreddit}}, {{help}}, {{discord}}",
+                    "Sent on initial post. Required even if not used. Placeholders Supported: {{name}}, {{commands}}, {{markdown_guide}}, {{subreddit}}, {{help}}, {{discord}}",
                 defaultValue: TemplateDefaults.MessageToRestrictedUsers,
                 onValidate: paragraphFieldContainsText,
             },
@@ -585,7 +585,7 @@ export const appSettings: SettingsFormField[] = [
                 type: "string",
                 label: "Alternate Award Command",
                 helpText:
-                    "Optional. Must contain a valid point awarding command if used. Valid placeholders: {{user}}",
+                    "Optional. Must contain a valid point awarding command if used. Placeholders Supported: {{user}}",
                 defaultValue: "!award {{user}}",
                 onValidate: alternateCommandInvalid,
             },
@@ -601,7 +601,7 @@ export const appSettings: SettingsFormField[] = [
                 type: "paragraph",
                 label: "Alternate Command Success Message",
                 helpText:
-                    "Message to send users when they use the Alternate Award Command and are allowed to",
+                    "Message to send users when they use the Alternate Award Command and are allowed to. Placeholders Supported: {{name}}, {{awardee}}, {{awarder}}, {{leaderboard}}",
                 defaultValue: TemplateDefaults.AlternateCommandSuccess,
             },
             {
@@ -609,7 +609,7 @@ export const appSettings: SettingsFormField[] = [
                 type: "paragraph",
                 label: "Alternate Command Fail Message",
                 helpText:
-                    "Message to send users when they use the Alternate Award Command and are allowed to",
+                    "Message to send users when they use the Alternate Award Command and are allowed to. Placeholders Supported: {{altCommand}}, {{subreddit}}",
                 defaultValue: TemplateDefaults.AlternateCommandFail,
             },
             {
@@ -889,7 +889,7 @@ export const appSettings: SettingsFormField[] = [
                 type: "string",
                 label: "Leaderboard Wiki Name",
                 helpText:
-                    "Name of the wiki page for your subreddit's scoreboard (e.g. leaderboard). Singular form is recommended as there is only one scoreboard per subreddit",
+                    "Name of the wiki page for your subreddit's leaderboard (e.g. leaderboard). Singular form is recommended as there is only one leaderboard per subreddit",
                 defaultValue: "leaderboard",
                 onValidate: ({ value }) => {
                     if (!value || value.trim() === "") {

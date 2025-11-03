@@ -412,8 +412,8 @@ export async function handleThanksEvent(
         if (commandUsedNormalized.startsWith(baseAltCommand)) {
             // Match !command u/username OR !command username
             const regex = new RegExp(
-                `${commandUsedNormalized}(?:\\s+u\\/|\\s+)([a-zA-Z0-9_-]{3,21})(?=\\b)`,
-                "i"
+                `${commandUsedNormalized}(\s(\/?u\/)?)[a-zA-Z0-9_-]{3,21}`,
+                "gi"
             );
             const match = commentBody.match(regex);
 
@@ -436,14 +436,14 @@ export async function handleThanksEvent(
                     (settings[AppSetting.AlternateCommandFail] as string) ??
                     TemplateDefaults.AlternateCommandFail;
 
-                const scoreboard = `https://old.reddit.com/r/${subredditName}/wiki/${
+                const leaderboard = `https://old.reddit.com/r/${subredditName}/wiki/${
                     settings[AppSetting.LeaderboardName] ?? "leaderboard"
                 }`;
 
                 // ──────────────── Unauthorized User ────────────────
                 if (!isAuthorized) {
                     const failMessage = formatMessage(failMessageTemplate, {
-                        commandUsed: commandUsed ?? baseAltCommand,
+                        altCommand: commandUsed ?? baseAltCommand,
                         subreddit: subredditName,
                     });
 
@@ -479,7 +479,7 @@ export async function handleThanksEvent(
                     name: (settings[AppSetting.PointName] as string) ?? "point",
                     awardee: mentionedUser,
                     awarder: awarder,
-                    scoreboard: scoreboard,
+                    leaderboard: leaderboard,
                 });
 
                 const newComment = await context.reddit.submitComment({
@@ -776,7 +776,7 @@ export async function handleThanksEvent(
         },
     });
 
-    const scoreboard = `https://old.reddit.com/r/${event.subreddit.name}/wiki/${
+    const leaderboard = `https://old.reddit.com/r/${event.subreddit.name}/wiki/${
         settings[AppSetting.LeaderboardName] ?? "leaderboard"
     }`;
 
@@ -789,7 +789,7 @@ export async function handleThanksEvent(
             total: newScore.toString(),
             name: pointName,
             symbol: pointSymbol,
-            scoreboard,
+            leaderboard,
         }
     );
 

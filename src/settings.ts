@@ -81,7 +81,6 @@ export enum AppSetting {
     NotifyOnOPOnlyDisallowed = "notifyOnOPOnlyDisallowed",
     NotifyOnDisallowedFlair = "notifyOnDisallowedFlair",
     NotifyOnUnflairedPost = "notifyOnUnflairedPost",
-    AwardRequirementMessage = "awardRequirementMessage",
     ModeratorsExempt = "moderatorsExempt",
     MessageToRestrictedUsers = "messageToRestrictedUsers",
     DiscordServerLink = "discordServerLink",
@@ -453,14 +452,6 @@ export const appSettings: SettingsFormField[] = [
                 options: NotifyOpOnPostRestrictionOptions,
                 defaultValue: [NotifyOpOnPostRestrictionReplyOptions.ReplyByPM],
                 onValidate: selectFieldHasOptionChosen,
-            },
-            {
-                type: "paragraph",
-                name: AppSetting.AwardRequirementMessage,
-                label: "Award requirement message",
-                helpText:
-                    "Sent on posts after initial post restriction. Message informing OP of the requirement to award points to users. Placeholders Supported: {{requirement}}, {{author}}, {{name}}, {{subreddit}}, {{permalink}}",
-                defaultValue: TemplateDefaults.AwardRequirementMessage,
             },
             {
                 type: "number",

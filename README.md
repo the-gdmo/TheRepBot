@@ -53,6 +53,8 @@ If the application is removed from a subreddit, all data is deleted although the
 This app is open source and licensed under the BSD 3-Clause License. You can find the source code on GitHub [here](https://github.com/the-gdmo/TheRepBot).
 
 ## Version History
+### 13.1.1
+* Remove AwardRequirementMessage as it isn't used
 ### 13.1.0
 * Make it so an alt command can be used (a command that can be run a bot for example) where you can award points to individual users without the need for awarding the user a point on their comment
 * Alt command MUST use an existing trigger word and can award users whether the 'u/' is contained or not

@@ -53,7 +53,6 @@ export async function replacePlaceholders(
         author: string;
         restoree: string;
         restorer: string;
-        restoreCommand: string;
         awardee: string;
         awarder: string;
         point: string;
@@ -65,11 +64,6 @@ export async function replacePlaceholders(
     }
 ): Promise<string> {
     let result = template;
-    result = replaceAll(
-        result,
-        "{{restore_command}}",
-        placeholders.restoreCommand
-    );
     result = replaceAll(result, "{{restoree}}", placeholders.restoree);
     result = replaceAll(result, "{{restorer}}", placeholders.restorer);
     result = replaceAll(result, "{{author}}", placeholders.author);
@@ -78,7 +72,7 @@ export async function replacePlaceholders(
     result = replaceAll(result, "{{name}}", placeholders.point);
     result = replaceAll(result, "{{total}}", placeholders.total.toString());
     result = replaceAll(result, "{{symbol}}", placeholders.symbol);
-    result = replaceAll(result, "{{scoreboard}}", placeholders.scoreboard);
+    result = replaceAll(result, "{{leaderboard}}", placeholders.scoreboard);
     result = replaceAll(result, "{{permalink}}", placeholders.permalink);
     result = replaceAll(result, "{{command}}", placeholders.command);
     return result;

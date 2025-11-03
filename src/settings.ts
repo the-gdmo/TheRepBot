@@ -21,6 +21,8 @@ export enum LeaderboardMode {
 }
 
 export enum AppSetting {
+    AlternatePointCommand = "alternatePointCommand",
+    AlternatePointCommandUsers = "alternatePointCommandUsers",
     AwardsRequiredToCreateNewPosts = "awardsRequiredToCreateNewPosts",
     NotifyOnRestorePoints = "notifyOnRestorePoints",
     ForcePointAwarding = "forcePointAwarding",
@@ -84,11 +86,12 @@ export enum AppSetting {
     MessageToRestrictedUsers = "messageToRestrictedUsers",
     DiscordServerLink = "discordServerLink",
     HowToNotifyOpOnPostRestriction = "howToNotifyOpOnPostRestriction",
+    AlternateCommandSuccess = "alternateCommandSuccess",
+    AlternateCommandFail = "alternateCommandFail",
 }
 
 export enum TemplateDefaults {
     AwardRequirementMessage = "Hello u/{{author}}. Before you can create new posts, you must award **{{requirement}}** {{name}}s to users who respond on [your most recent post]({{permalink}}).",
-    PointsRestoredMessage = "u/{{restoree}}'s points were restored by u/{{restorer}}.",
     UnflairedPostMessage = "Points cannot be awarded on posts without flair. Please award only on flaired posts.",
     OPOnlyDisallowedMessage = "Only moderators, approved users, and Post Authors (OPs) can award {{name}}s.",
     ApproveMessage = "A moderator gave an award! u/{{awardee}} now has {{total}}{{symbol}} {{name}}s.",
@@ -102,9 +105,11 @@ export enum TemplateDefaults {
     BotAwardMessage = "You can't award u/TheRepBot a {{name}}.",
     InvalidPostMessage = "Points cannot be awarded on this post because the recipient is suspended or shadowbanned.",
     NotifyOnSelfAwardTemplate = "Hello {{awarder}}, you cannot award a {{name}} to yourself.",
-    NotifyOnSuccessTemplate = "+1 {{name}} awarded to u/{{awardee}} by u/{{awarder}}. Total: {{total}}{{symbol}}. Scoreboard is located [here]({{scoreboard}}).",
+    NotifyOnSuccessTemplate = "+1 {{name}} awarded to u/{{awardee}} by u/{{awarder}}. Total: {{total}}{{symbol}}. Scoreboard is located [here]({{leaderboard}}).",
     NotifyOnSuperuserTemplate = 'Hello {{awardee}},\n\nNow that you have reached {{threshold}} points you can now award points yourself, even if normal users do not have permission to. Please use the command "{{command}}" if you\'d like to do this.',
     MessageToRestrictedUsers = "***ATTENTION to OP: You must award {{name}}s by replying to the successful comments. Valid command(s) are **{{commands}}**. Failure to do so may result in a ban.***\n\n***Commenters MUST put the location in spoiler tags.***\n\n*To hide text, write it like this `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({{markdown_guide}})*.",
+    AlternateCommandSuccess = "+1 {{name}} awarded to u/{{awardee}} by u/{{awarder}}. Scoreboard is located [here]({{scoreboard}}).",
+    AlternateCommandFail = "You do not have permission to use {{altCommand}} in r/{{subreddit}}.",
 }
 
 export enum AutoSuperuserReplyOptions {
@@ -120,11 +125,6 @@ export enum NotifyOpOnPostRestrictionReplyOptions {
 
 export enum NotifyOnPointAlreadyAwardedReplyOptions {
     NoReply = "none",
-    ReplyByPM = "replybypm",
-    ReplyAsComment = "replybycomment",
-}
-
-export enum NotifyOn {
     ReplyByPM = "replybypm",
     ReplyAsComment = "replybycomment",
 }
@@ -424,13 +424,15 @@ export const appSettings: SettingsFormField[] = [
     {
         type: "group",
         label: "Post Management Settings",
-        helpText: "Settings to force point awarding before OP can create new posts",
+        helpText:
+            "Settings to force point awarding before OP can create new posts",
         fields: [
             {
                 type: "boolean",
                 name: AppSetting.ForcePointAwarding,
                 label: "Force Point Awarding?",
-                helpText: "Force OP to award points before they can make new posts",
+                helpText:
+                    "Force OP to award points before they can make new posts",
                 defaultValue: false,
             },
             {
@@ -438,14 +440,16 @@ export const appSettings: SettingsFormField[] = [
                 type: "boolean",
                 name: AppSetting.ModeratorsExempt,
                 label: "Moderators Exempt",
-                helpText: "Decide whether or not point awarding is required for moderators as well",
+                helpText:
+                    "Decide whether or not point awarding is required for moderators as well",
                 defaultValue: true,
             },
             {
                 type: "select",
                 name: AppSetting.HowToNotifyOpOnPostRestriction,
                 label: "How to notify OP on post restriction",
-                helpText: "Must have an option selected even if post restriction is disabled",
+                helpText:
+                    "Must have an option selected even if post restriction is disabled",
                 options: NotifyOpOnPostRestrictionOptions,
                 defaultValue: [NotifyOpOnPostRestrictionReplyOptions.ReplyByPM],
                 onValidate: selectFieldHasOptionChosen,
@@ -454,14 +458,16 @@ export const appSettings: SettingsFormField[] = [
                 type: "paragraph",
                 name: AppSetting.AwardRequirementMessage,
                 label: "Award requirement message",
-                helpText: "Sent on posts after initial post restriction. Message informing OP of the requirement to award points to users. Placeholders: {{requirement}}, {{author}}, {{name}}, {{subreddit}}, {{permalink}}",
+                helpText:
+                    "Sent on posts after initial post restriction. Message informing OP of the requirement to award points to users. Placeholders: {{requirement}}, {{author}}, {{name}}, {{subreddit}}, {{permalink}}",
                 defaultValue: TemplateDefaults.AwardRequirementMessage,
             },
             {
-                type:"number",
+                type: "number",
                 name: AppSetting.AwardsRequiredToCreateNewPosts,
                 label: "Awards required to create new posts",
-                helpText: "Amount of awarded points required before a user can make a new post. Set to 0 to disable.",
+                helpText:
+                    "Amount of awarded points required before a user can make a new post. Set to 0 to disable.",
                 defaultValue: 0,
                 onValidate: numberFieldHasValidOption,
             },
@@ -469,7 +475,8 @@ export const appSettings: SettingsFormField[] = [
                 type: "paragraph",
                 name: AppSetting.MessageToRestrictedUsers,
                 label: "Message to restricted users",
-                helpText: "Sent on initial post. Required even if not used. Placeholders: {{name}}, {{commands}}, {{markdown_guide}}, {{subreddit}}, {{help}}, {{discord}}",
+                helpText:
+                    "Sent on initial post. Required even if not used. Placeholders: {{name}}, {{commands}}, {{markdown_guide}}, {{subreddit}}, {{help}}, {{discord}}",
                 defaultValue: TemplateDefaults.MessageToRestrictedUsers,
                 onValidate: paragraphFieldContainsText,
             },
@@ -569,6 +576,42 @@ export const appSettings: SettingsFormField[] = [
                 defaultValue: "!award\n.award",
                 onValidate: noValidTriggerWords,
             },
+            /*
+            AlternatePointCommandUsers = "alternatePointCommandUsers",
+            AlternateCommandMessage = "alternateCommandMessage",
+            */
+            {
+                name: AppSetting.AlternatePointCommand,
+                type: "string",
+                label: "Alternate Award Command",
+                helpText:
+                    "Optional. Must contain a valid point awarding command if used. Valid placeholders: {{user}}",
+                defaultValue: "!award {{user}}",
+                onValidate: alternateCommandInvalid,
+            },
+            {
+                name: AppSetting.AlternatePointCommandUsers,
+                type: "paragraph",
+                label: "Alternate Award Command users",
+                helpText:
+                    "List of users who can use the 'Alternate Award Command'. Each username should be on a new line",
+            },
+            {
+                name: AppSetting.AlternateCommandSuccess,
+                type: "paragraph",
+                label: "Alternate Command Success Message",
+                helpText:
+                    "Message to send users when they use the Alternate Award Command and are allowed to",
+                defaultValue: TemplateDefaults.AlternateCommandSuccess,
+            },
+            {
+                name: AppSetting.AlternateCommandFail,
+                type: "paragraph",
+                label: "Alternate Command Fail Message",
+                helpText:
+                    "Message to send users when they use the Alternate Award Command and are allowed to",
+                defaultValue: TemplateDefaults.AlternateCommandFail,
+            },
             {
                 name: AppSetting.ThanksCommandUsesRegex,
                 type: "boolean",
@@ -579,8 +622,9 @@ export const appSettings: SettingsFormField[] = [
             {
                 name: AppSetting.ModAwardCommand,
                 type: "string",
-                label: "Alternate command for mods and trusted users to award reputation points",
-                helpText: "Optional",
+                label: "Superuser/Mod award command",
+                helpText:
+                    "Optional. Alternate command for mods and super users to award reputation points",
                 defaultValue: "!modaward",
             },
             {
@@ -710,7 +754,7 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.SuccessMessage,
                 label: "Success Message",
                 helpText:
-                    "Message when a point is awarded. Placeholders Supported: {{awardee}}, {{awarder}} , {{symbol}}, {{total}}, {{name}}, {{scoreboard}}",
+                    "Message when a point is awarded. Placeholders Supported: {{awardee}}, {{awarder}} , {{symbol}}, {{total}}, {{name}}, {{leaderboard}}",
                 defaultValue: TemplateDefaults.NotifyOnSuccessTemplate,
             },
             {
@@ -766,7 +810,7 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.ApproveMessage,
                 label: "Moderator Award Message",
                 helpText:
-                    "Placeholders supported: {{awarder}}, {{awardee}}, {{permalink}}, {{total}}, {{symbol}}, {{name}}, {{scoreboard}}",
+                    "Placeholders supported: {{awarder}}, {{awardee}}, {{permalink}}, {{total}}, {{symbol}}, {{name}}, {{leaderboard}}",
                 defaultValue: TemplateDefaults.ApproveMessage,
             },
         ],
@@ -837,7 +881,8 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.DiscordServerLink,
                 type: "string",
                 label: "Discord Server Link",
-                helpText: "Optional. Link to your subreddit's discord server. A non-expiring link is recommended."
+                helpText:
+                    "Optional. Link to your subreddit's discord server. A non-expiring link is recommended.",
             },
             {
                 name: AppSetting.LeaderboardName,
@@ -857,7 +902,7 @@ export const appSettings: SettingsFormField[] = [
                 type: "string",
                 label: "Point System Help Page",
                 helpText:
-                    "Optional. Name of the wiki page for explaining your subreddit's point system (e.g. pointsystem)."
+                    "Optional. Name of the wiki page for explaining your subreddit's point system (e.g. pointsystem).",
             },
             {
                 type: "select",
@@ -936,6 +981,14 @@ function noValidTriggerWords(event: SettingsFormFieldValidatorEvent<string>) {
     }
 }
 
+function alternateCommandInvalid(
+    event: SettingsFormFieldValidatorEvent<string>
+) {
+    if (typeof event.value !== "string" || !event.value.includes("{{user}}")) {
+        return "The Alternate Award Command must include the {{user}} placeholder (e.g., '!award {{user}}').";
+    }
+}
+
 async function validateRegexes(
     event: SettingsFormFieldValidatorEvent<boolean>,
     context: TriggerContext
@@ -974,8 +1027,8 @@ export async function validateRegexJobHandler(
 export function numberFieldHasValidOption(
     event: SettingsFormFieldValidatorEvent<number>
 ) {
-    if (typeof event.value !== 'number' || isNaN(event.value)) {
-        return 'Value must be a number.';
+    if (typeof event.value !== "number" || isNaN(event.value)) {
+        return "Value must be a number.";
     }
 
     if (event.value <= 0) {
@@ -983,9 +1036,12 @@ export function numberFieldHasValidOption(
     }
 }
 
-function paragraphFieldContainsText(event: SettingsFormFieldValidatorEvent<string>, context: TriggerContext): string | void | Promise<string | void> {
+function paragraphFieldContainsText(
+    event: SettingsFormFieldValidatorEvent<string>,
+    context: TriggerContext
+): string | void | Promise<string | void> {
     if (typeof event.value !== "string") {
-        return 'Value must be a string.';
+        return "Value must be a string.";
     }
 
     if (event.value.length === 0) {

@@ -347,12 +347,192 @@ export async function handleThanksEvent(
         return;
     }
 
+    const settings = await context.settings.getAll();
+    const subredditName = event.subreddit.name;
+    const awarder = event.author.name;
+    const commentBody = event.comment.body?.toLowerCase() ?? "";
+
+    // ──────────────── Command Parsing ────────────────
+    const userCommands = (settings[AppSetting.PointTriggerWords] as string)
+        ?.split(/\s+/)
+        .map((c) => c.toLowerCase().trim())
+        .filter(Boolean) ?? ["!point"];
+
+    const modCommand = (
+        settings[AppSetting.ModAwardCommand] as string | undefined
+    )
+        ?.toLowerCase()
+        ?.trim();
+
+    const containsUserCommand = userCommands.some((cmd) =>
+        commentBody.includes(cmd)
+    );
+    const containsModCommand = modCommand && commentBody.includes(modCommand);
+    const commandUsed =
+        userCommands.find((cmd) => commentBody.includes(cmd)) ?? modCommand;
+
+    if (!containsUserCommand && !containsModCommand) {
+        logger.debug("❌ No valid award command found.");
+        return;
+    }
+
+    // ──────────────── Alternate Mention Award Handling ────────────────
+    const altCommandSetting = (
+        settings[AppSetting.AlternatePointCommand] as string | undefined
+    )?.trim();
+    const altCommandUsersRaw =
+        (settings[AppSetting.AlternatePointCommandUsers] as string) ?? "";
+    const altCommandUsers = altCommandUsersRaw
+        .split("\n")
+        .map((u) => u.trim().toLowerCase())
+        .filter(Boolean);
+
+    // Validate Alternate Command
+    if (!altCommandSetting || !altCommandSetting.includes("{{user}}")) {
+        logger.warn(
+            "⚠️ AlternatePointCommand is missing or invalid (no {{user}}).",
+            {
+                altCommandSetting,
+            }
+        );
+    } else {
+        const baseAltCommand = altCommandSetting
+            .toLowerCase()
+            .split("{{user}}")[0]
+            .trim();
+        const commandUsedNormalized = commandUsed?.toLowerCase().trim() ?? "";
+
+        logger.debug("🔍 Alternate Command Validation", {
+            configuredCommand: altCommandSetting,
+            baseAltCommand,
+            commandUsed,
+            commandUsedNormalized,
+        });
+
+        if (commandUsedNormalized.startsWith(baseAltCommand)) {
+            // Match !command u/username OR !command username
+            const regex = new RegExp(
+                `${commandUsedNormalized}(?:\\s+u\\/|\\s+)([a-zA-Z0-9_-]{3,21})(?=\\b)`,
+                "i"
+            );
+            const match = commentBody.match(regex);
+
+            if (match) {
+                const mentionedUser = match[1].toLowerCase();
+                const isAuthorized = altCommandUsers.includes(
+                    awarder.toLowerCase()
+                );
+
+                logger.debug("🧩 Alternate Mention Command Detected", {
+                    commandUsed,
+                    mentionedUser,
+                    isAuthorized,
+                });
+
+                const successMessageTemplate =
+                    (settings[AppSetting.AlternateCommandSuccess] as string) ??
+                    TemplateDefaults.AlternateCommandSuccess;
+                const failMessageTemplate =
+                    (settings[AppSetting.AlternateCommandFail] as string) ??
+                    TemplateDefaults.AlternateCommandFail;
+
+                const scoreboard = `https://old.reddit.com/r/${subredditName}/wiki/${
+                    settings[AppSetting.LeaderboardName] ?? "leaderboard"
+                }`;
+
+                // ──────────────── Unauthorized User ────────────────
+                if (!isAuthorized) {
+                    const failMessage = formatMessage(failMessageTemplate, {
+                        commandUsed: commandUsed ?? baseAltCommand,
+                        subreddit: subredditName,
+                    });
+
+                    await context.reddit.submitComment({
+                        id: event.comment.id,
+                        text: failMessage,
+                    });
+
+                    logger.warn(
+                        `🚫 ${awarder} tried using alt command on ${mentionedUser} without permission.`,
+                        { failMessage }
+                    );
+                    return;
+                }
+
+                // ──────────────── Authorized Award ────────────────
+                const redisKey = POINTS_STORE_KEY;
+                const newScore = await context.redis.zIncrBy(
+                    redisKey,
+                    mentionedUser,
+                    1
+                );
+
+                await context.scheduler.runJob({
+                    name: "updateLeaderboard",
+                    runAt: new Date(),
+                    data: {
+                        reason: `Alternate award from ${awarder} to ${mentionedUser}`,
+                    },
+                });
+
+                const successMessage = formatMessage(successMessageTemplate, {
+                    name: (settings[AppSetting.PointName] as string) ?? "point",
+                    awardee: mentionedUser,
+                    awarder: awarder,
+                    scoreboard: scoreboard,
+                });
+
+                const newComment = await context.reddit.submitComment({
+                    id: event.comment.id,
+                    text: successMessage,
+                });
+                await newComment.distinguish();
+
+                logger.info(
+                    `🏅 ${awarder} awarded 1 point to ${mentionedUser} via alt command.`
+                );
+
+                // ──────────────── Flair Update ────────────────
+                const recipientUser = await context.reddit.getUserByUsername(
+                    mentionedUser
+                );
+                if (recipientUser) {
+                    const { currentScore: recipientScore } =
+                        await getCurrentScore(recipientUser, context, settings);
+                    const recipientIsRestricted = await getUserIsRestricted(
+                        mentionedUser,
+                        context
+                    );
+                    await updateAwardeeFlair(
+                        context,
+                        subredditName,
+                        mentionedUser,
+                        recipientScore,
+                        settings,
+                        recipientIsRestricted
+                    );
+                    logger.info(`🎨 Flair updated for ${mentionedUser}.`);
+                }
+
+                return; // ✅ Stop — handled via alt command
+            }
+        } else {
+            logger.debug(
+                "⚙️ Comment command does not match configured alternate command.",
+                {
+                    commandUsed,
+                    altCommandSetting,
+                }
+            );
+            return;
+        }
+    }
+
     if (isLinkId(event.comment.parentId)) {
         logger.debug("❌ Parent ID is a link — ignoring.");
         return;
     }
 
-    const settings = await context.settings.getAll();
     const parentComment = await context.reddit.getCommentById(
         event.comment.parentId
     );
@@ -361,8 +541,6 @@ export async function handleThanksEvent(
         return;
     }
 
-    const subredditName = event.subreddit.name;
-    const awarder = event.author.name;
     const recipient = parentComment.authorName;
     if (!recipient) {
         logger.warn("❌ No recipient found.");
@@ -373,22 +551,6 @@ export async function handleThanksEvent(
     const pointSymbol = (settings[AppSetting.PointSymbol] as string) ?? "";
 
     // ──────────────── Command Parsing ────────────────
-    const userCommands = (settings[AppSetting.PointTriggerWords] as string)
-        ?.split(/\s+/)
-        .map((c) => c.toLowerCase().trim())
-        .filter(Boolean) ?? ["!point"];
-    const modCommand = (
-        settings[AppSetting.ModAwardCommand] as string | undefined
-    )
-        ?.toLowerCase()
-        ?.trim();
-    const commentBody = event.comment.body?.toLowerCase() ?? "";
-
-    const containsUserCommand = userCommands.some((cmd) =>
-        commentBody.includes(cmd)
-    );
-    const containsModCommand = modCommand && commentBody.includes(modCommand);
-
     const commandList = Array.from(
         new Set([...userCommands, modCommand].filter((c): c is string => !!c))
     );
@@ -998,7 +1160,7 @@ export async function manualSetPointsFormHandler(
         context,
         subreddit,
         comment.authorName,
-        newScore,
+        entry,
         settings,
         recipientIsRestricted
     );

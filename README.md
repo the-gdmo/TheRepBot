@@ -19,6 +19,25 @@ I strongly recommend using a command that is not going to be used in "normal" co
 
 I recommend testing settings out on a test subreddit before deploying to a real subreddit for the first time.
 
+## Supported Placeholders
+* `{{author}}`: The username of the poster. Will not contain 'u/'.
+* `{{requirement}}`: The amount of points required before a posting restriction is lifted.
+* `{{name}}`: The name of points. Specified in 'Point Name'.
+* `{{permalink}}`: Link to the most recent valid post by the poster.
+* `{{symbol}}`: The symbol associated with your subreddit installation. Specified in 'Point Symbol'.
+* `{{awardee}}`: The user being awarded. Will not contain 'u/'.
+* `{{total}}`: The total amount of points a user has.
+* `{{help}}`: Link to a page explaining how to use the bot. Uses the Old Reddit version of this page.
+* `{{leaderboard}}`: Link to a page of the subreddit's leaderboard. Uses the Old Reddit version of this page.
+* `{{awarder}}`: The user giving the award. Will not contain 'u/'.
+* `{{threshold}}`: Threshold to become a superuser. Specified in 'Auto Superuser Threshold'.
+* `{{command}}`: Notifies the user who has reached the threshold of a special command they can use. Specified in 'Superuser/Mod award command'.
+* `{{commands}}`: Lists all valid non-superuser/non-mod command(s) (comma-separated list (if more than 1)). Specified in 'Trigger Words'. 
+* `{{markdown_guide}}`: Link to Reddit's Markdown Guide.
+* `{{user}}`: The username of the person being awarded. Used in 'Alternate Award Command'.
+* `{{altCommand}}`: Alternate command to directly award users. Used in 'Alternate Command Success/Fail Message'.
+* `{{subreddit}}`: Get the name of the subreddit. Will not contain 'r/'.
+
 ## Data Stored
 
 This application stores the reputation score awarded by the app for each user in a Redis data store and (if configured) as the user's flair. It also stores a record that a comment has had a point awarded on it for a period of a week after that point is awarded.
@@ -33,9 +52,10 @@ If the application is removed from a subreddit, all data is deleted although the
 
 This app is open source and licensed under the BSD 3-Clause License. You can find the source code on GitHub [here](https://github.com/the-gdmo/TheRepBot).
 
-NOTE: If you update settings, you will have to uninstall to be able to reimplement the content that you want in whatever you are editing.
-
 ## Version History
+### 13.1.0
+* Make it so an alt command can be used (a command that can be run a bot for example) where you can award points to individual users without the need for awarding the user a point on their comment
+* Alt command MUST use an existing trigger word and can award users whether the 'u/' is contained or not
 ### 13.0.1
 * Update help page to use the old reddit version of the page
 ### 13.0.0
@@ -44,7 +64,7 @@ NOTE: If you update settings, you will have to uninstall to be able to reimpleme
 * Make it so users are informed in private messages if they use alt text (`this`), spoiler text(>!this!<), or quote text(> this) when using an award command
 * Make it so users can stop the bot from informing them of using these spoiler types (must be done on individual types as they are used)
 ### 12.2.0
-* Made leaderboard links using the {{scoreboard}} placeholder link to the Old Reddit version of that link (New Reddit can be weird with wiki pages not being created or displayed)
+* Made leaderboard links using the {{leaderboard}} placeholder link to the Old Reddit version of that link (New Reddit can be weird with wiki pages not being created or displayed)
 * Simplify leaderboard logic
 ### 12.1.0
 * Make it so users can use a link to their subreddit's discord

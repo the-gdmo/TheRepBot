@@ -1169,11 +1169,11 @@ export async function manualSetPointsFormHandler(
         name: "updateLeaderboard",
         runAt: new Date(),
         data: {
-            reason: `Updated score for ${comment.authorName}. New score: ${newScore}`,
+            reason: `Updated score for ${comment.authorName}. New score: ${entry}`,
         },
     });
 
-    context.ui.showToast(`Score for ${comment.authorName} is now ${newScore}`);
+    context.ui.showToast(`Score for ${comment.authorName} is now ${entry}`);
 }
 
 export async function handleManualPostRestrictionRemoval(

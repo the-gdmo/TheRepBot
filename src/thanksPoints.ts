@@ -498,9 +498,13 @@ export async function handleThanksEvent(
         );
 
         const successMessage = formatMessage(successMessageTemplate, {
-            total: (settings[AppSetting.PointName] as string) ?? "point",
+            total: currentScore.toString() ?? 0,
             symbol: (settings[AppSetting.PointSymbol] as string) ?? "",
             leaderboard: leaderboard,
+            awardee: mentionedUsername,
+            awarder: awarder,
+            name: settings[AppSetting.PointName] as string ?? "point",
+            
         });
 
         const notifySuccess = ((settings[

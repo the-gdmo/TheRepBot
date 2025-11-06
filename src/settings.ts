@@ -109,7 +109,7 @@ export enum TemplateDefaults {
     NotifyOnSuccessTemplate = "+1 {{name}} awarded to u/{{awardee}} by u/{{awarder}}. Total: {{total}}{{symbol}}. Leaderboard is located [here]({{leaderboard}}).",
     NotifyOnSuperuserTemplate = 'Hello {{awardee}},\n\nNow that you have reached {{threshold}} points you can now award points yourself, even if normal users do not have permission to. Please use the command "{{command}}" if you\'d like to do this.',
     MessageToRestrictedUsers = "***ATTENTION to OP: You must award {{name}}s by replying to the successful comments. Valid command(s) are **{{commands}}**. Failure to do so may result in a ban.***\n\n***Commenters MUST put the location in spoiler tags.***\n\n*To hide text, write it like this `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({{markdown_guide}})*.",
-    AlternateCommandSuccessMessage = "+1 {{name}} awarded to u/{{awardee}} by u/{{awarder}}. Leaderboard is located [here]({{leaderboard}}).",
+    AlternateCommandSuccessMessage = "+1 {{name}} awarded to u/{{awardee}} [{{total}}{{symbol}}]. Leaderboard is located [here]({{leaderboard}}).",
     AlternateCommandFailMessage = "You do not have permission to use **{{altCommand}}** on specific users.",
 }
 
@@ -625,15 +625,16 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.NotifyOnAlternateCommandSuccess,
                 type: "select",
                 label: "Notify on alternate command success",
-                helpText: "How to notify users when they use the alternate command and are allowed to",
-                options: NotifyOnAlternateCommandSuccessReplyOptionChoices
+                helpText: "How to notify users when they use the alternate command and it is successful",
+                options: NotifyOnAlternateCommandSuccessReplyOptionChoices,
+                defaultValue: [NotifyOnAlternateCommandSuccessReplyOptions.ReplyAsComment],
             },
             {
                 name: AppSetting.AlternateCommandSuccessMessage,
                 type: "paragraph",
                 label: "Alternate Command Success Message",
                 helpText:
-                    "Message to send users when they use the Alternate Award Command and are allowed to. Placeholders Supported: {{name}}, {{awardee}}, {{awarder}}, {{leaderboard}}",
+                    "Message to send users when they use the Alternate Award Command and it is successful. Placeholders Supported: {{name}}, {{awardee}}, {{awarder}}, {{leaderboard}}, {{symbol}}, {{total}}",
                 defaultValue: TemplateDefaults.AlternateCommandSuccessMessage,
             },
             {
@@ -641,9 +642,11 @@ export const appSettings: SettingsFormField[] = [
                 type: "select",
                 label: "Notify on alternate command fail",
                 helpText: "How to notify users when they use the alternate command and are not allowed to",
-                options: NotifyOnAlternateCommandFailReplyOptionChoices
+                options: NotifyOnAlternateCommandFailReplyOptionChoices,
+                defaultValue: [NotifyOnAlternateCommandFailReplyOptions.ReplyByPM],
             },
             {
+                
                 name: AppSetting.AlternateCommandFailMessage,
                 type: "paragraph",
                 label: "Alternate Command Fail Message",

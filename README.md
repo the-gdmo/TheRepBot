@@ -53,6 +53,8 @@ If the application is removed from a subreddit, all data is deleted although the
 This app is open source and licensed under the BSD 3-Clause License. You can find the source code on GitHub [here](https://github.com/the-gdmo/TheRepBot).
 
 ## Version History
+### 13.2.1
+* Add symbol, leaderboard, and total placeholders to "Alternate Command Success Message"
 ### 13.2.0
 * Notify users that an award command as a top-level comment isn't allowed
 * Change option in LeaderboardMode to say "Default settings for wiki" instead of "public"

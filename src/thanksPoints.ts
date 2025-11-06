@@ -485,11 +485,22 @@ export async function handleThanksEvent(
             },
         });
 
+        const recipientUser = await context.reddit.getUserByUsername(
+            mentionedUsername
+        );
+
+        if (!recipientUser) return;
+
+        const { currentScore } = await getCurrentScore(
+            recipientUser,
+            context,
+            settings
+        );
+
         const successMessage = formatMessage(successMessageTemplate, {
-            name: (settings[AppSetting.PointName] as string) ?? "point",
-            awardee: mentionedUsername,
-            awarder,
-            leaderboard,
+            total: (settings[AppSetting.PointName] as string) ?? "point",
+            symbol: (settings[AppSetting.PointSymbol] as string) ?? "",
+            leaderboard: leaderboard,
         });
 
         const notifySuccess = ((settings[
@@ -523,9 +534,6 @@ export async function handleThanksEvent(
         );
 
         // ──────────────── Flair Update ────────────────
-        const recipientUser = await context.reddit.getUserByUsername(
-            mentionedUsername
-        );
         if (!recipientUser) return;
 
         const { currentScore: recipientScore } = await getCurrentScore(

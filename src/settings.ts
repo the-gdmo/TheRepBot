@@ -85,8 +85,10 @@ export enum AppSetting {
     MessageToRestrictedUsers = "messageToRestrictedUsers",
     DiscordServerLink = "discordServerLink",
     HowToNotifyOpOnPostRestriction = "howToNotifyOpOnPostRestriction",
-    AlternateCommandSuccess = "alternateCommandSuccess",
-    AlternateCommandFail = "alternateCommandFail",
+    AlternateCommandSuccessMessage = "alternateCommandSuccessMessage",
+    AlternateCommandFailMessage = "AlternateCommandFailMessage",
+    NotifyOnAlternateCommandFail = "notifyOnAlternateCommandFail",
+    NotifyOnAlternateCommandSuccess = "notifyOnAlternateCommandSuccessMessage",
 }
 
 export enum TemplateDefaults {
@@ -107,8 +109,9 @@ export enum TemplateDefaults {
     NotifyOnSuccessTemplate = "+1 {{name}} awarded to u/{{awardee}} by u/{{awarder}}. Total: {{total}}{{symbol}}. Leaderboard is located [here]({{leaderboard}}).",
     NotifyOnSuperuserTemplate = 'Hello {{awardee}},\n\nNow that you have reached {{threshold}} points you can now award points yourself, even if normal users do not have permission to. Please use the command "{{command}}" if you\'d like to do this.',
     MessageToRestrictedUsers = "***ATTENTION to OP: You must award {{name}}s by replying to the successful comments. Valid command(s) are **{{commands}}**. Failure to do so may result in a ban.***\n\n***Commenters MUST put the location in spoiler tags.***\n\n*To hide text, write it like this `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({{markdown_guide}})*.",
-    AlternateCommandSuccess = "+1 {{name}} awarded to u/{{awardee}} by u/{{awarder}}. Leaderboard is located [here]({{leaderboard}}).",
-    AlternateCommandFail = "You do not have permission to use **{{altCommand}}** on specific users.",
+    AlternateCommandSuccessMessage = "+1 {{name}} awarded to u/{{awardee}} by u/{{awarder}}. Leaderboard is located [here]({{leaderboard}}).",
+    AlternateCommandFailMessage = "You do not have permission to use **{{altCommand}}** on specific users.",
+    UserAwardFailMessage = "UserAwardFailMessage",
 }
 
 export enum AutoSuperuserReplyOptions {
@@ -171,6 +174,18 @@ export enum NotifyOnUnflairedPostReplyOptions {
 }
 
 export enum NotifyOnSuccessReplyOptions {
+    NoReply = "none",
+    ReplyByPM = "replybypm",
+    ReplyAsComment = "replybycomment",
+}
+
+export enum NotifyOnAlternateCommandFailReplyOptions {
+    NoReply = "none",
+    ReplyByPM = "replybypm",
+    ReplyAsComment = "replybycomment",
+}
+
+export enum NotifyOnAlternateCommandSuccessReplyOptions {
     NoReply = "none",
     ReplyByPM = "replybypm",
     ReplyAsComment = "replybycomment",
@@ -351,6 +366,30 @@ const NotifyOnSelfAwardReplyOptionChoices = [
     },
 ];
 
+const NotifyOnAlternateCommandFailReplyOptionChoices = [
+    { label: "No Notification", value: NotifyOnAlternateCommandFailReplyOptions.NoReply },
+    {
+        label: "Send user a private message",
+        value: NotifyOnAlternateCommandFailReplyOptions.ReplyByPM,
+    },
+    {
+        label: "Reply as comment",
+        value: NotifyOnAlternateCommandFailReplyOptions.ReplyAsComment,
+    },
+];
+
+const NotifyOnAlternateCommandSuccessReplyOptionChoices = [
+    { label: "No Notification", value: NotifyOnAlternateCommandSuccessReplyOptions.NoReply },
+    {
+        label: "Send user a private message",
+        value: NotifyOnAlternateCommandSuccessReplyOptions.ReplyByPM,
+    },
+    {
+        label: "Reply as comment",
+        value: NotifyOnAlternateCommandSuccessReplyOptions.ReplyAsComment,
+    },
+];
+
 const NotifyOnSuccessReplyOptionChoices = [
     { label: "No Notification", value: NotifyOnSuccessReplyOptions.NoReply },
     {
@@ -386,7 +425,7 @@ const LeaderboardModeOptionChoices = [
     { label: "Off", value: LeaderboardMode.Off },
     { label: "Mod Only", value: LeaderboardMode.ModOnly },
     {
-        label: "Public",
+        label: "Default settings for wiki",
         value: LeaderboardMode.Public,
     },
 ];
@@ -567,10 +606,6 @@ export const appSettings: SettingsFormField[] = [
                 defaultValue: "!award\n.award",
                 onValidate: noValidTriggerWords,
             },
-            /*
-            AlternatePointCommandUsers = "alternatePointCommandUsers",
-            AlternateCommandMessage = "alternateCommandMessage",
-            */
             {
                 name: AppSetting.AlternatePointCommand,
                 type: "string",
@@ -588,20 +623,34 @@ export const appSettings: SettingsFormField[] = [
                     "List of users who can use the 'Alternate Award Command'. Each username should be on a new line",
             },
             {
-                name: AppSetting.AlternateCommandSuccess,
+                name: AppSetting.NotifyOnAlternateCommandSuccess,
+                type: "select",
+                label: "Notify on alternate command success",
+                helpText: "How to notify users when they use the alternate command and are allowed to",
+                options: NotifyOnAlternateCommandSuccessReplyOptionChoices
+            },
+            {
+                name: AppSetting.AlternateCommandSuccessMessage,
                 type: "paragraph",
                 label: "Alternate Command Success Message",
                 helpText:
                     "Message to send users when they use the Alternate Award Command and are allowed to. Placeholders Supported: {{name}}, {{awardee}}, {{awarder}}, {{leaderboard}}",
-                defaultValue: TemplateDefaults.AlternateCommandSuccess,
+                defaultValue: TemplateDefaults.AlternateCommandSuccessMessage,
             },
             {
-                name: AppSetting.AlternateCommandFail,
+                name: AppSetting.NotifyOnAlternateCommandFail,
+                type: "select",
+                label: "Notify on alternate command fail",
+                helpText: "How to notify users when they use the alternate command and are not allowed to",
+                options: NotifyOnAlternateCommandFailReplyOptionChoices
+            },
+            {
+                name: AppSetting.AlternateCommandFailMessage,
                 type: "paragraph",
                 label: "Alternate Command Fail Message",
                 helpText:
                     "Message to send users when they use the Alternate Award Command and are allowed to. Placeholders Supported: {{altCommand}}, {{subreddit}}",
-                defaultValue: TemplateDefaults.AlternateCommandFail,
+                defaultValue: TemplateDefaults.AlternateCommandFailMessage,
             },
             {
                 name: AppSetting.ThanksCommandUsesRegex,

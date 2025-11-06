@@ -1,4 +1,5 @@
 import {
+    Comment,
     Context,
     FormOnSubmitEvent,
     JSONObject,
@@ -17,6 +18,8 @@ import {
     NotifyOpOnPostRestrictionReplyOptions,
     NotifyOnSuccessReplyOptions,
     NotifyOnPointAlreadyAwardedReplyOptions,
+    NotifyOnAlternateCommandSuccessReplyOptions,
+    NotifyOnAlternateCommandFailReplyOptions,
 } from "./settings.js";
 import { setCleanupForUsers } from "./cleanupTasks.js";
 import { isLinkId } from "@devvit/shared-types/tid.js";
@@ -376,6 +379,16 @@ export async function handleThanksEvent(
         return;
     }
 
+    // ──────────────── Attempt to fetch parent comment (optional) ────────────────
+    let parentComment: Comment | undefined;
+    try {
+        parentComment = await context.reddit.getCommentById(
+            event.comment.parentId
+        );
+    } catch {
+        parentComment = undefined;
+    }
+
     // ──────────────── Alternate Mention Award Handling ────────────────
     const altCommandSetting = (
         settings[AppSetting.AlternatePointCommand] as string | undefined
@@ -387,161 +400,170 @@ export async function handleThanksEvent(
         .map((u) => u.trim().toLowerCase())
         .filter(Boolean);
 
-    // Validate Alternate Command
-    if (!altCommandSetting || !altCommandSetting.includes("{{user}}")) {
-        logger.warn(
-            "⚠️ AlternatePointCommand is missing or invalid (no {{user}}).",
-            {
-                altCommandSetting,
-            }
+    const commandUsedNormalized = commandUsed?.toLowerCase().trim() ?? "";
+    const regex = new RegExp(
+        `${commandUsedNormalized}\\s+(?:u\\/)?([a-z0-9_-]{3,21})\\b`,
+        "i"
+    );
+    const match = commentBody.match(regex);
+
+    if (match) {
+        const mentionedUsername = match[1].toLowerCase();
+        logger.debug("🎯 Mentioned user detected", { mentionedUsername });
+
+        const mentionedUser = await context.reddit.getUserByUsername(
+            mentionedUsername
         );
-    } else {
-        const baseAltCommand = altCommandSetting
-            .toLowerCase()
-            .split("{{user}}")[0]
-            .trim();
-        const commandUsedNormalized = commandUsed?.toLowerCase().trim() ?? "";
+        if (!mentionedUser) {
+            logger.warn(`❌ Could not find Reddit user: ${mentionedUsername}`);
+            return;
+        }
 
-        logger.debug("🔍 Alternate Command Validation", {
-            configuredCommand: altCommandSetting,
-            baseAltCommand,
-            commandUsed,
-            commandUsedNormalized,
-        });
+        const isAuthorized = altCommandUsers.includes(awarder.toLowerCase());
+        const successMessageTemplate =
+            (settings[AppSetting.AlternateCommandSuccessMessage] as string) ??
+            TemplateDefaults.AlternateCommandSuccessMessage;
+        const failMessageTemplate =
+            (settings[AppSetting.AlternateCommandFailMessage] as string) ??
+            TemplateDefaults.AlternateCommandFailMessage;
 
-        if (commandUsedNormalized.startsWith(baseAltCommand)) {
-            // Match !command u/username OR !command username
-            const regex = new RegExp(
-                `${commandUsedNormalized}(\s(\/?u\/)?)[a-zA-Z0-9_-]{3,21}`,
-                "gi"
-            );
-            const match = commentBody.match(regex);
+        const leaderboard = `https://old.reddit.com/r/${subredditName}/wiki/${
+            settings[AppSetting.LeaderboardName] ?? "leaderboard"
+        }`;
 
-            if (match) {
-                const mentionedUser = match[1].toLowerCase();
-                const isAuthorized = altCommandUsers.includes(
-                    awarder.toLowerCase()
-                );
+        // ──────────────── Unauthorized User ────────────────
+        if (!isAuthorized) {
+            const failMessage = formatMessage(failMessageTemplate, {
+                altCommand: commandUsed ?? "!award",
+                subreddit: subredditName,
+            });
 
-                logger.debug("🧩 Alternate Mention Command Detected", {
-                    commandUsed,
-                    mentionedUser,
-                    isAuthorized,
-                });
+            const notifyFail = ((settings[
+                AppSetting.NotifyOnAlternateCommandFail
+            ] as string[]) ?? [
+                NotifyOnAlternateCommandFailReplyOptions.NoReply,
+            ])[0];
 
-                const successMessageTemplate =
-                    (settings[AppSetting.AlternateCommandSuccess] as string) ??
-                    TemplateDefaults.AlternateCommandSuccess;
-                const failMessageTemplate =
-                    (settings[AppSetting.AlternateCommandFail] as string) ??
-                    TemplateDefaults.AlternateCommandFail;
-
-                const leaderboard = `https://old.reddit.com/r/${subredditName}/wiki/${
-                    settings[AppSetting.LeaderboardName] ?? "leaderboard"
-                }`;
-
-                // ──────────────── Unauthorized User ────────────────
-                if (!isAuthorized) {
-                    const failMessage = formatMessage(failMessageTemplate, {
-                        altCommand: commandUsed ?? baseAltCommand,
-                        subreddit: subredditName,
-                    });
-
-                    await context.reddit.submitComment({
-                        id: event.comment.id,
-                        text: failMessage,
-                    });
-
-                    logger.warn(
-                        `🚫 ${awarder} tried using alt command on ${mentionedUser} without permission.`,
-                        { failMessage }
-                    );
-                    return;
-                }
-
-                // ──────────────── Authorized Award ────────────────
-                const redisKey = POINTS_STORE_KEY;
-                const newScore = await context.redis.zIncrBy(
-                    redisKey,
-                    mentionedUser,
-                    1
-                );
-
-                await context.scheduler.runJob({
-                    name: "updateLeaderboard",
-                    runAt: new Date(),
-                    data: {
-                        reason: `Alternate award from ${awarder} to ${mentionedUser}`,
-                    },
-                });
-
-                const successMessage = formatMessage(successMessageTemplate, {
-                    name: (settings[AppSetting.PointName] as string) ?? "point",
-                    awardee: mentionedUser,
-                    awarder: awarder,
-                    leaderboard: leaderboard,
-                });
-
-                const newComment = await context.reddit.submitComment({
+            if (
+                notifyFail ===
+                NotifyOnAlternateCommandFailReplyOptions.ReplyAsComment
+            ) {
+                const failComment = await context.reddit.submitComment({
                     id: event.comment.id,
-                    text: successMessage,
+                    text: failMessage,
                 });
-                await newComment.distinguish();
-
-                logger.info(
-                    `🏅 ${awarder} awarded 1 point to ${mentionedUser} via alt command.`
-                );
-
-                // ──────────────── Flair Update ────────────────
-                const recipientUser = await context.reddit.getUserByUsername(
-                    mentionedUser
-                );
-                if (recipientUser) {
-                    const { currentScore: recipientScore } =
-                        await getCurrentScore(recipientUser, context, settings);
-                    const recipientIsRestricted = await getUserIsRestricted(
-                        mentionedUser,
-                        context
-                    );
-                    await updateAwardeeFlair(
-                        context,
-                        subredditName,
-                        mentionedUser,
-                        recipientScore,
-                        settings,
-                        recipientIsRestricted
-                    );
-                    logger.info(`🎨 Flair updated for ${mentionedUser}.`);
-                }
-
-                return; // ✅ Stop — handled via alt command
+                await failComment.distinguish();
+            } else if (
+                notifyFail ===
+                NotifyOnAlternateCommandFailReplyOptions.ReplyByPM
+            ) {
+                await context.reddit.sendPrivateMessage({
+                    to: awarder,
+                    subject: "Alternate Command Not Allowed",
+                    text: failMessage,
+                });
             }
-        } else {
-            logger.debug(
-                "⚙️ Comment command does not match configured alternate command.",
-                {
-                    commandUsed,
-                    altCommandSetting,
-                }
+
+            logger.warn(
+                `🚫 ${awarder} tried using alt command on ${mentionedUsername} without permission.`
             );
             return;
         }
-    }
 
+        // ──────────────── Authorized Award ────────────────
+        const redisKey = POINTS_STORE_KEY;
+        const newScore = await context.redis.zIncrBy(
+            redisKey,
+            mentionedUsername,
+            1
+        );
+        await context.scheduler.runJob({
+            name: "updateLeaderboard",
+            runAt: new Date(),
+            data: {
+                reason: `Alternate award from ${awarder} to ${mentionedUsername}`,
+            },
+        });
+
+        const successMessage = formatMessage(successMessageTemplate, {
+            name: (settings[AppSetting.PointName] as string) ?? "point",
+            awardee: mentionedUsername,
+            awarder,
+            leaderboard,
+        });
+
+        const notifySuccess = ((settings[
+            AppSetting.NotifyOnAlternateCommandSuccess
+        ] as string[]) ?? [
+            NotifyOnAlternateCommandSuccessReplyOptions.NoReply,
+        ])[0];
+
+        if (
+            notifySuccess ===
+            NotifyOnAlternateCommandSuccessReplyOptions.ReplyAsComment
+        ) {
+            const newComment = await context.reddit.submitComment({
+                id: event.comment.id,
+                text: successMessage,
+            });
+            await newComment.distinguish();
+        } else if (
+            notifySuccess ===
+            NotifyOnAlternateCommandSuccessReplyOptions.ReplyByPM
+        ) {
+            await context.reddit.sendPrivateMessage({
+                to: awarder,
+                subject: "Alternate Command Successful",
+                text: successMessage,
+            });
+        }
+
+        logger.info(
+            `🏅 ${awarder} awarded 1 point to ${mentionedUsername} via alt command.`
+        );
+
+        // ──────────────── Flair Update ────────────────
+        const recipientUser = await context.reddit.getUserByUsername(
+            mentionedUsername
+        );
+        if (!recipientUser) return;
+
+        const { currentScore: recipientScore } = await getCurrentScore(
+            recipientUser,
+            context,
+            settings
+        );
+        const score = await context.redis.zScore(redisKey, mentionedUsername);
+        const recipientIsRestricted = await getUserIsRestricted(
+            mentionedUsername,
+            context
+        );
+
+        await updateAwardeeFlair(
+            context,
+            subredditName,
+            mentionedUsername,
+            score ?? recipientScore,
+            settings,
+            recipientIsRestricted
+        );
+
+        return; // ✅ handled via alt command
+    }
     if (isLinkId(event.comment.parentId)) {
         logger.debug("❌ Parent ID is a link — ignoring.");
         return;
     }
 
-    const parentComment = await context.reddit.getCommentById(
+    const nonAltCommandParentComment = await context.reddit.getCommentById(
         event.comment.parentId
     );
-    if (!parentComment) {
+    if (!nonAltCommandParentComment) {
         logger.warn("❌ Parent comment not found.");
         return;
     }
 
-    const recipient = parentComment.authorName;
+    const recipient = nonAltCommandParentComment.authorName;
     if (!recipient) {
         logger.warn("❌ No recipient found.");
         return;
@@ -728,7 +750,7 @@ export async function handleThanksEvent(
     }
 
     // ──────────────── Duplicate Award Check ────────────────
-    const alreadyKey = `thanks-${parentComment.id}`;
+    const alreadyKey = `thanks-${nonAltCommandParentComment.id}`;
     if (await context.redis.exists(alreadyKey)) {
         const dupMsg = formatMessage(
             (settings[AppSetting.DuplicateAwardMessage] as string) ??
@@ -776,9 +798,9 @@ export async function handleThanksEvent(
         },
     });
 
-    const leaderboard = `https://old.reddit.com/r/${event.subreddit.name}/wiki/${
-        settings[AppSetting.LeaderboardName] ?? "leaderboard"
-    }`;
+    const leaderboard = `https://old.reddit.com/r/${
+        event.subreddit.name
+    }/wiki/${settings[AppSetting.LeaderboardName] ?? "leaderboard"}`;
 
     const successMessage = formatMessage(
         (settings[AppSetting.SuccessMessage] as string) ??

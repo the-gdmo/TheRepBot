@@ -53,6 +53,10 @@ If the application is removed from a subreddit, all data is deleted although the
 This app is open source and licensed under the BSD 3-Clause License. You can find the source code on GitHub [here](https://github.com/the-gdmo/TheRepBot).
 
 ## Version History
+### 13.2.0
+* Notify users that an award command as a top-level comment isn't allowed
+* Change option in LeaderboardMode to say "Default settings for wiki" instead of "public"
+* Make the bot actually work with award commands when trying to award specific users
 ### 13.1.2
 * Display the entry instead of a 0 or 1 to inform the user changing the score of what the new score is when manually setting a user's score
 ### 13.1.1

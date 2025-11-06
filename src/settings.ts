@@ -111,7 +111,6 @@ export enum TemplateDefaults {
     MessageToRestrictedUsers = "***ATTENTION to OP: You must award {{name}}s by replying to the successful comments. Valid command(s) are **{{commands}}**. Failure to do so may result in a ban.***\n\n***Commenters MUST put the location in spoiler tags.***\n\n*To hide text, write it like this `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({{markdown_guide}})*.",
     AlternateCommandSuccessMessage = "+1 {{name}} awarded to u/{{awardee}} by u/{{awarder}}. Leaderboard is located [here]({{leaderboard}}).",
     AlternateCommandFailMessage = "You do not have permission to use **{{altCommand}}** on specific users.",
-    UserAwardFailMessage = "UserAwardFailMessage",
 }
 
 export enum AutoSuperuserReplyOptions {

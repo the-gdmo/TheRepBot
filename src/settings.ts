@@ -89,6 +89,8 @@ export enum AppSetting {
     AlternateCommandFailMessage = "AlternateCommandFailMessage",
     NotifyOnAlternateCommandFail = "notifyOnAlternateCommandFail",
     NotifyOnAlternateCommandSuccess = "notifyOnAlternateCommandSuccessMessage",
+    NotifyOnPointAlreadyAwardedToUser = "notifyOnPointAlreadyAwardedToUser",
+    PointAlreadyAwardedToUserMessage = "notifyOnPointAlreadyAwardedToUserMessage",
 }
 
 export enum TemplateDefaults {
@@ -111,6 +113,7 @@ export enum TemplateDefaults {
     MessageToRestrictedUsers = "***ATTENTION to OP: You must award {{name}}s by replying to the successful comments. Valid command(s) are **{{commands}}**. Failure to do so may result in a ban.***\n\n***Commenters MUST put the location in spoiler tags.***\n\n*To hide text, write it like this `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({{markdown_guide}})*.",
     AlternateCommandSuccessMessage = "+1 {{name}} awarded to u/{{awardee}} [{{total}}{{symbol}}]. Leaderboard is located [here]({{leaderboard}}).",
     AlternateCommandFailMessage = "You do not have permission to use **{{altCommand}}** on specific users.",
+    PointAlreadyAwardedToUserMessage = "This comment has already been awarded a {{name}}.",
 }
 
 export enum AutoSuperuserReplyOptions {
@@ -429,6 +432,24 @@ const LeaderboardModeOptionChoices = [
     },
 ];
 
+export enum NotifyOnPointAlreadyAwardedToUserReplyOptions {
+    NoReply = "none",
+    ReplyByPM = "replybypm",
+    ReplyAsComment = "replybycomment",
+}
+
+const NotifyOnPointAlreadyAwardedToUserOptionChoices = [
+    { label: "No Notification", value: NotifyOnPointAlreadyAwardedToUserReplyOptions.NoReply },
+    {
+        label: "Send user a private message",
+        value: NotifyOnPointAlreadyAwardedToUserReplyOptions.ReplyByPM,
+    },
+    {
+        label: "Reply as comment",
+        value: NotifyOnPointAlreadyAwardedToUserReplyOptions.ReplyAsComment,
+    },
+]
+
 const ExistingFlairHandlingOptionChoices = [
     {
         label: "Set flair to new score, if flair unset or flair is numeric (With Symbol)",
@@ -606,6 +627,21 @@ export const appSettings: SettingsFormField[] = [
                 onValidate: noValidTriggerWords,
             },
             {
+                name: AppSetting.NotifyOnPointAlreadyAwardedToUser,
+                type: "select",
+                label: "Notify on point already awarded to user",
+                helpText: "How to notify the user when they try to use the alternate command on a user who has already received a point for that post",
+                options: NotifyOnPointAlreadyAwardedToUserOptionChoices,
+                onValidate: selectFieldHasOptionChosen,
+            },
+            {
+                name: AppSetting.PointAlreadyAwardedToUserMessage,
+                type: "paragraph",
+                label: "Message to send users when they use the Alternate Award Command, but the mentioned user has already received a point on the post",
+                helpText: "",
+                defaultValue: TemplateDefaults.PointAlreadyAwardedToUserMessage,
+            },
+            {
                 name: AppSetting.AlternatePointCommand,
                 type: "string",
                 label: "Alternate Award Command",
@@ -651,7 +687,7 @@ export const appSettings: SettingsFormField[] = [
                 type: "paragraph",
                 label: "Alternate Command Fail Message",
                 helpText:
-                    "Message to send users when they use the Alternate Award Command and are allowed to. Placeholders Supported: {{altCommand}}, {{subreddit}}",
+                    "Message to send users when they use the Alternate Award Command and are not allowed to. Placeholders Supported: {{altCommand}}, {{subreddit}}",
                 defaultValue: TemplateDefaults.AlternateCommandFailMessage,
             },
             {

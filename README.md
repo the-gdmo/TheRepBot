@@ -53,6 +53,10 @@ If the application is removed from a subreddit, all data is deleted although the
 This app is open source and licensed under the BSD 3-Clause License. You can find the source code on GitHub [here](https://github.com/the-gdmo/TheRepBot).
 
 ## Version History
+### 13.3.1
+* Update README to reflect that the alt command can be used once per username per post instead of once per post
+### 13.3.0
+* Make it so the alternate command can only be used once per username per post
 ### 13.2.1
 * Add symbol, leaderboard, and total placeholders to "Alternate Command Success Message"
 ### 13.2.0

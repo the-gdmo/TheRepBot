@@ -20,6 +20,7 @@ import {
     NotifyOnPointAlreadyAwardedReplyOptions,
     NotifyOnAlternateCommandSuccessReplyOptions,
     NotifyOnAlternateCommandFailReplyOptions,
+    NotifyOnPointAlreadyAwardedToUserReplyOptions,
 } from "./settings.js";
 import { setCleanupForUsers } from "./cleanupTasks.js";
 import { isLinkId } from "@devvit/shared-types/tid.js";
@@ -470,6 +471,49 @@ export async function handleThanksEvent(
             return;
         }
 
+        const recipientUser = await context.reddit.getUserByUsername(
+            mentionedUsername
+        );
+
+        const alreadyKey = `${event.post.id}-${recipientUser}`;
+        const pointName = (settings[AppSetting.PointName] as string) ?? "point";
+
+        if (await context.redis.exists(alreadyKey)) {
+            const dupMsg = formatMessage(
+                (settings[
+                    AppSetting.PointAlreadyAwardedToUserMessage
+                ] as string) ??
+                    TemplateDefaults.PointAlreadyAwardedToUserMessage,
+                { name: pointName }
+            );
+
+            const notify = ((settings[
+                AppSetting.NotifyOnPointAlreadyAwardedToUser
+            ] as string[]) ?? ["none"])[0];
+
+            if (
+                notify ===
+                NotifyOnPointAlreadyAwardedToUserReplyOptions.ReplyByPM
+            ) {
+                await context.reddit.sendPrivateMessage({
+                    to: awarder,
+                    subject: `You've already awarded this comment`,
+                    text: dupMsg,
+                });
+            } else if (
+                notify ===
+                NotifyOnPointAlreadyAwardedToUserReplyOptions.ReplyAsComment
+            ) {
+                const newComment = await context.reddit.submitComment({
+                    id: event.comment.id,
+                    text: dupMsg,
+                });
+                await Promise.all([newComment.distinguish()]);
+            }
+
+            logger.info(`❌ Duplicate award attempt by ${awarder}`);
+            return;
+        }
         // ──────────────── Authorized Award ────────────────
         const redisKey = POINTS_STORE_KEY;
         const newScore = await context.redis.zIncrBy(
@@ -477,6 +521,8 @@ export async function handleThanksEvent(
             mentionedUsername,
             1
         );
+
+        await context.redis.set(alreadyKey, "1");
         await context.scheduler.runJob({
             name: "updateLeaderboard",
             runAt: new Date(),
@@ -484,10 +530,6 @@ export async function handleThanksEvent(
                 reason: `Alternate award from ${awarder} to ${mentionedUsername}`,
             },
         });
-
-        const recipientUser = await context.reddit.getUserByUsername(
-            mentionedUsername
-        );
 
         if (!recipientUser) return;
 
@@ -503,8 +545,7 @@ export async function handleThanksEvent(
             leaderboard: leaderboard,
             awardee: mentionedUsername,
             awarder: awarder,
-            name: settings[AppSetting.PointName] as string ?? "point",
-            
+            name: (settings[AppSetting.PointName] as string) ?? "point",
         });
 
         const notifySuccess = ((settings[

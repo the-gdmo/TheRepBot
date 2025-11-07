@@ -27,7 +27,7 @@ I recommend testing settings out on a test subreddit before deploying to a real 
 * `{{symbol}}`: The symbol associated with your subreddit installation. Specified in 'Point Symbol'.
 * `{{awardee}}`: The user being awarded. Will not contain 'u/'.
 * `{{total}}`: The total amount of points a user has.
-* `{{help}}`: Link to a page explaining how to use the bot. Uses the Old Reddit version of this page.
+* `{{helpPage}}`: Link to a page explaining how to use the bot. Uses the Old Reddit version of this page.
 * `{{leaderboard}}`: Link to a page of the subreddit's leaderboard. Uses the Old Reddit version of this page.
 * `{{awarder}}`: The user giving the award. Will not contain 'u/'.
 * `{{threshold}}`: Threshold to become a superuser. Specified in 'Auto Superuser Threshold'.
@@ -53,6 +53,11 @@ If the application is removed from a subreddit, all data is deleted although the
 This app is open source and licensed under the BSD 3-Clause License. You can find the source code on GitHub [here](https://github.com/the-gdmo/TheRepBot).
 
 ## Version History
+### 13.3.2
+* Add a message for subsequent posts if a user is restricted
+* Remove "How to notify OP on post restriction" setting as it is unused
+* Make the bot remove the new posts if OP has a post restriction
+* Stop bot from messaging users about their post restriction/award status
 ### 13.3.1
 * Update README to reflect that the alt command can be used once per username per post instead of once per post
 ### 13.3.0

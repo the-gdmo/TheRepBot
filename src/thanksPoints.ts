@@ -122,7 +122,6 @@ async function getCurrentScore(
 
 export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
     const settings = (await context.settings.getAll()) as SettingsValues;
-    logger.debug("✅ onPostSubmit triggered", { event });
 
     if (!event.subreddit || !event.author || !event.post) {
         logger.warn("❌ Missing required event data", { event });
@@ -164,7 +163,7 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
     // ──────────────── Decide whether or not moderators should have the restriction applied to them ────────────────
 
     const modsExempt =
-        (settings[AppSetting.ModeratorsExempt] as boolean) ?? "true";
+        (settings[AppSetting.ModeratorsExempt] as boolean) ?? true;
     const isMod = await isModerator(context, subredditName, authorName);
     if (isMod && modsExempt) {
         logger.info(
@@ -225,7 +224,7 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         // Add help page and/or discord links as needed
         if (helpPage) {
             restrictionText = restrictionText.replace(
-                /{{help}}/g,
+                /{{helpPage}}/g,
                 `https://www.reddit.com/r/${subredditName}/wiki/${helpPage}`
             );
         }
@@ -253,6 +252,72 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         logger.info(
             `✅ First post allowed for ${author.username}. Restriction notice pinned. Future posts restricted until ${awardsRequired} awards.`
         );
+        return;
+    } else {
+        const lastValidPost = await context.redis.get(lastValidPostKey);
+
+        const pointTriggerWords =
+            (settings[AppSetting.PointTriggerWords] as string) ??
+            "!award\n.award";
+
+        const triggerWordsArray = pointTriggerWords
+            .split(/\r?\n/)
+            .map((word) => word.trim())
+            .filter(Boolean);
+
+        const commandList = triggerWordsArray.join(", ");
+        const pointName = (settings[AppSetting.PointName] as string) ?? "point";
+
+        const helpPage = settings[AppSetting.PointSystemHelpPage] as
+            | string
+            | undefined;
+        const discordLink = settings[AppSetting.DiscordServerLink] as
+            | string
+            | undefined;
+        const subredditName = event.subreddit.name;
+
+        const subsequentPostRestriction =
+            (settings[AppSetting.SubsequentPostRestrictionMessage] as string) ??
+            TemplateDefaults.SubsequentPostRestrictionMessage;
+        let subsequentPostRestrictionMessage = subsequentPostRestriction
+            .replace(/{{name}}/g, pointName)
+            .replace(/{{commands}}/g, commandList)
+            .replace(
+                /{{markdown_guide}}/g,
+                "https://www.reddit.com/wiki/markdown"
+            )
+            .replace(/{{subreddit}}/g, subredditName);
+
+        // Add help page and/or discord links as needed
+
+        if (helpPage) {
+            subsequentPostRestrictionMessage =
+                subsequentPostRestrictionMessage.replace(
+                    /{{helpPage}}/g,
+                    `https://www.reddit.com/r/${subredditName}/wiki/${helpPage}`
+                );
+        }
+        if (discordLink) {
+            subsequentPostRestrictionMessage =
+                subsequentPostRestrictionMessage.replace(
+                    /{{discord}}/g,
+                    discordLink
+                );
+        }
+
+        if (await context.redis.exists(lastValidPostKey)) {
+            subsequentPostRestrictionMessage += `\n\nAward points on [your post](${lastValidPost}) to unrestrict yourself.`;
+        }
+
+        // 🗨️ Post comment
+        const postRestrictionComment = await context.reddit.submitComment({
+            id: event.post.id,
+            text: subsequentPostRestrictionMessage,
+        });
+
+        // 🏅 Distinguish and pin the comment
+        await postRestrictionComment.distinguish(true);
+        await context.reddit.remove(event.post.id, false);
     }
 }
 
@@ -653,7 +718,7 @@ export async function handleThanksEvent(
         if (commandUsedInIgnoredContext(commentBody, trigger)) {
             const ignoredText = getIgnoredContextType(commentBody, trigger);
             if (ignoredText) {
-                const ignoreKey = `ignoreDM:${event.author.name.toLowerCase()}:${ignoredText}`;
+                const ignoreKey = `ignoreDM:${event.author.name}:${ignoredText}`;
                 const alreadyConfirmed = await context.redis.exists(ignoreKey);
 
                 if (!alreadyConfirmed) {
@@ -664,7 +729,7 @@ export async function handleThanksEvent(
                             ? "alt text (``this``)"
                             : "a spoiler block (`>!this!<`)";
 
-                    const dmText = `Hey u/${event.author.name}, I noticed you used the command **${trigger}** inside ${contextLabel}.\n\nIf this was intentional, reply with **CONFIRM** (in all caps) on [the comment that triggered this](${event.comment.permalink}) and you will not receive this message again for ${ignoredText} text.\n\n---\n\n^(I am a bot - please contact the mods of ${event.subreddit.name} with any questions)\n\n---`;
+                    const dmText = `Hey u/${event.author.name}, I noticed you used the command **${trigger}** inside ${contextLabel}.\n\nIf this was intentional, edit [the comment that triggered this](${event.comment.permalink}) with **CONFIRM** (in all caps) and you will not receive this message again for ${ignoredText} text.\n\n---\n\n^(I am a bot - please contact the mods of ${event.subreddit.name} with any questions)\n\n---`;
 
                     await context.reddit.sendPrivateMessage({
                         to: event.author.name,
@@ -916,19 +981,7 @@ export async function handleThanksEvent(
     if (newCount >= awardsRequired) {
         await context.redis.del(restrictedKey);
         await context.redis.del(requiredKey);
-        await context.reddit.sendPrivateMessage({
-            to: awarder,
-            subject: "Posting restriction lifted 🎉",
-            text: `You’ve now met the posting requirement of **${awardsRequired} ${pointName}s!**`,
-        });
         logger.info(`✅ Restriction lifted for ${awarder}`);
-    } else {
-        await context.reddit.sendPrivateMessage({
-            to: awarder,
-            subject: `You awarded a ${pointName}`,
-            text: `👍 ${recipient} now has ${newScore}${pointSymbol}.\n\nYou have ${newCount}/${awardsRequired} points toward lifting your posting restriction.`,
-        });
-        logger.debug(`✉️ Sent update PM to ${awarder}`);
     }
 
     // ──────────────── Flair + Leaderboard Updates ────────────────

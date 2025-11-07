@@ -84,21 +84,22 @@ export enum AppSetting {
     ModeratorsExempt = "moderatorsExempt",
     MessageToRestrictedUsers = "messageToRestrictedUsers",
     DiscordServerLink = "discordServerLink",
-    HowToNotifyOpOnPostRestriction = "howToNotifyOpOnPostRestriction",
     AlternateCommandSuccessMessage = "alternateCommandSuccessMessage",
     AlternateCommandFailMessage = "AlternateCommandFailMessage",
     NotifyOnAlternateCommandFail = "notifyOnAlternateCommandFail",
     NotifyOnAlternateCommandSuccess = "notifyOnAlternateCommandSuccessMessage",
     NotifyOnPointAlreadyAwardedToUser = "notifyOnPointAlreadyAwardedToUser",
     PointAlreadyAwardedToUserMessage = "notifyOnPointAlreadyAwardedToUserMessage",
+    SubsequentPostRestrictionMessage = "subsequentPostRestrictionMessage"
 }
 
 export enum TemplateDefaults {
+    SubsequentPostRestrictionMessage = "***ATTENTION to OP: You must award {{name}}s by replying to the successful comments. Valid command(s) are **{{commands}}**. Failure to do so may result in a ban.***\n\nFor a further explanation of how this works, refer to [the help page]({{helpPage}}).",
     AwardRequirementMessage = "Hello u/{{author}}. Before you can create new posts, you must award **{{requirement}}** {{name}}s to users who respond on [your most recent post]({{permalink}}).",
     UnflairedPostMessage = "Points cannot be awarded on posts without flair. Please award only on flaired posts.",
     OPOnlyDisallowedMessage = "Only moderators, approved users, and Post Authors (OPs) can award {{name}}s.",
     ApproveMessage = "A moderator gave an award! u/{{awardee}} now has {{total}}{{symbol}} {{name}}s.",
-    LeaderboardHelpPageMessage = "[How to award points with RepBot.]({{help}})",
+    LeaderboardHelpPageMessage = "[How to award points with RepBot.]({{helpPage}})",
     DisallowedFlairMessage = "Points cannot be awarded on posts with this flair. Please choose another post.",
     UsersWhoCannotAwardPointsMessage = "You do not have permission to award {{name}}s.",
     ModOnlyDisallowedMessage = "Only moderators are allowed to award points.",
@@ -244,17 +245,6 @@ const NotifyUsersWhoCannotAwardPointsReplyOptionChoices = [
     {
         label: "Reply as comment",
         value: NotifyUsersWhoCannotAwardPointsReplyOptions.ReplyAsComment,
-    },
-];
-
-const NotifyOpOnPostRestrictionOptions = [
-    {
-        label: "Send user a private message",
-        value: NotifyOpOnPostRestrictionReplyOptions.ReplyByPM,
-    },
-    {
-        label: "Reply as comment",
-        value: NotifyOpOnPostRestrictionReplyOptions.ReplyAsComment,
     },
 ];
 
@@ -503,14 +493,12 @@ export const appSettings: SettingsFormField[] = [
                 defaultValue: true,
             },
             {
-                type: "select",
-                name: AppSetting.HowToNotifyOpOnPostRestriction,
-                label: "How to notify OP on post restriction",
-                helpText:
-                    "Must have an option selected even if post restriction is disabled",
-                options: NotifyOpOnPostRestrictionOptions,
-                defaultValue: [NotifyOpOnPostRestrictionReplyOptions.ReplyByPM],
-                onValidate: selectFieldHasOptionChosen,
+                name: AppSetting.SubsequentPostRestrictionMessage,
+                type: "paragraph",
+                //name, commands, help
+                label: "Subsequent Post Restriction Message",
+                helpText: "Message to send users when they try to post while restricted from posting. Placeholders supported: {{name}}, {{commands}}, {{helpPage}}",
+                defaultValue: TemplateDefaults.SubsequentPostRestrictionMessage,
             },
             {
                 type: "number",
@@ -526,7 +514,7 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.MessageToRestrictedUsers,
                 label: "Message to restricted users",
                 helpText:
-                    "Sent on initial post. Required even if not used. Placeholders Supported: {{name}}, {{commands}}, {{markdown_guide}}, {{subreddit}}, {{help}}, {{discord}}",
+                    "Sent on initial post. Required even if not used. Placeholders Supported: {{name}}, {{commands}}, {{markdown_guide}}, {{subreddit}}, {{helpPage}}, {{discord}}",
                 defaultValue: TemplateDefaults.MessageToRestrictedUsers,
                 onValidate: paragraphFieldContainsText,
             },

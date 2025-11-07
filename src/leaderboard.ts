@@ -127,6 +127,4 @@ export async function updateLeaderboard(
             permLevel: correctPermissionLevel,
         });
     }
-
-    logger.info(`🏁 Leaderboard update complete for ${subredditName}.`);
 }

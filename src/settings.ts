@@ -21,7 +21,6 @@ export enum LeaderboardMode {
 }
 
 export enum AppSetting {
-    AlternatePointCommand = "alternatePointCommand",
     AlternatePointCommandUsers = "alternatePointCommandUsers",
     AwardsRequiredToCreateNewPosts = "awardsRequiredToCreateNewPosts",
     NotifyOnRestorePoints = "notifyOnRestorePoints",
@@ -618,15 +617,6 @@ export const appSettings: SettingsFormField[] = [
                 label: "Message to send users when they use the Alternate Award Command, but the mentioned user has already received a point on the post",
                 helpText: "Valid placeholders: {{name}}",
                 defaultValue: TemplateDefaults.PointAlreadyAwardedToUserMessage,
-            },
-            {
-                name: AppSetting.AlternatePointCommand,
-                type: "string",
-                label: "Alternate Award Command",
-                helpText:
-                    "Optional. Must contain a valid point awarding command if used. Placeholders Supported: {{user}}",
-                defaultValue: "!award {{user}}",
-                onValidate: alternateCommandInvalid,
             },
             {
                 name: AppSetting.AlternatePointCommandUsers,

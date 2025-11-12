@@ -55,6 +55,7 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 ## Version History
 ### 13.5.0
 * Make it so more than one user can be awarded on a post with the alternate command
+* Make it so the above feature works as intended (previously had weird behavior)
 ### 13.4.0
 * Put "Subsequent Post Restriction Message" after "Initial Post Restriction Message"
 * Make "Awards required to create new posts" allow a value of 0

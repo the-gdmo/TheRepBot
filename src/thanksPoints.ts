@@ -146,6 +146,13 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         },
     });
 
+    const awardsRequiredEntry =
+        (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) ?? 0;
+    if (awardsRequiredEntry === 0) {
+        logger.info(`❌ Post restriction is not enabled`);
+        return;
+    }
+
     // ──────────────── Redis Keys ────────────────
     const restrictedFlagKey = `restrictedUser:${author.username}`;
     const requiredKey = `awardsRequired:${author.username}`;
@@ -467,10 +474,9 @@ export async function handleThanksEvent(
         .filter(Boolean);
 
     const commandUsedNormalized = commandUsed?.toLowerCase().trim() ?? "";
-    const regex = new RegExp(
-        `${commandUsedNormalized}\\s+(?:u\\/)?([a-z0-9_-]{3,21})\\b`,
-        "i"
-    );
+    const regex =
+        new RegExp(`${commandUsedNormalized}\su\/([a-z0-9_-]{3,21})`, "gi") ||
+        new RegExp(`${commandUsedNormalized}\s([a-z0-9_-]{3,21})`, "gi");
     const match = commentBody.match(regex);
 
     if (match) {
@@ -540,7 +546,7 @@ export async function handleThanksEvent(
             mentionedUsername
         );
 
-        const alreadyKey = `${event.post.id}-${recipientUser}`;
+        const alreadyKey = `customAward-${event.comment.parentId}-${recipientUser}`;
         const pointName = (settings[AppSetting.PointName] as string) ?? "point";
 
         if (await context.redis.exists(alreadyKey)) {
@@ -549,7 +555,9 @@ export async function handleThanksEvent(
                     AppSetting.PointAlreadyAwardedToUserMessage
                 ] as string) ??
                     TemplateDefaults.PointAlreadyAwardedToUserMessage,
-                { name: pointName }
+                { name: pointName,
+                awardee: mentionedUsername,
+                }
             );
 
             const notify = ((settings[
@@ -578,6 +586,8 @@ export async function handleThanksEvent(
 
             logger.info(`❌ Duplicate award attempt by ${awarder}`);
             return;
+        } else {
+            await context.redis.set(alreadyKey, "1");
         }
         // ──────────────── Authorized Award ────────────────
         const redisKey = POINTS_STORE_KEY;
@@ -668,6 +678,7 @@ export async function handleThanksEvent(
 
         return; // ✅ handled via alt command
     }
+
     if (isLinkId(event.comment.parentId)) {
         logger.debug("❌ Parent ID is a link — ignoring.");
         return;
@@ -969,7 +980,7 @@ export async function handleThanksEvent(
     await context.redis.set(restrictedKey, newCount.toString());
 
     const awardsRequired =
-        (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) || 0;
+        (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) ?? 0;
     const remaining = Math.max(0, awardsRequired - newCount);
     await context.redis.set(requiredKey, remaining.toString());
 
@@ -1094,7 +1105,7 @@ export async function updateAuthorRedis(
     // ⚙️ Store remaining requirement if configured
     const settings = await context.settings.getAll();
     const awardsRequired =
-        (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) || 0;
+        (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) ?? 0;
 
     const remaining = Math.max(0, awardsRequired - newCount);
     if (remaining > 0) {

@@ -25,7 +25,6 @@ export enum AppSetting {
     AlternatePointCommandUsers = "alternatePointCommandUsers",
     AwardsRequiredToCreateNewPosts = "awardsRequiredToCreateNewPosts",
     NotifyOnRestorePoints = "notifyOnRestorePoints",
-    ForcePointAwarding = "forcePointAwarding",
     RestorePointsCommand = "restorePointsCommand",
     PointsRestoredMessage = "pointsRestoredMessage",
     NotifyOnSelfAward = "notifyOnSelfAward",
@@ -114,7 +113,7 @@ export enum TemplateDefaults {
     MessageToRestrictedUsers = "***ATTENTION to OP: You must award {{name}}s by replying to the successful comments. Valid command(s) are **{{commands}}**. Failure to do so may result in a ban.***\n\n***Commenters MUST put the location in spoiler tags.***\n\n*To hide text, write it like this `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({{markdown_guide}})*.",
     AlternateCommandSuccessMessage = "+1 {{name}} awarded to u/{{awardee}} [{{total}}{{symbol}}]. Leaderboard is located [here]({{leaderboard}}).",
     AlternateCommandFailMessage = "You do not have permission to use **{{altCommand}}** on specific users.",
-    PointAlreadyAwardedToUserMessage = "This comment has already been awarded a {{name}}.",
+    PointAlreadyAwardedToUserMessage = "{{awardee}} has already been awarded a {{name}} on this post.",
 }
 
 export enum AutoSuperuserReplyOptions {
@@ -476,31 +475,6 @@ export const appSettings: SettingsFormField[] = [
             "Settings to force point awarding before OP can create new posts",
         fields: [
             {
-                type: "boolean",
-                name: AppSetting.ForcePointAwarding,
-                label: "Force Point Awarding?",
-                helpText:
-                    "Force OP to award points before they can make new posts",
-                defaultValue: false,
-            },
-            {
-                //Mods exempt
-                type: "boolean",
-                name: AppSetting.ModeratorsExempt,
-                label: "Moderators Exempt",
-                helpText:
-                    "Decide whether or not point awarding is required for moderators as well",
-                defaultValue: true,
-            },
-            {
-                name: AppSetting.SubsequentPostRestrictionMessage,
-                type: "paragraph",
-                //name, commands, help
-                label: "Subsequent Post Restriction Message",
-                helpText: "Message to send users when they try to post while restricted from posting. Placeholders supported: {{name}}, {{commands}}, {{helpPage}}",
-                defaultValue: TemplateDefaults.SubsequentPostRestrictionMessage,
-            },
-            {
                 type: "number",
                 name: AppSetting.AwardsRequiredToCreateNewPosts,
                 label: "Awards required to create new posts",
@@ -510,12 +484,28 @@ export const appSettings: SettingsFormField[] = [
                 onValidate: numberFieldHasValidOption,
             },
             {
+                type: "boolean",
+                name: AppSetting.ModeratorsExempt,
+                label: "Moderators Exempt",
+                helpText:
+                    "Decide whether or not point awarding is required for moderators as well",
+                defaultValue: true,
+            },
+            {
                 type: "paragraph",
                 name: AppSetting.MessageToRestrictedUsers,
-                label: "Message to restricted users",
+                label: "Initial Post Restriction Message",
                 helpText:
                     "Sent on initial post. Required even if not used. Placeholders Supported: {{name}}, {{commands}}, {{markdown_guide}}, {{subreddit}}, {{helpPage}}, {{discord}}",
                 defaultValue: TemplateDefaults.MessageToRestrictedUsers,
+                onValidate: paragraphFieldContainsText,
+            },
+            {
+                name: AppSetting.SubsequentPostRestrictionMessage,
+                type: "paragraph",
+                label: "Subsequent Post Restriction Message",
+                helpText: "Required even if not used. Message to send users when they try to post while restricted from posting. Placeholders supported: {{name}}, {{commands}}, {{helpPage}}",
+                defaultValue: TemplateDefaults.SubsequentPostRestrictionMessage,
                 onValidate: paragraphFieldContainsText,
             },
         ],
@@ -626,7 +616,7 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.PointAlreadyAwardedToUserMessage,
                 type: "paragraph",
                 label: "Message to send users when they use the Alternate Award Command, but the mentioned user has already received a point on the post",
-                helpText: "",
+                helpText: "Valid placeholders: {{name}}",
                 defaultValue: TemplateDefaults.PointAlreadyAwardedToUserMessage,
             },
             {
@@ -1097,7 +1087,7 @@ export function numberFieldHasValidOption(
         return "Value must be a number.";
     }
 
-    if (event.value <= 0) {
+    if (event.value < 0) {
         return 'A non-negative number must be entered into the "Awards Required To Create New Posts" even if "Force Point Awarding" is disabled.';
     }
 }

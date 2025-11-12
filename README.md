@@ -53,6 +53,12 @@ If the application is removed from a subreddit, all data is deleted although the
 This app is open source and licensed under the BSD 3-Clause License. You can find the source code on GitHub [here](https://github.com/the-gdmo/TheRepBot).
 
 ## Version History
+### 13.5.0
+* Make it so more than one user can be awarded on a post with the alternate command
+### 13.4.0
+* Put "Subsequent Post Restriction Message" after "Initial Post Restriction Message"
+* Make "Awards required to create new posts" allow a value of 0
+* If "Awards required to create new posts" is set to 0, post restriction will be disabled
 ### 13.3.2
 * Add a message for subsequent posts if a user is restricted
 * Remove "How to notify OP on post restriction" setting as it is unused

@@ -53,6 +53,11 @@ If the application is removed from a subreddit, all data is deleted although the
 This app is open source and licensed under the BSD 3-Clause License. You can find the source code on GitHub [here](https://github.com/the-gdmo/TheRepBot).
 
 ## Version History
+### 13.6.0
+* Make settings more logical and categorized based on what they are for (mainly applies to Moderator/Trusted User Settings)
+* Allow Trusted Users to use the "Mod Award Command"
+* Notify non-Trusted Users/non-moderators that they don't have permission to use the command
+* Make it so mod awarding and related notifications work
 ### 13.5.0
 * Make it so more than one user can be awarded on a post with the alternate command
 * Make it so the above feature works as intended (previously had weird behavior)

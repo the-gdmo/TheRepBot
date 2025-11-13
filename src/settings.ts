@@ -88,7 +88,12 @@ export enum AppSetting {
     NotifyOnAlternateCommandSuccess = "notifyOnAlternateCommandSuccessMessage",
     NotifyOnPointAlreadyAwardedToUser = "notifyOnPointAlreadyAwardedToUser",
     PointAlreadyAwardedToUserMessage = "notifyOnPointAlreadyAwardedToUserMessage",
-    SubsequentPostRestrictionMessage = "subsequentPostRestrictionMessage"
+    SubsequentPostRestrictionMessage = "subsequentPostRestrictionMessage",
+    ModAwardCommandSuccess = "modAwardCommandSuccess",
+    ModAwardCommandFail = "modAwardCommandFail",
+    NotifyOnModAwardSuccess = "notifyOnModAwardSuccess",
+    NotifyOnModAwardFail = "notifyOnModAwardFail",
+    ModAwardAlreadyGiven = "modAwardAlreadyGiven",
 }
 
 export enum TemplateDefaults {
@@ -96,7 +101,6 @@ export enum TemplateDefaults {
     AwardRequirementMessage = "Hello u/{{author}}. Before you can create new posts, you must award **{{requirement}}** {{name}}s to users who respond on [your most recent post]({{permalink}}).",
     UnflairedPostMessage = "Points cannot be awarded on posts without flair. Please award only on flaired posts.",
     OPOnlyDisallowedMessage = "Only moderators, approved users, and Post Authors (OPs) can award {{name}}s.",
-    ApproveMessage = "A moderator gave an award! u/{{awardee}} now has {{total}}{{symbol}} {{name}}s.",
     LeaderboardHelpPageMessage = "[How to award points with RepBot.]({{helpPage}})",
     DisallowedFlairMessage = "Points cannot be awarded on posts with this flair. Please choose another post.",
     UsersWhoCannotAwardPointsMessage = "You do not have permission to award {{name}}s.",
@@ -112,7 +116,10 @@ export enum TemplateDefaults {
     MessageToRestrictedUsers = "***ATTENTION to OP: You must award {{name}}s by replying to the successful comments. Valid command(s) are **{{commands}}**. Failure to do so may result in a ban.***\n\n***Commenters MUST put the location in spoiler tags.***\n\n*To hide text, write it like this `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({{markdown_guide}})*.",
     AlternateCommandSuccessMessage = "+1 {{name}} awarded to u/{{awardee}} [{{total}}{{symbol}}]. Leaderboard is located [here]({{leaderboard}}).",
     AlternateCommandFailMessage = "You do not have permission to use **{{altCommand}}** on specific users.",
-    PointAlreadyAwardedToUserMessage = "{{awardee}} has already been awarded a {{name}} on this post.",
+    PointAlreadyAwardedToUserMessage = "{{awardee}} has already received a {{name}} for this post.",
+    ModAwardCommandSuccessMessage = "Moderator u/{{awarder}} gave an award! u/{{awardee}} now has {{total}}{{symbol}} {{name}}s. Leaderboard is located [here]({{leaderboard}}).",
+    ModAwardCommandFailMessage = "Hello {{awarder}}. You must be a moderator or trusted user to use {{command}}.",
+    ModAwardAlreadyGivenMessage = "{{awardee}} has already received a mod award for this comment.",
 }
 
 export enum AutoSuperuserReplyOptions {
@@ -357,7 +364,10 @@ const NotifyOnSelfAwardReplyOptionChoices = [
 ];
 
 const NotifyOnAlternateCommandFailReplyOptionChoices = [
-    { label: "No Notification", value: NotifyOnAlternateCommandFailReplyOptions.NoReply },
+    {
+        label: "No Notification",
+        value: NotifyOnAlternateCommandFailReplyOptions.NoReply,
+    },
     {
         label: "Send user a private message",
         value: NotifyOnAlternateCommandFailReplyOptions.ReplyByPM,
@@ -369,7 +379,10 @@ const NotifyOnAlternateCommandFailReplyOptionChoices = [
 ];
 
 const NotifyOnAlternateCommandSuccessReplyOptionChoices = [
-    { label: "No Notification", value: NotifyOnAlternateCommandSuccessReplyOptions.NoReply },
+    {
+        label: "No Notification",
+        value: NotifyOnAlternateCommandSuccessReplyOptions.NoReply,
+    },
     {
         label: "Send user a private message",
         value: NotifyOnAlternateCommandSuccessReplyOptions.ReplyByPM,
@@ -427,7 +440,10 @@ export enum NotifyOnPointAlreadyAwardedToUserReplyOptions {
 }
 
 const NotifyOnPointAlreadyAwardedToUserOptionChoices = [
-    { label: "No Notification", value: NotifyOnPointAlreadyAwardedToUserReplyOptions.NoReply },
+    {
+        label: "No Notification",
+        value: NotifyOnPointAlreadyAwardedToUserReplyOptions.NoReply,
+    },
     {
         label: "Send user a private message",
         value: NotifyOnPointAlreadyAwardedToUserReplyOptions.ReplyByPM,
@@ -436,7 +452,49 @@ const NotifyOnPointAlreadyAwardedToUserOptionChoices = [
         label: "Reply as comment",
         value: NotifyOnPointAlreadyAwardedToUserReplyOptions.ReplyAsComment,
     },
-]
+];
+
+export enum NotifyOnModAwardSuccessReplyOptions {
+    NoReply = "none",
+    ReplyByPM = "replybypm",
+    ReplyAsComment = "replybycomment",
+}
+
+export enum NotifyOnModAwardFailReplyOptions {
+    NoReply = "none",
+    ReplyByPM = "replybypm",
+    ReplyAsComment = "replybycomment",
+}
+
+const NotifyOnModAwardSuccessOptionChoices = [
+    {
+        label: "No Notification",
+        value: NotifyOnModAwardSuccessReplyOptions.NoReply,
+    },
+    {
+        label: "Send user a private message",
+        value: NotifyOnModAwardSuccessReplyOptions.ReplyByPM,
+    },
+    {
+        label: "Reply as comment",
+        value: NotifyOnModAwardSuccessReplyOptions.ReplyAsComment,
+    },
+];
+
+const NotifyOnModAwardFailOptionChoices = [
+    {
+        label: "No Notification",
+        value: NotifyOnModAwardFailReplyOptions.NoReply,
+    },
+    {
+        label: "Send user a private message",
+        value: NotifyOnModAwardFailReplyOptions.ReplyByPM,
+    },
+    {
+        label: "Reply as comment",
+        value: NotifyOnModAwardFailReplyOptions.ReplyAsComment,
+    },
+];
 
 const ExistingFlairHandlingOptionChoices = [
     {
@@ -503,7 +561,8 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.SubsequentPostRestrictionMessage,
                 type: "paragraph",
                 label: "Subsequent Post Restriction Message",
-                helpText: "Required even if not used. Message to send users when they try to post while restricted from posting. Placeholders supported: {{name}}, {{commands}}, {{helpPage}}",
+                helpText:
+                    "Required even if not used. Message to send users when they try to post while restricted from posting. Placeholders supported: {{name}}, {{commands}}, {{helpPage}}",
                 defaultValue: TemplateDefaults.SubsequentPostRestrictionMessage,
                 onValidate: paragraphFieldContainsText,
             },
@@ -521,6 +580,37 @@ export const appSettings: SettingsFormField[] = [
                 options: AccessControlOptionChoices,
                 defaultValue: ["moderators-superusers-and-op"],
                 onValidate: selectFieldHasOptionChosen,
+            },
+            {
+                type: "paragraph",
+                name: AppSetting.PointTriggerWords,
+                label: "Trigger Words",
+                helpText:
+                    "List of trigger words users can type to award points (e.g., !award, .point). Each command should be on a new line. If you want to use regex, enable the option below",
+                defaultValue: "!award\n.award",
+                onValidate: noValidTriggerWords,
+            },
+            {
+                name: AppSetting.ThanksCommandUsesRegex,
+                type: "boolean",
+                label: "Treat user commands as regular expressions",
+                defaultValue: false,
+                onValidate: validateRegexes,
+            },
+            {
+                type: "string",
+                name: AppSetting.PointName,
+                label: "Point Name",
+                helpText:
+                    "Singular form of the name shown in award messages, like 'point', 'kudo', etc. Lowercase is recommended",
+                defaultValue: "point",
+            },
+            {
+                type: "string",
+                name: AppSetting.PointSymbol,
+                label: "Point Symbol",
+                helpText:
+                    "Optional emoji or character to show alongside point totals. Leave empty for no symbol",
             },
             {
                 type: "select",
@@ -594,20 +684,49 @@ export const appSettings: SettingsFormField[] = [
                     "Message shown when a user tries to award points on a post with a disallowed flair",
                 defaultValue: TemplateDefaults.DisallowedFlairMessage,
             },
+        ],
+    },
+    {
+        type: "group",
+        label: "Moderator/Trusted User Settings",
+        fields: [
             {
                 type: "paragraph",
-                name: AppSetting.PointTriggerWords,
-                label: "Trigger Words",
+                name: AppSetting.SuperUsers,
+                label: "A list of trusted users other than mods who can award points",
+                helpText: "Each username should be on a new line",
+            },
+            {
+                type: "select",
+                name: AppSetting.NotifyOnAutoSuperuser,
+                label: "Notify users who reach the auto trusted user threshold",
+                options: NotifyOnAutoSuperuserReplyOptionChoices,
+                multiSelect: false,
+                defaultValue: [AutoSuperuserReplyOptions.NoReply],
+                onValidate: selectFieldHasOptionChosen,
+            },
+            {
+                type: "number",
+                name: AppSetting.AutoSuperuserThreshold,
+                label: "Treat users with this many points as automatically a trusted user",
                 helpText:
-                    "List of trigger words users can type to award points (e.g., !award, .point). Each command should be on a new line. If you want to use regex, enable the option below",
-                defaultValue: "!award\n.award",
-                onValidate: noValidTriggerWords,
+                    "If zero, only explicitly named users above will be treated as trusted users",
+            },
+            {
+                type: "paragraph",
+                name: AppSetting.NotifyOnAutoSuperuserTemplate,
+                label: "Message sent when a user reaches the trusted user threshold",
+                helpText:
+                    "Placeholders Supported: {{name}}, {{threshold}}, {{command}}",
+                defaultValue: TemplateDefaults.NotifyOnSuperuserTemplate,
+                onValidate: paragraphFieldContainsText,
             },
             {
                 name: AppSetting.NotifyOnPointAlreadyAwardedToUser,
                 type: "select",
                 label: "Notify on point already awarded to user",
-                helpText: "How to notify the user when they try to use the alternate command on a user who has already received a point for that post",
+                helpText:
+                    "How to notify the user when they try to use the alternate command on a user who has already received a point for that post",
                 options: NotifyOnPointAlreadyAwardedToUserOptionChoices,
                 onValidate: selectFieldHasOptionChosen,
             },
@@ -615,7 +734,7 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.PointAlreadyAwardedToUserMessage,
                 type: "paragraph",
                 label: "Message to send users when they use the Alternate Award Command, but the mentioned user has already received a point on the post",
-                helpText: "Valid placeholders: {{name}}",
+                helpText: "Placeholders Supported: {{awardee}}, {{name}}",
                 defaultValue: TemplateDefaults.PointAlreadyAwardedToUserMessage,
             },
             {
@@ -629,9 +748,12 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.NotifyOnAlternateCommandSuccess,
                 type: "select",
                 label: "Notify on alternate command success",
-                helpText: "How to notify users when they use the alternate command and it is successful",
+                helpText:
+                    "How to notify users when they use the alternate command and it is successful",
                 options: NotifyOnAlternateCommandSuccessReplyOptionChoices,
-                defaultValue: [NotifyOnAlternateCommandSuccessReplyOptions.ReplyAsComment],
+                defaultValue: [
+                    NotifyOnAlternateCommandSuccessReplyOptions.ReplyAsComment,
+                ],
             },
             {
                 name: AppSetting.AlternateCommandSuccessMessage,
@@ -645,12 +767,14 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.NotifyOnAlternateCommandFail,
                 type: "select",
                 label: "Notify on alternate command fail",
-                helpText: "How to notify users when they use the alternate command and are not allowed to",
+                helpText:
+                    "How to notify users when they use the alternate command and are not allowed to",
                 options: NotifyOnAlternateCommandFailReplyOptionChoices,
-                defaultValue: [NotifyOnAlternateCommandFailReplyOptions.ReplyByPM],
+                defaultValue: [
+                    NotifyOnAlternateCommandFailReplyOptions.ReplyByPM,
+                ],
             },
             {
-                
                 name: AppSetting.AlternateCommandFailMessage,
                 type: "paragraph",
                 label: "Alternate Command Fail Message",
@@ -659,34 +783,49 @@ export const appSettings: SettingsFormField[] = [
                 defaultValue: TemplateDefaults.AlternateCommandFailMessage,
             },
             {
-                name: AppSetting.ThanksCommandUsesRegex,
-                type: "boolean",
-                label: "Treat user commands as regular expressions",
-                defaultValue: false,
-                onValidate: validateRegexes,
-            },
-            {
                 name: AppSetting.ModAwardCommand,
                 type: "string",
-                label: "Superuser/Mod award command",
+                label: "Trusted User/Mod award command",
                 helpText:
-                    "Optional. Alternate command for mods and super users to award reputation points",
+                    "Optional. Alternate command for mods and trusted users to award reputation points",
                 defaultValue: "!modaward",
             },
             {
-                type: "string",
-                name: AppSetting.PointName,
-                label: "Point Name",
-                helpText:
-                    "Singular form of the name shown in award messages, like 'point', 'kudo', etc. Lowercase is recommended",
-                defaultValue: "point",
+                name: AppSetting.NotifyOnModAwardSuccess,
+                type: "select",
+                label: "Notify on mod award success",
+                helpText: "How to notify users when a moderator or trusted user awards a point",
+                options: NotifyOnModAwardSuccessOptionChoices,
+                onValidate: selectFieldHasOptionChosen,
             },
             {
-                type: "string",
-                name: AppSetting.PointSymbol,
-                label: "Point Symbol",
-                helpText:
-                    "Optional emoji or character to show alongside point totals. Leave empty for no symbol",
+                name: AppSetting.ModAwardCommandSuccess,
+                type: "paragraph",
+                label: "Mod Award Success Message",
+                helpText: `Optional. Message to send users when they successfully award a message with the "Trusted User/Mod award command". Placeholders Supported: {{awardee}}, {{awarder}}, {{symbol}}, {{total}}, {{name}}, {{leaderboard}}`,
+                defaultValue: TemplateDefaults.ModAwardCommandSuccessMessage,
+            },
+            {
+                name: AppSetting.NotifyOnModAwardFail,
+                type: "select",
+                label: "Notify on mod award fail",
+                helpText: `Applicable to both "Mod Award Fail Message" and "Message to send user when the "Trusted User/Mod award command" has already been used on the comment."`,
+                options: NotifyOnModAwardFailOptionChoices,
+                onValidate: selectFieldHasOptionChosen,
+            },
+            {
+                name: AppSetting.ModAwardCommandFail,
+                type: "paragraph",
+                label: "Mod Award Fail Message",
+                helpText: `Optional. Message to send users when they aren't allowed to use the "Trusted User/Mod award command". Placeholders Supported: {{command}}, {{name}}, {{awarder}}`,
+                defaultValue: TemplateDefaults.ModAwardCommandFailMessage,
+            },
+            {
+                name: AppSetting.ModAwardAlreadyGiven,
+                type: "paragraph",
+                label: `Message to send user when the "Trusted User/Mod award command" has already been used on the comment.`,
+                helpText: "Optional. Placeholders Supported: {{awardee}}, {{name}}",
+                defaultValue: TemplateDefaults.ModAwardAlreadyGivenMessage,
             },
         ],
     },
@@ -726,36 +865,6 @@ export const appSettings: SettingsFormField[] = [
         label: "Notification Settings",
         fields: [
             {
-                type: "paragraph",
-                name: AppSetting.SuperUsers,
-                label: "List of Superusers",
-                helpText:
-                    "List of usernames who can award points even if normal users do not have permission to. Each username should be on a new line",
-            },
-            {
-                type: "select",
-                name: AppSetting.NotifyOnAutoSuperuser,
-                label: "Notify users when they become superusers",
-                options: NotifyOnAutoSuperuserReplyOptionChoices,
-                defaultValue: [AutoSuperuserReplyOptions.NoReply],
-            },
-            {
-                type: "number",
-                name: AppSetting.AutoSuperuserThreshold,
-                label: "Auto Superuser Threshold",
-                helpText:
-                    "Number of points a user must have to become a superuser. Superusers can award points even if normal users do not have permission to.",
-                defaultValue: 100,
-            },
-            {
-                type: "paragraph",
-                name: AppSetting.NotifyOnAutoSuperuserTemplate,
-                label: "Notify On Auto Superuser Template",
-                helpText:
-                    "Message sent to users when they become superusers. Placeholders Supported: {{name}}, {{threshold}}, {{command}}",
-                defaultValue: TemplateDefaults.NotifyOnSuperuserTemplate,
-            },
-            {
                 type: "select",
                 name: AppSetting.NotifyOnPointAlreadyAwarded,
                 label: "Notify users when they try to award a comment they already awarded",
@@ -770,6 +879,7 @@ export const appSettings: SettingsFormField[] = [
                 helpText:
                     "Shown when a user tries to award a message they've already awarded. Placeholders Supported: {{name}}, {{awarder}}",
                 defaultValue: TemplateDefaults.DuplicateAwardMessage,
+                onValidate: paragraphFieldContainsText,
             },
             {
                 type: "select",
@@ -800,8 +910,9 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.SuccessMessage,
                 label: "Success Message",
                 helpText:
-                    "Message when a point is awarded. Placeholders Supported: {{awardee}}, {{awarder}} , {{symbol}}, {{total}}, {{name}}, {{leaderboard}}",
+                    "Message when a point is awarded. Placeholders Supported: {{awardee}}, {{awarder}}, {{symbol}}, {{total}}, {{name}}, {{leaderboard}}",
                 defaultValue: TemplateDefaults.NotifyOnSuccessTemplate,
+                onValidate: paragraphFieldContainsText,
             },
             {
                 type: "select",
@@ -850,14 +961,6 @@ export const appSettings: SettingsFormField[] = [
                 options: NotifyOnModApproveReplyOptionChoices,
                 defaultValue: [NotifyOnModApproveReplyOptions.NoReply],
                 onValidate: selectFieldHasOptionChosen,
-            },
-            {
-                type: "paragraph",
-                name: AppSetting.ApproveMessage,
-                label: "Moderator Award Message",
-                helpText:
-                    "Placeholders supported: {{awarder}}, {{awardee}}, {{permalink}}, {{total}}, {{symbol}}, {{name}}, {{leaderboard}}",
-                defaultValue: TemplateDefaults.ApproveMessage,
             },
         ],
     },

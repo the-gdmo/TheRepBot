@@ -53,6 +53,8 @@ If the application is removed from a subreddit, all data is deleted although the
 This app is open source and licensed under the BSD 3-Clause License. You can find the source code on GitHub [here](https://github.com/the-gdmo/TheRepBot).
 
 ## Version History
+### 13.6.1
+* Make Mod Award Success and Fail notification settings have a default value of "No Notification"
 ### 13.6.0
 * Make settings more logical and categorized based on what they are for (mainly applies to Moderator/Trusted User Settings)
 * Allow Trusted Users to use the "Mod Award Command"

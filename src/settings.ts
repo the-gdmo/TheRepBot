@@ -728,6 +728,7 @@ export const appSettings: SettingsFormField[] = [
                 helpText:
                     "How to notify the user when they try to use the alternate command on a user who has already received a point for that post",
                 options: NotifyOnPointAlreadyAwardedToUserOptionChoices,
+                defaultValue: [PointAwardedReplyOptions.NoReply],
                 onValidate: selectFieldHasOptionChosen,
             },
             {
@@ -796,6 +797,7 @@ export const appSettings: SettingsFormField[] = [
                 label: "Notify on mod award success",
                 helpText: "How to notify users when a moderator or trusted user awards a point",
                 options: NotifyOnModAwardSuccessOptionChoices,
+                defaultValue: [NotifyOnModAwardSuccessReplyOptions.NoReply],
                 onValidate: selectFieldHasOptionChosen,
             },
             {

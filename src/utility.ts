@@ -101,7 +101,7 @@ export class SafeWikiClient {
                 ...wikiPage,
                 contentHtml: "",
                 revisionId: "",
-                revisionDate: 2025,
+                revisionDate: Date.now(),
                 contentMd: "",
                 mayRevise: true,
             };
@@ -157,7 +157,7 @@ export class SafeWikiClient {
                 ...created,
                 contentHtml: "",
                 revisionId: "",
-                revisionDate: 2025,
+                revisionDate: Date.now(),
                 contentMd: "",
                 mayRevise: true,
             };

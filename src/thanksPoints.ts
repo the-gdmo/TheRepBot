@@ -9,13 +9,12 @@ import {
     User,
 } from "@devvit/public-api";
 import { CommentSubmit, CommentUpdate, PostSubmit } from "@devvit/protos";
-import { isModerator } from "./utility.js";
+import { isModerator, SafeWikiClient } from "./utility.js";
 import {
     ExistingFlairOverwriteHandling,
     AppSetting,
     TemplateDefaults,
     NotifyOnSelfAwardReplyOptions,
-    NotifyOpOnPostRestrictionReplyOptions,
     NotifyOnSuccessReplyOptions,
     NotifyOnPointAlreadyAwardedReplyOptions,
     NotifyOnAlternateCommandSuccessReplyOptions,
@@ -36,7 +35,11 @@ import {
     manualPostRestrictionRemovalForm,
     manualSetPointsForm,
 } from "./main.js";
-import { UPDATE_LEADERBOARD_JOB } from "./constants.js";
+import {
+    InitialUserWikiOptions,
+    updateUserWikiGiven,
+    updateUserWikiReceived,
+} from "./leaderboard.js";
 
 export const POINTS_STORE_KEY = "thanksPointsStore";
 
@@ -903,6 +906,19 @@ export async function handleThanksEvent(
         logger.info(
             `🏅 ALT award: ${awarder} → ${mentionedUsername} +1 ${pointName}`
         );
+        const safeWiki = new SafeWikiClient(context.reddit);
+
+        if (!safeWiki.getWikiPage(subredditName, `user/${awarder}`)) {
+            await InitialUserWikiOptions(context, awarder);
+        }
+        if (!safeWiki.getWikiPage(subredditName, `user/${mentionedUsername}`)) {
+            await InitialUserWikiOptions(context, mentionedUsername);
+            return;
+        }
+
+        await updateUserWikiReceived(context, mentionedUsername); // awardee
+        await updateUserWikiGiven(context, awarder); // awarder
+
         return; // ALT path handled fully
     }
 
@@ -1268,6 +1284,19 @@ export async function handleThanksEvent(
             `🏅 MOD award: ${awarder} → ${modAwardUsername} +1 ${pointName}`
         );
 
+        const safeWiki = new SafeWikiClient(context.reddit);
+
+        if (!safeWiki.getWikiPage(subredditName, `user/${awarder}`)) {
+            await InitialUserWikiOptions(context, awarder);
+        }
+        if (!safeWiki.getWikiPage(subredditName, `user/${modAwardUsername}`)) {
+            await InitialUserWikiOptions(context, modAwardUsername);
+            return;
+        }
+
+        await updateUserWikiReceived(context, modAwardUsername); // awardee
+        await updateUserWikiGiven(context, awarder); // awarder
+
         return; // ✔ DONE — exit before normal flow starts
     }
 
@@ -1489,6 +1518,20 @@ export async function handleThanksEvent(
     }
 
     logger.info(`🏅 NORMAL award: ${awarder} → ${recipient} +1 ${pointName}`);
+    const safeWiki = new SafeWikiClient(context.reddit);
+
+    if (!safeWiki.getWikiPage(subredditName, `user/${awarder}`)) {
+        await InitialUserWikiOptions(context, awarder);
+    } else {
+        await updateUserWikiGiven(context, awarder); // awarder
+    }
+    if (!safeWiki.getWikiPage(subredditName, `user/${recipient}`)) {
+        await InitialUserWikiOptions(context, recipient);
+        await updateUserWikiReceived(context, recipient); // awardee
+        return;
+    }
+
+    await updateUserWikiReceived(context, recipient); // awardee
 
     // Restriction counters (normal)
     {

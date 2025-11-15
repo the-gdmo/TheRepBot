@@ -705,7 +705,7 @@ export async function handleThanksEvent(
     }
 
     if (
-        triggerUsed !== modCommand &&
+        triggerUsed  &&
         mentionedUsername &&
         /^[a-z0-9_-]{3,21}$/.test(mentionedUsername)
     ) {
@@ -902,60 +902,6 @@ export async function handleThanksEvent(
         logger.info(
             `🏅 ALT award: ${awarder} → ${mentionedUsername} +1 ${pointName}`
         );
-        const safeWiki = new SafeWikiClient(context.reddit);
-
-        let user = undefined;
-
-        user = await context.reddit.getUserByUsername(mentionedUsername);
-        if (!user) {
-            logger.warn("⚠️ User lookup returned null/undefined", {
-                mentionedUsername,
-            });
-            return;
-        }
-
-        // ─────────────────────────────────────────────────────────────
-        // User Wiki Handling (awarder + recipient)
-        // ─────────────────────────────────────────────────────────────
-        const awarderPage = await safeWiki.getWikiPage(
-            subredditName,
-            `user/${awarder}`
-        );
-        const recipientPage = await safeWiki.getWikiPage(
-            subredditName,
-            `user/${user}`
-        );
-
-        if (!awarderPage) {
-            logger.info("📄 Creating missing awarder wiki", { awarder });
-            await InitialUserWikiOptions(context, awarder);
-        }
-
-        if (!recipientPage) {
-            logger.info("📄 Creating missing recipient wiki", { user });
-            await InitialUserWikiOptions(context, user.username);
-        }
-
-        // After creation, reload pages
-        const awarderPageNow = await safeWiki.getWikiPage(
-            subredditName,
-            `user/${awarder}`
-        );
-        const recipientPageNow = await safeWiki.getWikiPage(
-            subredditName,
-            `user/${user}`
-        );
-
-        if (awarderPageNow && recipientPageNow) {
-            const givenData = {
-                postTitle: event.post.title,
-                postUrl: event.post.permalink,
-                commentUrl: event.comment.permalink,
-            };
-
-            await updateUserWiki(context, awarder, user.username, givenData);
-        }
-
         return; // ALT path handled fully
     }
 

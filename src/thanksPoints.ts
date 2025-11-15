@@ -35,11 +35,7 @@ import {
     manualPostRestrictionRemovalForm,
     manualSetPointsForm,
 } from "./main.js";
-import {
-    InitialUserWikiOptions,
-    updateUserWikiGiven,
-    updateUserWikiReceived,
-} from "./leaderboard.js";
+import { InitialUserWikiOptions, updateUserWiki } from "./leaderboard.js";
 
 export const POINTS_STORE_KEY = "thanksPointsStore";
 
@@ -908,16 +904,57 @@ export async function handleThanksEvent(
         );
         const safeWiki = new SafeWikiClient(context.reddit);
 
-        if (!safeWiki.getWikiPage(subredditName, `user/${awarder}`)) {
-            await InitialUserWikiOptions(context, awarder);
-        }
-        if (!safeWiki.getWikiPage(subredditName, `user/${mentionedUsername}`)) {
-            await InitialUserWikiOptions(context, mentionedUsername);
+        let user = undefined;
+
+        user = await context.reddit.getUserByUsername(mentionedUsername);
+        if (!user) {
+            logger.warn("⚠️ User lookup returned null/undefined", {
+                mentionedUsername,
+            });
             return;
         }
 
-        await updateUserWikiReceived(context, mentionedUsername); // awardee
-        await updateUserWikiGiven(context, awarder); // awarder
+        // ─────────────────────────────────────────────────────────────
+        // User Wiki Handling (awarder + recipient)
+        // ─────────────────────────────────────────────────────────────
+        const awarderPage = await safeWiki.getWikiPage(
+            subredditName,
+            `user/${awarder}`
+        );
+        const recipientPage = await safeWiki.getWikiPage(
+            subredditName,
+            `user/${user}`
+        );
+
+        if (!awarderPage) {
+            logger.info("📄 Creating missing awarder wiki", { awarder });
+            await InitialUserWikiOptions(context, awarder);
+        }
+
+        if (!recipientPage) {
+            logger.info("📄 Creating missing recipient wiki", { user });
+            await InitialUserWikiOptions(context, user.username);
+        }
+
+        // After creation, reload pages
+        const awarderPageNow = await safeWiki.getWikiPage(
+            subredditName,
+            `user/${awarder}`
+        );
+        const recipientPageNow = await safeWiki.getWikiPage(
+            subredditName,
+            `user/${user}`
+        );
+
+        if (awarderPageNow && recipientPageNow) {
+            const givenData = {
+                postTitle: event.post.title,
+                postUrl: event.post.permalink,
+                commentUrl: event.comment.permalink,
+            };
+
+            await updateUserWiki(context, awarder, user.username, givenData);
+        }
 
         return; // ALT path handled fully
     }
@@ -1286,16 +1323,48 @@ export async function handleThanksEvent(
 
         const safeWiki = new SafeWikiClient(context.reddit);
 
-        if (!safeWiki.getWikiPage(subredditName, `user/${awarder}`)) {
+        // ─────────────────────────────────────────────────────────────
+        // User Wiki Handling (awarder + recipient)
+        // ─────────────────────────────────────────────────────────────
+        const awarderPage = await safeWiki.getWikiPage(
+            subredditName,
+            `user/${awarder}`
+        );
+        const recipientPage = await safeWiki.getWikiPage(
+            subredditName,
+            `user/${recipient}`
+        );
+
+        if (!awarderPage) {
+            logger.info("📄 Creating missing awarder wiki", { awarder });
             await InitialUserWikiOptions(context, awarder);
         }
-        if (!safeWiki.getWikiPage(subredditName, `user/${modAwardUsername}`)) {
-            await InitialUserWikiOptions(context, modAwardUsername);
-            return;
+
+        if (!recipientPage) {
+            logger.info("📄 Creating missing recipient wiki", { recipient });
+            await InitialUserWikiOptions(context, recipient);
         }
 
-        await updateUserWikiReceived(context, modAwardUsername); // awardee
-        await updateUserWikiGiven(context, awarder); // awarder
+        // After creation, reload pages
+        const awarderPageNow = await safeWiki.getWikiPage(
+            subredditName,
+            `user/${awarder}`
+        );
+        const recipientPageNow = await safeWiki.getWikiPage(
+            subredditName,
+            `user/${recipient}`
+        );
+
+        if (awarderPageNow && recipientPageNow) {
+            const givenData = {
+                postTitle: event.post.title,
+                postUrl: event.post.permalink,
+                recipient,
+                commentUrl: event.comment.permalink,
+            };
+
+            await updateUserWiki(context, awarder, recipient, givenData);
+        }
 
         return; // ✔ DONE — exit before normal flow starts
     }
@@ -1520,18 +1589,48 @@ export async function handleThanksEvent(
     logger.info(`🏅 NORMAL award: ${awarder} → ${recipient} +1 ${pointName}`);
     const safeWiki = new SafeWikiClient(context.reddit);
 
-    if (!safeWiki.getWikiPage(subredditName, `user/${awarder}`)) {
+    // ─────────────────────────────────────────────────────────────
+    // User Wiki Handling (awarder + recipient)
+    // ─────────────────────────────────────────────────────────────
+    const awarderPage = await safeWiki.getWikiPage(
+        subredditName,
+        `user/${awarder}`
+    );
+    const recipientPage = await safeWiki.getWikiPage(
+        subredditName,
+        `user/${recipient}`
+    );
+
+    if (!awarderPage) {
+        logger.info("📄 Creating missing awarder wiki", { awarder });
         await InitialUserWikiOptions(context, awarder);
-    } else {
-        await updateUserWikiGiven(context, awarder); // awarder
-    }
-    if (!safeWiki.getWikiPage(subredditName, `user/${recipient}`)) {
-        await InitialUserWikiOptions(context, recipient);
-        await updateUserWikiReceived(context, recipient); // awardee
-        return;
     }
 
-    await updateUserWikiReceived(context, recipient); // awardee
+    if (!recipientPage) {
+        logger.info("📄 Creating missing recipient wiki", { recipient });
+        await InitialUserWikiOptions(context, recipient);
+    }
+
+    // After creation, reload pages
+    const awarderPageNow = await safeWiki.getWikiPage(
+        subredditName,
+        `user/${awarder}`
+    );
+    const recipientPageNow = await safeWiki.getWikiPage(
+        subredditName,
+        `user/${recipient}`
+    );
+
+    if (awarderPageNow && recipientPageNow) {
+        const givenData = {
+            postTitle: event.post.title,
+            postUrl: event.post.permalink,
+            recipient,
+            commentUrl: event.comment.permalink,
+        };
+
+        await updateUserWiki(context, awarder, recipient, givenData);
+    }
 
     // Restriction counters (normal)
     {

@@ -25,42 +25,38 @@ function markdownEscape(input: string): string {
     return input.replace(/([\\`*_{}\[\]()#+\-.!])/g, "\\$1");
 }
 
-function formatDate(dateString: string): string {
+function formatDate(dateString: number): string {
     const d = new Date(dateString);
     return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
 }
 
 function extractSection(content: string, header: string): string | null {
-    const regex = new RegExp(
-        `## ${header}[\\s\\S]*?(?=\\n## |$)`,
-        "i"
-    );
+    const regex = new RegExp(`## ${header}`, "i");
     const match = content.match(regex);
     return match ? match[0] : null;
 }
 
 function extractTable(section: string): string {
-    const tableMatch = section.match(/\|[\s\S]+/);
-    return tableMatch ? tableMatch[0].trim() : "No history available.";
+    const match = section.match(/^\|.*$/gms);
+    return match ? match.join("\n").trim() : "No history available.";
 }
 
 function buildReceivedTable(received: any[]): string {
-    if (!received.length) return "No history available.";
+    if (!received.length) return "\n\nNo history available.";
 
     return `
 | Date | Submission |
 |------|------------|
 ${received
     .map(
-        (r) =>
-            `| ${formatDate(r.date)} | [${escapeTitle(r.postTitle)}](${r.postUrl}) |`
+        (r) => `| ${formatDate(Date.now())} | [${r.postTitle}](${r.postUrl}) |`
     )
     .join("\n")}
 `.trim();
 }
 
 function buildGivenTable(given: any[]): string {
-    if (!given.length) return "No history available.";
+    if (!given.length) return "\n\nNo history available.";
 
     return `
 | Date | Submission | Snipe Comment | Awarded To |
@@ -68,7 +64,9 @@ function buildGivenTable(given: any[]): string {
 ${given
     .map(
         (g) =>
-            `| ${formatDate(g.date)} | [${escapeTitle(g.postTitle)}](${g.postUrl}) | [Link](${g.commentUrl}) | u/${g.receiver} |`
+            `| ${formatDate(g.date)} | [${escapeTitle(g.postTitle)}](${
+                g.postUrl
+            }) | [Link](${g.commentUrl}) | u/${g.recipient} |`
     )
     .join("\n")}
 `.trim();
@@ -81,12 +79,18 @@ function escapeTitle(title: string): string {
         .replace(/\]/g, "\\]");
 }
 
-export async function updateUserWikiReceived(
+export async function updateUserWiki(
     context: TriggerContext,
-    username: string
+    awarder: string,
+    recipient: string,
+    data: {
+        postTitle: string;
+        postUrl: string;
+        commentUrl: string;
+    }
 ) {
-    username = username.toLowerCase();
-    logger.info("🔄 Updating RECEIVED section", { username });
+    awarder = awarder.toLowerCase();
+    recipient = recipient.toLowerCase();
 
     const settings = await context.settings.getAll();
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
@@ -95,129 +99,184 @@ export async function updateUserWikiReceived(
         (await context.reddit.getCurrentSubreddit()).name;
 
     const safeWiki = new SafeWikiClient(context.reddit);
-    const wikiPath = `user/${username}`;
 
-    let page = await safeWiki.getWikiPage(subredditName, wikiPath);
-
-    if (!page) {
-        logger.warn("📄 Page missing, creating fresh", { username });
-        page = { contentMd: "" } as any;
-    }
-
-    const original = page?.contentMd ?? "";
-
-    // Extract the existing GIVEN section
-    const givenSection = extractSection(original, `${capitalize(pointName)}s Given`);
-    const givenTable = givenSection ? extractTable(givenSection) : "No history available.";
-
-    // Get new RECEIVED history
-    const rawReceived = await context.redis.zRange(
-        `userHistory:received:${username}`,
-        0,
-        -1,
-        { by: "rank" }
-    );
-    const received = rawReceived.map((r) => JSON.parse(r.member));
-
-    const newReceivedTable = buildReceivedTable(received);
     const capPoint = capitalize(pointName);
-    const pluralPoint = pluralize(pointName);
-    const capPluralPoint = capitalize(pluralPoint);
+    const plural = pluralize(pointName);
+    const capPlural = capitalize(plural);
 
-    const newContent = `
-# ${capPoint} History for u/${username}
+    //
+    // ──────────────────────────────────────────────────────────────
+    // UPDATE DATABASE ENTRIES
+    // ──────────────────────────────────────────────────────────────
+    //
 
----
-
-## ${capPluralPoint} Received  
-u/${username} has received **${received.length} ${pluralPoint}**.
-
-${newReceivedTable}
-
----
-
-## ${capPluralPoint} Given  
-${givenTable}
-`;
-
-    await context.reddit.updateWikiPage({
-        subredditName,
-        page: wikiPath,
-        content: newContent,
-        reason: `Updated RECEIVED table for u/${username}`,
+    // Awarder → GIVEN
+    await context.redis.zAdd(`userHistory:given:${awarder}`, {
+        member: JSON.stringify({
+            date: new Date().toISOString(),
+            postTitle: data.postTitle,
+            postUrl: data.postUrl,
+            recipient,
+            commentUrl: data.commentUrl,
+        }),
+        score: Date.now(),
     });
 
-    logger.info("✅ Updated RECEIVED table successfully", { username });
-}
+    // Recipient → RECEIVED
+    await context.redis.zAdd(`userHistory:received:${recipient}`, {
+        member: JSON.stringify({
+            date: new Date().toISOString(),
+            postTitle: data.postTitle,
+            postUrl: data.postUrl,
+            awarder,
+            commentUrl: data.commentUrl,
+        }),
+        score: Date.now(),
+    });
 
-export async function updateUserWikiGiven(
-    context: TriggerContext,
-    username: string
-) {
-    username = username.toLowerCase();
-    logger.info("🔄 Updating GIVEN section", { username });
+    //
+    // ──────────────────────────────────────────────────────────────
+    // REBUILD BOTH TABLES FROM REDIS
+    // ──────────────────────────────────────────────────────────────
+    //
 
-    const settings = await context.settings.getAll();
-    const pointName = (settings[AppSetting.PointName] as string) ?? "point";
-    const subredditName =
-        context.subredditName ??
-        (await context.reddit.getCurrentSubreddit()).name;
-
-    const safeWiki = new SafeWikiClient(context.reddit);
-    const wikiPath = `user/${username}`;
-
-    let page = await safeWiki.getWikiPage(subredditName, wikiPath);
-
-    if (!page) {
-        logger.warn("📄 Page missing, creating fresh", { username });
-        page = { contentMd: "" } as any;
+    async function loadHistory(key: string) {
+        const raw = await context.redis.zRange(key, 0, -1, { by: "rank" });
+        return raw.map((r) => JSON.parse(r.member));
     }
 
-    const original = page?.contentMd ?? "";
-
-    // Extract the existing RECEIVED section
-    const receivedSection = extractSection(original, `${capitalize(pointName)}s Received`);
-    const receivedTable = receivedSection ? extractTable(receivedSection) : "No history available.";
-
-    // Fetch new GIVEN entries
-    const rawGiven = await context.redis.zRange(
-        `userHistory:given:${username}`,
-        0,
-        -1,
-        { by: "rank" }
+    const awarderGiven = await loadHistory(`userHistory:given:${awarder}`);
+    const awarderReceived = await loadHistory(
+        `userHistory:received:${awarder}`
     );
-    const given = rawGiven.map((g) => JSON.parse(g.member));
 
-    const newGivenTable = buildGivenTable(given);
+    const recipientGiven = await loadHistory(`userHistory:given:${recipient}`);
+    const recipientReceived = await loadHistory(
+        `userHistory:received:${recipient}`
+    );
 
-    const capPoint = capitalize(pointName);
-    const pluralPoint = pluralize(pointName);
-    const capPluralPoint = capitalize(pluralPoint);
+    //
+    // ──────────────────────────────────────────────────────────────
+    // BUILD TABLES
+    // ──────────────────────────────────────────────────────────────
+    //
 
-    const newContent = `
-# ${capPoint} History for u/${username}
+    function buildReceivedTable(list: any[]): string {
+        if (list.length === 0) return "No history available.";
 
----
+        return `
+| Date | Submission |
+|------|------------|
+${list
+    .map(
+        (e) =>
+            `| ${formatDate(e.date)} | [${escapeTitle(e.postTitle)}](${
+                e.postUrl
+            }) |`
+    )
+    .join("\n")}
+`.trim();
+    }
 
-## ${capPluralPoint} Received  
+    function buildGivenTable(list: any[]): string {
+        if (list.length === 0) return "No history available.";
+
+        return `
+| Date | Recipient | Submission | Comment |
+|------|-----------|------------|---------|
+${list
+    .map(
+        (e) =>
+            `| ${formatDate(e.date)} | u/${e.recipient} | [${escapeTitle(
+                e.postTitle
+            )}](${e.postUrl}) | [Link](${e.commentUrl}) |`
+    )
+    .join("\n")}
+`.trim();
+    }
+
+    const awarderReceivedTable = buildReceivedTable(awarderReceived);
+    const awarderGivenTable = buildGivenTable(awarderGiven);
+
+    const recipientReceivedTable = buildReceivedTable(recipientReceived);
+    const recipientGivenTable = buildGivenTable(recipientGiven);
+
+    //
+    // ──────────────────────────────────────────────────────────────
+    // WRITE BOTH TABLES TO BOTH WIKI PAGES
+    // ──────────────────────────────────────────────────────────────
+    //
+
+    async function writePage(
+        user: string,
+        receivedTable: string,
+        givenTable: string
+    ) {
+        const content = `
+# ${capPoint} History for u/${user}
+
+## ${capPlural} Received  
+u/${user} has received ${
+            receivedTable.includes("|")
+                ? receivedTable.split("\n").length - 2
+                : 0
+        } ${plural}.
+
 ${receivedTable}
 
 ---
 
-## ${capPluralPoint} Given  
-u/${username} has given ${given.length} ${pluralPoint}.
+## ${capPlural} Given  
+u/${user} has given ${
+            givenTable.includes("|") ? givenTable.split("\n").length - 2 : 0
+        } ${plural}.
 
-${newGivenTable}
-`;
+${givenTable}
+        `.trim();
 
-    await context.reddit.updateWikiPage({
-        subredditName,
-        page: wikiPath,
-        content: newContent,
-        reason: `Updated GIVEN table for u/${username}`,
+        await context.reddit.updateWikiPage({
+            subredditName,
+            page: `user/${user}`,
+            content,
+            reason: `Updated wiki history for ${user}`,
+        });
+    }
+
+    await writePage(awarder, awarderReceivedTable, awarderGivenTable);
+    await writePage(recipient, recipientReceivedTable, recipientGivenTable);
+
+    logger.info("📄 User wiki updated for both awarder & recipient", {
+        awarder,
+        recipient,
     });
+}
 
-    logger.info("✅ Updated GIVEN table successfully", { username });
+function makeGivenSection(
+    username: string,
+    count: number,
+    plural: string,
+    table: string
+) {
+    return `
+## ${capitalize(plural)} Given  
+u/${username} has given ${count} ${plural}:
+
+${table}
+`.trim();
+}
+
+function makeReceivedSection(
+    username: string,
+    count: number,
+    plural: string,
+    table: string
+) {
+    return `
+## ${capitalize(plural)} Received  
+u/${username} has received ${count} ${plural}:
+
+${table}
+`.trim();
 }
 
 export async function buildInitialUserWiki(
@@ -411,7 +470,14 @@ export async function updateLeaderboard(
 
     if (highScores.length > 0) {
         wikiContents += highScores
-            .map((entry) => `${markdownEscape(entry.member)}|${entry.score}`)
+            .map(
+                (entry) =>
+                    `[${markdownEscape(
+                        entry.member
+                    )}](https://www.reddit.com/r/${subredditName}/wiki/user/${
+                        entry.member
+                    })|${entry.score}`
+            )
             .join("\n");
     } else {
         wikiContents += "No users have been awarded yet.";

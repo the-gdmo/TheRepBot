@@ -56,6 +56,7 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 ### 13.7.0
 * Make it so individual user pages are created and add initial content on page creation (ie initial award for both the awarder and awardee)
 * User pages display amount of awards received and given to/by users
+* User pages update as people award and receive awards
 ### 13.6.1
 * Make Mod Award Success and Fail notification settings have a default value of "No Notification"
 ### 13.6.0

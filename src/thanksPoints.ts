@@ -684,6 +684,42 @@ export async function handleThanksEvent(
     // - authorized if awarder is in altCommandUsers
     // ─────────────────────────────────────────────────────────────
     let mentionedUsername: string | undefined;
+
+    const authorized = altCommandUsers.includes(awarder.toLowerCase());
+    if (!authorized) {
+        const failMessage = formatMessage(altFailMessageTemplate, {
+            altCommand: triggerUsed,
+            subreddit: subredditName,
+        });
+
+        if (
+            notifyAltFail ===
+            NotifyOnAlternateCommandFailReplyOptions.ReplyAsComment
+        ) {
+            const failComment = await context.reddit.submitComment({
+                id: event.comment.id,
+                text: failMessage,
+            });
+            await failComment.distinguish();
+        } else if (
+            notifyAltFail === NotifyOnAlternateCommandFailReplyOptions.ReplyByPM
+        ) {
+            await context.reddit.sendPrivateMessage({
+                to: awarder,
+                subject: "Alternate Command Not Allowed",
+                text: failMessage,
+            });
+        }
+
+        logger.warn("🚫 Unauthorized ALT award attempt", {
+            awarder,
+            triggerUsed,
+            mentionedUsername,
+        });
+        return;
+    }
+
+    // Extract username after triggerUsed
     {
         const idx = commentBody.indexOf(triggerUsed);
         if (idx >= 0) {
@@ -692,6 +728,26 @@ export async function handleThanksEvent(
                     .slice(idx + triggerUsed.length)
                     .trim()
                     .split(/\s+/)[0] ?? "";
+
+            const awardee = after.startsWith("u/") ? after.slice(2) : after;
+
+            if (!after.startsWith("u/")) {
+                const NoUsernameMentionTemplate = formatMessage(
+                    (settings[AppSetting.NoUsernameMentionMessage] as
+                        | string
+                        | undefined) ??
+                        TemplateDefaults.NoUsernameMentionMessage,
+                    { awardee: awardee, awarder }
+                );
+
+                const newComment = await context.reddit.submitComment({
+                    id: event.comment.id,
+                    text: NoUsernameMentionTemplate,
+                });
+
+                await newComment.distinguish();
+                return;
+            }
             if (after) {
                 mentionedUsername = after.startsWith("u/")
                     ? after.slice(2)
@@ -704,58 +760,45 @@ export async function handleThanksEvent(
         mentionedUsername = mentionedUsername.toLowerCase();
     }
 
-    if (
-        triggerUsed  &&
+    if (triggerUsed &&
         mentionedUsername &&
-        /^[a-z0-9_-]{3,21}$/.test(mentionedUsername)
+        !/^[a-z0-9_-]{3,21}$/i.test(mentionedUsername)) {
+           const usernameLengthTemplate = formatMessage(
+                    (settings[AppSetting.UsernameLengthMessage] as
+                        | string
+                        | undefined) ??
+                        TemplateDefaults.UsernameLengthMessage,
+                    { awardee: mentionedUsername, awarder }
+                );
+
+                const newComment = await context.reddit.submitComment({
+                    id: event.comment.id,
+                    text: usernameLengthTemplate,
+                });
+
+                await newComment.distinguish();
+                return;
+        }
+    // MAIN ALT-FLOW ENTRY
+    if (
+        triggerUsed &&
+        mentionedUsername &&
+        /^[a-z0-9_-]{3,21}$/i.test(mentionedUsername)
     ) {
         logger.debug("🔎 ALT flow username probe", {
             extracted: mentionedUsername,
             triggerUsed,
         });
 
-        const authorized = altCommandUsers.includes(awarder.toLowerCase());
-        if (!authorized) {
-            const failMessage = formatMessage(altFailMessageTemplate, {
-                altCommand: triggerUsed,
-                subreddit: subredditName,
-            });
-
-            if (
-                notifyAltFail ===
-                NotifyOnAlternateCommandFailReplyOptions.ReplyAsComment
-            ) {
-                const failComment = await context.reddit.submitComment({
-                    id: event.comment.id,
-                    text: failMessage,
-                });
-                await failComment.distinguish();
-            } else if (
-                notifyAltFail ===
-                NotifyOnAlternateCommandFailReplyOptions.ReplyByPM
-            ) {
-                await context.reddit.sendPrivateMessage({
-                    to: awarder,
-                    subject: "Alternate Command Not Allowed",
-                    text: failMessage,
-                });
-            }
-
-            logger.warn("🚫 Unauthorized ALT award attempt", {
-                awarder,
-                triggerUsed,
-                mentionedUsername,
-            });
-            return;
-        }
-
-        // Duplicate-prevention for ALT flow: unique per post & target
+        //
+        // Duplicate-prevention
+        //
         const altDupKey = `customAward-${event.post.id}-${mentionedUsername}`;
         if (await context.redis.exists(altDupKey)) {
             const dupMsg = formatMessage(
-                (settings[AppSetting.PointAlreadyAwardedToUserMessage] as
-                    | string
-                    | undefined) ??
+                (settings[
+                    AppSetting.PointAlreadyAwardedToUserMessage
+                ] as string) ??
                     TemplateDefaults.PointAlreadyAwardedToUserMessage,
                 { name: pointName, awardee: mentionedUsername }
             );
@@ -793,14 +836,15 @@ export async function handleThanksEvent(
 
         await context.redis.set(altDupKey, "1");
 
-        // Increment score (ALT)
+        //
+        // Award
+        //
         const newScore = await context.redis.zIncrBy(
             redisKey,
             mentionedUsername,
             1
         );
 
-        // Schedule leaderboard update
         await context.scheduler.runJob({
             name: "updateLeaderboard",
             runAt: new Date(),
@@ -809,11 +853,14 @@ export async function handleThanksEvent(
             },
         });
 
-        // Notify success (ALT)
+        //
+        // Success notification
+        //
         const leaderboard = `https://old.reddit.com/r/${subredditName}/wiki/${
             settings[AppSetting.LeaderboardName] ?? "leaderboard"
         }`;
         const symbol = (settings[AppSetting.PointSymbol] as string) ?? "";
+        const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/user/${mentionedUsername}`;
 
         const successMessage = formatMessage(altSuccessMessageTemplate, {
             name: pointName,
@@ -822,6 +869,7 @@ export async function handleThanksEvent(
             total: newScore.toString(),
             symbol,
             leaderboard,
+            awardeePage,
         });
 
         if (
@@ -844,7 +892,9 @@ export async function handleThanksEvent(
             });
         }
 
-        // Flair update (ALT)
+        //
+        // Flair update
+        //
         try {
             const recipientUser = await context.reddit.getUserByUsername(
                 mentionedUsername
@@ -876,19 +926,14 @@ export async function handleThanksEvent(
                     mentionedUsername,
                     score: zscore ?? recipientScore,
                 });
-            } else {
-                logger.warn(
-                    "⚠️ ALT flair skip — user not found by username()",
-                    {
-                        mentionedUsername,
-                    }
-                );
             }
         } catch (err) {
             logger.error("❌ ALT flair update error", { err });
         }
 
-        // Auto-superuser notification (ALT)
+        //
+        // Auto-superuser notify
+        //
         await maybeNotifyAutoSuperuser(
             context,
             settings,
@@ -902,6 +947,29 @@ export async function handleThanksEvent(
         logger.info(
             `🏅 ALT award: ${awarder} → ${mentionedUsername} +1 ${pointName}`
         );
+
+        //
+        // UPDATE USER WIKI FOR *EACH MENTION*
+        //
+        let regex = /(\s|^)\/?u\/(.+?)\b/gm;
+        let allMentions = commentBody.matchAll(regex);
+
+        for (let mention of allMentions) {
+            let foundUser = mention[2].toLowerCase();
+            logger.debug("📄 Found mention of user for ALT wiki update", {
+                foundUser,
+            });
+
+            const givenData = {
+                postTitle: event.post.title,
+                postUrl: event.post.permalink,
+                mentionedUsername: foundUser,
+                commentUrl: event.comment.permalink,
+            };
+
+            await updateUserWiki(context, awarder, foundUser, givenData);
+        }
+
         return; // ALT path handled fully
     }
 
@@ -1180,7 +1248,7 @@ export async function handleThanksEvent(
         const leaderboard = `https://old.reddit.com/r/${subredditName}/wiki/${
             settings[AppSetting.LeaderboardName] ?? "leaderboard"
         }`;
-
+        const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/user/${recipient}`;
         const successMessage = formatMessage(modSuccessTemplate, {
             awardee: modAwardUsername,
             awarder,
@@ -1188,6 +1256,7 @@ export async function handleThanksEvent(
             symbol: pointSymbol,
             total: newScore.toString(),
             leaderboard,
+            awardeePage,
         });
 
         // Deliver success notification
@@ -1494,7 +1563,7 @@ export async function handleThanksEvent(
         const leaderboard = `https://old.reddit.com/r/${
             event.subreddit.name
         }/wiki/${settings[AppSetting.LeaderboardName] ?? "leaderboard"}`;
-
+        const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/user/${recipient}`;
         const successMessage = formatMessage(
             (settings[AppSetting.SuccessMessage] as string) ??
                 TemplateDefaults.NotifyOnSuccessTemplate,
@@ -1505,6 +1574,7 @@ export async function handleThanksEvent(
                 name: pointName,
                 symbol: pointSymbol,
                 leaderboard,
+                awardeePage,
             }
         );
 

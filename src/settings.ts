@@ -94,6 +94,8 @@ export enum AppSetting {
     NotifyOnModAwardSuccess = "notifyOnModAwardSuccess",
     NotifyOnModAwardFail = "notifyOnModAwardFail",
     ModAwardAlreadyGiven = "modAwardAlreadyGiven",
+    UsernameLengthMessage = "usernameLengthMessage",
+    NoUsernameMentionMessage = "NoUsernameMentionMessage",
 }
 
 export enum TemplateDefaults {
@@ -111,15 +113,17 @@ export enum TemplateDefaults {
     BotAwardMessage = "You can't award u/TheRepBot a {{name}}.",
     InvalidPostMessage = "Points cannot be awarded on this post because the recipient is suspended or shadowbanned.",
     NotifyOnSelfAwardTemplate = "Hello {{awarder}}, you cannot award a {{name}} to yourself.",
-    NotifyOnSuccessTemplate = "+1 {{name}} awarded to u/{{awardee}} by u/{{awarder}}. Total: {{total}}{{symbol}}. Leaderboard is located [here]({{leaderboard}}).",
+    NotifyOnSuccessTemplate = "+1 {{name}} awarded to u/{{awardee}} by u/{{awarder}}. Total: {{total}}{{symbol}}. {{awardee}}'s user page is located [here]({{awardeePage}}). Leaderboard is located [here]({{leaderboard}}).",
     NotifyOnSuperuserTemplate = 'Hello {{awardee}},\n\nNow that you have reached {{threshold}} points you can now award points yourself, even if normal users do not have permission to. Please use the command "{{command}}" if you\'d like to do this.',
     MessageToRestrictedUsers = "***ATTENTION to OP: You must award {{name}}s by replying to the successful comments. Valid command(s) are **{{commands}}**. Failure to do so may result in a ban.***\n\n***Commenters MUST put the location in spoiler tags.***\n\n*To hide text, write it like this `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({{markdown_guide}})*.",
-    AlternateCommandSuccessMessage = "+1 {{name}} awarded to u/{{awardee}} [{{total}}{{symbol}}]. Leaderboard is located [here]({{leaderboard}}).",
+    AlternateCommandSuccessMessage = "+1 {{name}} awarded to u/{{awardee}} [{{total}}{{symbol}}]. {{awardee}}'s user page is located [here]({{awardeePage}}). Leaderboard is located [here]({{leaderboard}}).",
     AlternateCommandFailMessage = "You do not have permission to use **{{altCommand}}** on specific users.",
     PointAlreadyAwardedToUserMessage = "{{awardee}} has already received a {{name}} for this post.",
-    ModAwardCommandSuccessMessage = "Moderator u/{{awarder}} gave an award! u/{{awardee}} now has {{total}}{{symbol}} {{name}}s. Leaderboard is located [here]({{leaderboard}}).",
+    ModAwardCommandSuccessMessage = "Moderator u/{{awarder}} gave an award! u/{{awardee}} now has {{total}}{{symbol}} {{name}}s. {{awardee}}'s user page is located [here]({{awardeePage}}). Leaderboard is located [here]({{leaderboard}}).",
     ModAwardCommandFailMessage = "Hello {{awarder}}. You must be a moderator or trusted user to use {{command}}.",
     ModAwardAlreadyGivenMessage = "{{awardee}} has already received a mod award for this comment.",
+    UsernameLengthMessage = "u/{{awardee}} is not valid. Reddit usernames must be 3–21 characters long and contain only letters, numbers, dashes, and underscores.",
+    NoUsernameMentionMessage = "You must mention a user (eg u/{{awardee}}) to award specific users.",
 }
 
 export enum AutoSuperuserReplyOptions {
@@ -697,6 +701,20 @@ export const appSettings: SettingsFormField[] = [
                 helpText: "Each username should be on a new line",
             },
             {
+                name: AppSetting.UsernameLengthMessage,
+                type: "paragraph",
+                label: "Message to send the user if a username is too short or long to be valid",
+                helpText: "Supported placeholders: {{awarder}}, {{awardee}}",
+                defaultValue: TemplateDefaults.UsernameLengthMessage,
+            },
+            {
+                name: AppSetting.NoUsernameMentionMessage,
+                type: "paragraph",
+                label: "Message to send the user if there isn't a username mentioned (ie, contains a u/)",
+                helpText: "Supported placeholders: {{awarder}}, {{awardee}}",
+                defaultValue: TemplateDefaults.NoUsernameMentionMessage,
+            },
+            {
                 type: "select",
                 name: AppSetting.NotifyOnAutoSuperuser,
                 label: "Notify users who reach the auto trusted user threshold",
@@ -761,7 +779,7 @@ export const appSettings: SettingsFormField[] = [
                 type: "paragraph",
                 label: "Alternate Command Success Message",
                 helpText:
-                    "Message to send users when they use the Alternate Award Command and it is successful. Placeholders Supported: {{name}}, {{awardee}}, {{awarder}}, {{leaderboard}}, {{symbol}}, {{total}}",
+                    "Message to send users when they use the Alternate Award Command and it is successful. Placeholders Supported: {{awardeePage}}, {{name}}, {{awardee}}, {{awarder}}, {{leaderboard}}, {{symbol}}, {{total}}",
                 defaultValue: TemplateDefaults.AlternateCommandSuccessMessage,
             },
             {
@@ -804,7 +822,7 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.ModAwardCommandSuccess,
                 type: "paragraph",
                 label: "Mod Award Success Message",
-                helpText: `Optional. Message to send users when they successfully award a message with the "Trusted User/Mod award command". Placeholders Supported: {{awardee}}, {{awarder}}, {{symbol}}, {{total}}, {{name}}, {{leaderboard}}`,
+                helpText: `Optional. Message to send users when they successfully award a message with the "Trusted User/Mod award command". Placeholders Supported: {{awardeePage}}, {{awardee}}, {{awarder}}, {{symbol}}, {{total}}, {{name}}, {{leaderboard}}`,
                 defaultValue: TemplateDefaults.ModAwardCommandSuccessMessage,
             },
             {
@@ -912,7 +930,7 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.SuccessMessage,
                 label: "Success Message",
                 helpText:
-                    "Message when a point is awarded. Placeholders Supported: {{awardee}}, {{awarder}}, {{symbol}}, {{total}}, {{name}}, {{leaderboard}}",
+                    "Message when a point is awarded. Placeholders Supported: {{awardeePage}}, {{awardee}}, {{awarder}}, {{symbol}}, {{total}}, {{name}}, {{leaderboard}}",
                 defaultValue: TemplateDefaults.NotifyOnSuccessTemplate,
                 onValidate: paragraphFieldContainsText,
             },

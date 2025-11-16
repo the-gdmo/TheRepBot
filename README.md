@@ -37,6 +37,7 @@ I recommend testing settings out on a test subreddit before deploying to a real 
 * `{{user}}`: The username of the person being awarded. Used in 'Alternate Award Command'.
 * `{{altCommand}}`: Alternate command to directly award users. Used in 'Alternate Command Success/Fail Message'.
 * `{{subreddit}}`: Get the name of the subreddit. Will not contain 'r/'.
+* `{{awardeePage}}`: Link to a user's individual page. Logs all points received and given that are not alternate commands.
 
 ## Data Stored
 
@@ -53,6 +54,10 @@ If the application is removed from a subreddit, all data is deleted although the
 This app is open source and licensed under the BSD 3-Clause License. You can find the source code on GitHub [here](https://github.com/the-gdmo/TheRepBot).
 
 ## Version History
+### 13.8.0
+* Add message informing the user if their alternate command contains a "u/" that is too short or too long (must be 3-21 characters to be valid)
+* Add message to inform the user if their alternate command doesn't contain a "u/" at all
+* If alternate command doesn't contain a "u/", or the user provided is too short or long, don't award the awardee user
 ### 13.7.0
 * Make it so individual user pages are created and add initial content on page creation (ie initial award for both the awarder and awardee)
 * User pages display amount of awards received and given to/by users

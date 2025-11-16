@@ -251,34 +251,6 @@ ${givenTable}
     });
 }
 
-function makeGivenSection(
-    username: string,
-    count: number,
-    plural: string,
-    table: string
-) {
-    return `
-## ${capitalize(plural)} Given  
-u/${username} has given ${count} ${plural}:
-
-${table}
-`.trim();
-}
-
-function makeReceivedSection(
-    username: string,
-    count: number,
-    plural: string,
-    table: string
-) {
-    return `
-## ${capitalize(plural)} Received  
-u/${username} has received ${count} ${plural}:
-
-${table}
-`.trim();
-}
-
 export async function buildInitialUserWiki(
     context: TriggerContext,
     username: string

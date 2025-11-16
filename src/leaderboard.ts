@@ -30,48 +30,6 @@ function formatDate(dateString: number): string {
     return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
 }
 
-function extractSection(content: string, header: string): string | null {
-    const regex = new RegExp(`## ${header}`, "i");
-    const match = content.match(regex);
-    return match ? match[0] : null;
-}
-
-function extractTable(section: string): string {
-    const match = section.match(/^\|.*$/gms);
-    return match ? match.join("\n").trim() : "No history available.";
-}
-
-function buildReceivedTable(received: any[]): string {
-    if (!received.length) return "\n\nNo history available.";
-
-    return `
-| Date | Submission |
-|------|------------|
-${received
-    .map(
-        (r) => `| ${formatDate(Date.now())} | [${r.postTitle}](${r.postUrl}) |`
-    )
-    .join("\n")}
-`.trim();
-}
-
-function buildGivenTable(given: any[]): string {
-    if (!given.length) return "\n\nNo history available.";
-
-    return `
-| Date | Submission | Snipe Comment | Awarded To |
-|------|------------|----------------|-------------|
-${given
-    .map(
-        (g) =>
-            `| ${formatDate(g.date)} | [${escapeTitle(g.postTitle)}](${
-                g.postUrl
-            }) | [Link](${g.commentUrl}) | u/${g.recipient} |`
-    )
-    .join("\n")}
-`.trim();
-}
-
 function escapeTitle(title: string): string {
     return title
         .replace(/\|/g, "\\|")
@@ -97,8 +55,6 @@ export async function updateUserWiki(
     const subredditName =
         context.subredditName ??
         (await context.reddit.getCurrentSubreddit()).name;
-
-    const safeWiki = new SafeWikiClient(context.reddit);
 
     const capPoint = capitalize(pointName);
     const plural = pluralize(pointName);
@@ -162,34 +118,34 @@ export async function updateUserWiki(
     //
 
     function buildReceivedTable(list: any[]): string {
-        if (list.length === 0) return "No history available.";
+        if (list.length === 0) return "No history yet.";
 
         return `
 | Date | Submission |
-|------|------------|
+| :-: | :-- |
 ${list
     .map(
         (e) =>
             `| ${formatDate(e.date)} | [${escapeTitle(e.postTitle)}](${
                 e.postUrl
-            }) |`
+            })`
     )
     .join("\n")}
 `.trim();
     }
 
     function buildGivenTable(list: any[]): string {
-        if (list.length === 0) return "No history available.";
+        if (list.length === 0) return "No history yet.";
 
         return `
-| Date | Recipient | Submission | Comment |
-|------|-----------|------------|---------|
+| Date | Submission | ${capPoint} Comment | Awarded To |
+| :-: | :-- | :-: | :-: |
 ${list
     .map(
         (e) =>
-            `| ${formatDate(e.date)} | u/${e.recipient} | [${escapeTitle(
+            `| ${formatDate(e.date)} | [${escapeTitle(
                 e.postTitle
-            )}](${e.postUrl}) | [Link](${e.commentUrl}) |`
+            )}](${e.postUrl}) | [Link](${e.commentUrl}) | /u/${e.recipient}`
     )
     .join("\n")}
 `.trim();
@@ -292,14 +248,14 @@ export async function buildInitialUserWiki(
 ## ${capPlural} Received  
 u/${username} has received 0 ${plural}
 
-No history available.
+| Date | Submission | ${capPoint} Comment | Awarded To |
 
 ---
 
 ## ${capPlural} Given  
 u/${username} has given 0 ${plural}
 
-No history available.
+| Date | Submission | ${capPoint} Comment | Awarded To |
 `.trim();
 
     logger.info("✅ Initial user wiki page built", { username });

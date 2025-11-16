@@ -54,6 +54,8 @@ If the application is removed from a subreddit, all data is deleted although the
 This app is open source and licensed under the BSD 3-Clause License. You can find the source code on GitHub [here](https://github.com/the-gdmo/TheRepBot).
 
 ## Version History
+### 13.9.0
+* Change Received Table to only display date and submission with name and link to the submission
 ### 13.8.0
 * Add message informing the user if their alternate command contains a "u/" that is too short or too long (must be 3-21 characters to be valid)
 * Add message to inform the user if their alternate command doesn't contain a "u/" at all

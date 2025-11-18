@@ -95,12 +95,12 @@ export enum AppSetting {
     NotifyOnModAwardFail = "notifyOnModAwardFail",
     ModAwardAlreadyGiven = "modAwardAlreadyGiven",
     UsernameLengthMessage = "usernameLengthMessage",
-    NoUsernameMentionMessage = "NoUsernameMentionMessage",
+    NoUsernameMentionMessage = "noUsernameMentionMessage",
+    RestrictionRemovedMessage = "restrictionRemovedMessage",
 }
 
 export enum TemplateDefaults {
-    SubsequentPostRestrictionMessage = "***ATTENTION to OP: You must award {{name}}s by replying to the successful comments. Valid command(s) are **{{commands}}**. Failure to do so may result in a ban.***\n\nFor a further explanation of how this works, refer to [the help page]({{helpPage}}).",
-    AwardRequirementMessage = "Hello u/{{author}}. Before you can create new posts, you must award **{{requirement}}** {{name}}s to users who respond on [your most recent post]({{permalink}}).",
+    SubsequentPostRestrictionMessage = "***ATTENTION to OP: You must award {{name}}s by replying to the successful comments. Before you can create new posts, you must award **{{requirement}}** {{name}}s to users who respond on [{{title}}]({{permalink}}).",
     UnflairedPostMessage = "Points cannot be awarded on posts without flair. Please award only on flaired posts.",
     OPOnlyDisallowedMessage = "Only moderators, approved users, and Post Authors (OPs) can award {{name}}s.",
     LeaderboardHelpPageMessage = "[How to award points with RepBot.]({{helpPage}})",
@@ -124,6 +124,7 @@ export enum TemplateDefaults {
     ModAwardAlreadyGivenMessage = "{{awardee}} has already received a mod award for this comment.",
     UsernameLengthMessage = "u/{{awardee}} is not valid. Reddit usernames must be 3–21 characters long and contain only letters, numbers, dashes, and underscores.",
     NoUsernameMentionMessage = "You must mention a user (eg u/{{awardee}}) to award specific users.",
+    RestrictionRemovedMessage = "Your posting restriction has been removed. You now have permission to make a post again!",
 }
 
 export enum AutoSuperuserReplyOptions {
@@ -566,7 +567,7 @@ export const appSettings: SettingsFormField[] = [
                 type: "paragraph",
                 label: "Subsequent Post Restriction Message",
                 helpText:
-                    "Required even if not used. Message to send users when they try to post while restricted from posting. Placeholders supported: {{name}}, {{commands}}, {{helpPage}}",
+                    "Required even if not used. Message to send users when they try to post while restricted from posting. Placeholders supported: {{title}}, {{name}}, {{commands}}, {{helpPage}}",
                 defaultValue: TemplateDefaults.SubsequentPostRestrictionMessage,
                 onValidate: paragraphFieldContainsText,
             },
@@ -602,6 +603,14 @@ export const appSettings: SettingsFormField[] = [
                 onValidate: validateRegexes,
             },
             {
+                name: AppSetting.RestrictionRemovedMessage,
+                type: "paragraph",
+                label: "Restriction Removed Message",
+                helpText: "Required even if not used. Message to send the user when their restriction is removed",
+                defaultValue: TemplateDefaults.RestrictionRemovedMessage,
+                onValidate: paragraphFieldContainsText,
+            },
+            {
                 type: "string",
                 name: AppSetting.PointName,
                 label: "Point Name",
@@ -627,10 +636,11 @@ export const appSettings: SettingsFormField[] = [
             {
                 type: "paragraph",
                 name: AppSetting.ModOnlyDisallowedMessage,
-                label: "Mod only disallowed message",
+                label: "Mod Only Disallowed Message",
                 helpText:
                     "Message shown when a user tries to award a point but only moderators can award points",
                 defaultValue: TemplateDefaults.ModOnlyDisallowedMessage,
+                onValidate: paragraphFieldContainsText,
             },
             {
                 type: "select",
@@ -649,6 +659,7 @@ export const appSettings: SettingsFormField[] = [
                 helpText:
                     "Message shown when a user tries to award a point but only mods and approved users can award points",
                 defaultValue: TemplateDefaults.ApprovedOnlyDisallowedMessage,
+                onValidate: paragraphFieldContainsText,
             },
             {
                 type: "select",
@@ -665,6 +676,7 @@ export const appSettings: SettingsFormField[] = [
                 helpText:
                     "Message shown when a user tries to award a point but only mods, approved users, and Post Authors (OPs) can award points",
                 defaultValue: TemplateDefaults.OPOnlyDisallowedMessage,
+                onValidate: paragraphFieldContainsText,
             },
             {
                 type: "select",
@@ -672,6 +684,7 @@ export const appSettings: SettingsFormField[] = [
                 label: "Notify users when they try to award points on a post with a disallowed flair",
                 options: NotifyOnDisallowedFlairReplyOptionChoices,
                 defaultValue: [NotifyOnDisallowedFlairReplyOptions.NoReply],
+                onValidate: selectFieldHasOptionChosen,
             },
             {
                 type: "paragraph",
@@ -687,6 +700,7 @@ export const appSettings: SettingsFormField[] = [
                 helpText:
                     "Message shown when a user tries to award points on a post with a disallowed flair",
                 defaultValue: TemplateDefaults.DisallowedFlairMessage,
+                onValidate: paragraphFieldContainsText,
             },
         ],
     },
@@ -706,6 +720,7 @@ export const appSettings: SettingsFormField[] = [
                 label: "Message to send the user if a username is too short or long to be valid",
                 helpText: "Supported placeholders: {{awarder}}, {{awardee}}",
                 defaultValue: TemplateDefaults.UsernameLengthMessage,
+                onValidate: paragraphFieldContainsText,
             },
             {
                 name: AppSetting.NoUsernameMentionMessage,
@@ -713,6 +728,7 @@ export const appSettings: SettingsFormField[] = [
                 label: "Message to send the user if there isn't a username mentioned (ie, contains a u/)",
                 helpText: "Supported placeholders: {{awarder}}, {{awardee}}",
                 defaultValue: TemplateDefaults.NoUsernameMentionMessage,
+                onValidate: paragraphFieldContainsText,
             },
             {
                 type: "select",
@@ -729,6 +745,7 @@ export const appSettings: SettingsFormField[] = [
                 label: "Treat users with this many points as automatically a trusted user",
                 helpText:
                     "If zero, only explicitly named users above will be treated as trusted users",
+                    onValidate: numberFieldHasValidOption,
             },
             {
                 type: "paragraph",
@@ -755,6 +772,7 @@ export const appSettings: SettingsFormField[] = [
                 label: "Message to send users when they use the Alternate Award Command, but the mentioned user has already received a point on the post",
                 helpText: "Placeholders Supported: {{awardee}}, {{name}}",
                 defaultValue: TemplateDefaults.PointAlreadyAwardedToUserMessage,
+                onValidate: paragraphFieldContainsText,
             },
             {
                 name: AppSetting.AlternatePointCommandUsers,
@@ -773,6 +791,7 @@ export const appSettings: SettingsFormField[] = [
                 defaultValue: [
                     NotifyOnAlternateCommandSuccessReplyOptions.ReplyAsComment,
                 ],
+                onValidate: selectFieldHasOptionChosen,
             },
             {
                 name: AppSetting.AlternateCommandSuccessMessage,
@@ -781,6 +800,7 @@ export const appSettings: SettingsFormField[] = [
                 helpText:
                     "Message to send users when they use the Alternate Award Command and it is successful. Placeholders Supported: {{awardeePage}}, {{name}}, {{awardee}}, {{awarder}}, {{leaderboard}}, {{symbol}}, {{total}}",
                 defaultValue: TemplateDefaults.AlternateCommandSuccessMessage,
+                onValidate: paragraphFieldContainsText,
             },
             {
                 name: AppSetting.NotifyOnAlternateCommandFail,
@@ -792,6 +812,7 @@ export const appSettings: SettingsFormField[] = [
                 defaultValue: [
                     NotifyOnAlternateCommandFailReplyOptions.ReplyByPM,
                 ],
+                onValidate: selectFieldHasOptionChosen,
             },
             {
                 name: AppSetting.AlternateCommandFailMessage,
@@ -800,6 +821,7 @@ export const appSettings: SettingsFormField[] = [
                 helpText:
                     "Message to send users when they use the Alternate Award Command and are not allowed to. Placeholders Supported: {{altCommand}}, {{subreddit}}",
                 defaultValue: TemplateDefaults.AlternateCommandFailMessage,
+                onValidate: paragraphFieldContainsText,
             },
             {
                 name: AppSetting.ModAwardCommand,
@@ -824,6 +846,7 @@ export const appSettings: SettingsFormField[] = [
                 label: "Mod Award Success Message",
                 helpText: `Optional. Message to send users when they successfully award a message with the "Trusted User/Mod award command". Placeholders Supported: {{awardeePage}}, {{awardee}}, {{awarder}}, {{symbol}}, {{total}}, {{name}}, {{leaderboard}}`,
                 defaultValue: TemplateDefaults.ModAwardCommandSuccessMessage,
+                onValidate: paragraphFieldContainsText,
             },
             {
                 name: AppSetting.NotifyOnModAwardFail,
@@ -839,6 +862,7 @@ export const appSettings: SettingsFormField[] = [
                 label: "Mod Award Fail Message",
                 helpText: `Optional. Message to send users when they aren't allowed to use the "Trusted User/Mod award command". Placeholders Supported: {{command}}, {{name}}, {{awarder}}`,
                 defaultValue: TemplateDefaults.ModAwardCommandFailMessage,
+                onValidate: paragraphFieldContainsText,
             },
             {
                 name: AppSetting.ModAwardAlreadyGiven,
@@ -846,6 +870,7 @@ export const appSettings: SettingsFormField[] = [
                 label: `Message to send user when the "Trusted User/Mod award command" has already been used on the comment.`,
                 helpText: "Optional. Placeholders Supported: {{awardee}}, {{name}}",
                 defaultValue: TemplateDefaults.ModAwardAlreadyGivenMessage,
+                onValidate: paragraphFieldContainsText,
             },
         ],
     },
@@ -916,6 +941,7 @@ export const appSettings: SettingsFormField[] = [
                 helpText:
                     "Shown when someone tries to award themselves. Placeholders Supported: {{name}}, {{awarder}}",
                 defaultValue: TemplateDefaults.NotifyOnSelfAwardTemplate,
+                onValidate: paragraphFieldContainsText,
             },
             {
                 type: "select",
@@ -957,6 +983,7 @@ export const appSettings: SettingsFormField[] = [
                 label: "User Cannot Award Points Message",
                 helpText: `Message shown when a user specified in the "Users Who Cannot Award Points" setting tries to award points but is not allowed to. Placeholders Supported: {{name}}`,
                 defaultValue: TemplateDefaults.UsersWhoCannotAwardPointsMessage,
+                onValidate: paragraphFieldContainsText,
             },
             {
                 type: "select",
@@ -973,6 +1000,7 @@ export const appSettings: SettingsFormField[] = [
                 helpText:
                     "Message shown when someone tries to award the bot. Placeholders Supported: {{name}}",
                 defaultValue: TemplateDefaults.BotAwardMessage,
+                onValidate: paragraphFieldContainsText,
             },
             {
                 type: "select",
@@ -1100,9 +1128,11 @@ export const appSettings: SettingsFormField[] = [
                 helpText:
                     "Message shown when a user tries to award points on a post without flair. Placeholders Supported: {{name}}",
                 defaultValue: TemplateDefaults.UnflairedPostMessage,
+                onValidate: paragraphFieldContainsText,
             },
         ],
     },
+    //TODO: try and make this work
     // {
     //     type: "group",
     //     label: "Backup and Restore",
@@ -1214,6 +1244,6 @@ function paragraphFieldContainsText(
     }
 
     if (event.value.length === 0) {
-        return "Field cannot be empty even if point awarding isn't forced.";
+        return "Field cannot be empty (even if this is an irrelevant setting).";
     }
 }

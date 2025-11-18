@@ -38,6 +38,7 @@ I recommend testing settings out on a test subreddit before deploying to a real 
 * `{{altCommand}}`: Alternate command to directly award users. Used in 'Alternate Command Success/Fail Message'.
 * `{{subreddit}}`: Get the name of the subreddit. Will not contain 'r/'.
 * `{{awardeePage}}`: Link to a user's individual page. Logs all points received and given that are not alternate commands.
+* `{{title}}`: The title of the post being responded to.
 
 ## Data Stored
 
@@ -54,6 +55,9 @@ If the application is removed from a subreddit, all data is deleted although the
 This app is open source and licensed under the BSD 3-Clause License. You can find the source code on GitHub [here](https://github.com/the-gdmo/TheRepBot).
 
 ## Version History
+### 13.10.0
+* Add `{{title}}` placeholder to be usable on Subsequent Post Restriction Message
+* Fix restriction logic to actually remove it when enough points are awarded
 ### 13.9.0
 * Change Received Table to only display date and submission with name and link to the submission
 ### 13.8.0

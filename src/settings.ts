@@ -567,7 +567,7 @@ export const appSettings: SettingsFormField[] = [
                 type: "paragraph",
                 label: "Subsequent Post Restriction Message",
                 helpText:
-                    "Required even if not used. Message to send users when they try to post while restricted from posting. Placeholders supported: {{title}}, {{name}}, {{commands}}, {{helpPage}}",
+                    "Required even if not used. Message to send users when they try to post while restricted from posting. Placeholders supported: {{permalink}}, {{title}}, {{name}}, {{commands}}, {{helpPage}}",
                 defaultValue: TemplateDefaults.SubsequentPostRestrictionMessage,
                 onValidate: paragraphFieldContainsText,
             },

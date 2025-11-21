@@ -926,7 +926,7 @@ export async function handleThanksEvent(
                 settings[AppSetting.LeaderboardName] ?? "leaderboard"
             }`;
             const symbol = pointSymbol;
-            const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/user/${mentionedUsername}`;
+            const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${mentionedUsername}`;
 
             const successMessage = formatMessage(altSuccessMessageTemplate, {
                 name: pointName,
@@ -1309,7 +1309,7 @@ export async function handleThanksEvent(
         const leaderboard = `https://old.reddit.com/r/${subredditName}/wiki/${
             settings[AppSetting.LeaderboardName] ?? "leaderboard"
         }`;
-        const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/user/${modAwardUsername}`;
+        const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${modAwardUsername}`;
         const successMessage = formatMessage(modSuccessTemplate, {
             awardee: modAwardUsername,
             awarder,
@@ -1623,7 +1623,7 @@ export async function handleThanksEvent(
         const leaderboard = `https://old.reddit.com/r/${
             event.subreddit.name
         }/wiki/${settings[AppSetting.LeaderboardName] ?? "leaderboard"}`;
-        const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/user/${recipient}`;
+        const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${recipient}`;
         const successMessage = formatMessage(
             (settings[AppSetting.SuccessMessage] as string) ??
                 TemplateDefaults.NotifyOnSuccessTemplate,

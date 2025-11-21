@@ -55,6 +55,8 @@ If the application is removed from a subreddit, all data is deleted although the
 This app is open source and licensed under the BSD 3-Clause License. You can find the source code on GitHub [here](https://github.com/the-gdmo/TheRepBot).
 
 ## Version History
+### 14.1.0
+* Make `{{awardeePage}}` link to the user page (incorrect formatting previously)
 ### 14.0.1
 * Add `{{permalink}}` to Supported Placeholders list on Subsequent Post Restriction Message
 ### 14.0.0

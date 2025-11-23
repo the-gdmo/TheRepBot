@@ -527,38 +527,25 @@ async function maybeNotifyRestrictionLifted(
 ): Promise<void> {
     const restrictedKey = `restrictedUser:${username}`;
     const requiredKey = `awardsRequired:${username}`;
-    const notifiedKey = `restrictionNotifiedOnce:${username}`;
 
     logger.debug("🔔 maybeNotifyRestrictionLifted called", {
         username,
         restrictedKey,
         requiredKey,
-        notifiedKey,
     });
 
     try {
-        const [restrictedExists, remainingRaw, notifiedExists] =
+        const [restrictedExists, remainingRaw ] =
             await Promise.all([
                 context.redis.exists(restrictedKey),
                 context.redis.get(requiredKey),
-                context.redis.exists(notifiedKey),
             ]);
 
         logger.debug("📊 Restriction state snapshot", {
             username,
             restrictedExists,
             remainingRaw,
-            notifiedExists,
         });
-
-        // If we've already notified once, don't notify again
-        if (notifiedExists) {
-            logger.debug(
-                "ℹ️ Restriction lift notification already sent; skipping",
-                { username }
-            );
-            return;
-        }
 
         let remaining: number | null = null;
         if (
@@ -616,7 +603,6 @@ async function maybeNotifyRestrictionLifted(
 
         // If set to "none", mark as notified and bail
         if (notifyMode === NotifyOnRestrictionLiftedReplyOptions.NoReply) {
-            await context.redis.set(notifiedKey, "true");
             logger.info(
                 "✅ Restriction lifted but NotifyOnRestrictionLifted=none; no user-facing message sent",
                 { username }
@@ -706,9 +692,6 @@ async function maybeNotifyRestrictionLifted(
                 text: messageBody,
             });
         }
-
-        // Mark as notified so we don't message again
-        await context.redis.set(notifiedKey, "true");
 
         logger.info("📬 Restriction lift notification sent", {
             username,
@@ -2128,7 +2111,7 @@ export async function updateAuthorRedis(
         return false;
     }
 
-    const remaining = Math.max(0, awardsRequired + 1 - newCount);
+    const remaining = Math.max(0, awardsRequired - newCount);
 
     logger.debug("📊 Computed remaining awards required", {
         username,

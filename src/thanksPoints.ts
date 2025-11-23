@@ -27,6 +27,7 @@ import {
     NotifyOnModAwardSuccessReplyOptions,
     NotifyOnModAwardFailReplyOptions,
     AutoSuperuserReplyOptions,
+    NotifyOnRestrictionLiftedReplyOptions,
 } from "./settings.js";
 import { setCleanupForUsers } from "./cleanupTasks.js";
 import { isLinkId } from "@devvit/shared-types/tid.js";
@@ -141,21 +142,20 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         logger.warn("❌ Could not fetch author object", { authorName });
         return;
     }
-
+    // 🔁 Still OK to refresh the leaderboard – this does NOT change any scores
     const { currentScore } = await getCurrentScore(author, context, settings);
-
     await context.scheduler.runJob({
         name: "updateLeaderboard",
         runAt: new Date(),
         data: {
-            reason: `Awarded a point to ${authorName}. New score: ${currentScore}`,
+            reason: `Post submit by ${authorName}. Current score: ${currentScore}`,
         },
     });
 
     const awardsRequiredEntry =
         (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) ?? 0;
     if (awardsRequiredEntry === 0) {
-        logger.info(`❌ Post restriction is not enabled`);
+        logger.info("❌ Post restriction is not enabled");
         return;
     }
 
@@ -165,17 +165,7 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
     const lastValidPostKey = `lastValidPost:${author.username}`;
     const lastValidPostTitleKey = `lastValidPostTitle:${author.username}`;
 
-    // ──────────────── Retrieve Counters ────────────────
-    const countRaw = await context.redis.get(restrictedFlagKey);
-    const requiredRaw = await context.redis.get(requiredKey);
-    const count = countRaw ? parseInt(countRaw, 10) || 0 : 0;
-    const remaining = requiredRaw ? parseInt(requiredRaw, 10) || 0 : 0;
-
-    const awardsRequired =
-        (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) || 0;
-
     // ──────────────── Decide whether or not moderators should have the restriction applied to them ────────────────
-
     const modsExempt =
         (settings[AppSetting.ModeratorsExempt] as boolean) ?? true;
     const isMod = await isModerator(context, subredditName, authorName);
@@ -194,13 +184,13 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
 
     logger.debug("⚙️ Checking restriction", {
         author: author.username,
-        count,
-        remaining,
-        awardsRequired,
+        restrictedFlagExists,
+        requiredFlagExists,
+        awardsRequired: awardsRequiredEntry,
         isRestricted,
     });
 
-    // ✅ First post allowed — mark user as restricted after posting
+    // ✅ First post allowed — mark user as restricted *after* posting
     if (!isRestricted) {
         const restrictionTemplate =
             (settings[AppSetting.MessageToRestrictedUsers] as string) ??
@@ -223,7 +213,7 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         const discordLink = settings[AppSetting.DiscordServerLink] as
             | string
             | undefined;
-        const subredditName = event.subreddit.name;
+
 
         // 🧩 Build the base text replacement
         let restrictionText = restrictionTemplate
@@ -258,90 +248,99 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         // 🏅 Distinguish and pin the comment
         await postRestrictionComment.distinguish(true);
 
-        // 🧠 Update Redis keys
+        // 🧠 Store which post was valid
         await context.redis.set(lastValidPostKey, event.post.permalink);
         await context.redis.set(lastValidPostTitleKey, event.post.title);
-        await updateAuthorRedis(context, authorName);
-        await context.redis.set(restrictedFlagKey, "1");
+
+        // 🧮 Initialize restriction requirement (but do NOT increment award counter)
+        await updateAuthorRedisOnPostSubmit(context, authorName);
 
         logger.info(
-            `✅ First post allowed for ${author.username}. Restriction notice pinned. Future posts restricted until ${awardsRequired} awards.`
+            `✅ First post allowed for ${author.username}. Restriction notice pinned. Future posts restricted until ${awardsRequiredEntry} awards.`
         );
         return;
-    } else {
-
-        const pointTriggerWords =
-            (settings[AppSetting.PointTriggerWords] as string) ??
-            "!award\n.award";
-
-        const triggerWordsArray = pointTriggerWords
-            .split(/\r?\n/)
-            .map((word) => word.trim())
-            .filter(Boolean);
-
-        const commandList = triggerWordsArray.join(", ");
-        const pointName = (settings[AppSetting.PointName] as string) ?? "point";
-
-        const helpPage = settings[AppSetting.PointSystemHelpPage] as
-            | string
-            | undefined;
-        const discordLink = settings[AppSetting.DiscordServerLink] as
-            | string
-            | undefined;
-        const subredditName = event.subreddit.name;
-        const titleKey = await context.redis.get(
-            `lastValidPostTitle:${author.username}`
-        );
-        const lastValidPost = await context.redis.get(`lastValidPost:${author.username}`);
-        const requirement = settings[AppSetting.AwardsRequiredToCreateNewPosts] as number ?? 0;
-        const subsequentPostRestriction =
-            (settings[AppSetting.SubsequentPostRestrictionMessage] as string) ??
-            TemplateDefaults.SubsequentPostRestrictionMessage;
-        let subsequentPostRestrictionMessage = subsequentPostRestriction
-            .replace(/{{name}}/g, pointName)
-            .replace(/{{commands}}/g, commandList)
-            .replace(
-                /{{markdown_guide}}/g,
-                "https://www.reddit.com/wiki/markdown"
-            )
-            .replace(/{{requirement}}/g, requirement.toString())
-            .replace(/{{subreddit}}/g, subredditName);
-
-        if (titleKey) {
-            subsequentPostRestrictionMessage =
-                subsequentPostRestrictionMessage.replace(/{{title}}/g, titleKey);
-        }
-        // Add help page and/or discord links as needed
-
-        if (helpPage) {
-            subsequentPostRestrictionMessage =
-                subsequentPostRestrictionMessage.replace(
-                    /{{helpPage}}/g,
-                    `https://www.reddit.com/r/${subredditName}/wiki/${helpPage}`
-                );
-        }
-        if (discordLink) {
-            subsequentPostRestrictionMessage =
-                subsequentPostRestrictionMessage.replace(
-                    /{{discord}}/g,
-                    discordLink
-                );
-        }
-
-        if (lastValidPost) {
-            subsequentPostRestrictionMessage = subsequentPostRestrictionMessage.replace(/{{permalink}}/g, lastValidPost);
-        }
-
-        // 🗨️ Post comment
-        const postRestrictionComment = await context.reddit.submitComment({
-            id: event.post.id,
-            text: subsequentPostRestrictionMessage,
-        });
-
-        // 🏅 Distinguish and pin the comment
-        await postRestrictionComment.distinguish(true);
-        await context.reddit.remove(event.post.id, false);
     }
+
+    // ──────────────── Subsequent posts while restricted ────────────────
+    const pointTriggerWords =
+        (settings[AppSetting.PointTriggerWords] as string) ?? "!award\n.award";
+
+    const triggerWordsArray = pointTriggerWords
+        .split(/\r?\n/)
+        .map((word) => word.trim())
+        .filter(Boolean);
+
+    const commandList = triggerWordsArray.join(", ");
+    const pointName = (settings[AppSetting.PointName] as string) ?? "point";
+
+    const helpPage = settings[AppSetting.PointSystemHelpPage] as
+        | string
+        | undefined;
+    const discordLink = settings[AppSetting.DiscordServerLink] as
+        | string
+        | undefined;
+    const titleKey = await context.redis.get(
+        `lastValidPostTitle:${author.username}`
+    );
+    const lastValidPost = await context.redis.get(
+        `lastValidPost:${author.username}`
+    );
+    const requirement =
+        (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) ?? 0;
+
+    const subsequentPostRestrictionTemplate =
+        (settings[AppSetting.SubsequentPostRestrictionMessage] as string) ??
+        TemplateDefaults.SubsequentPostRestrictionMessage;
+
+    let subsequentPostRestrictionMessage = subsequentPostRestrictionTemplate
+        .replace(/{{name}}/g, pointName)
+        .replace(/{{commands}}/g, commandList)
+        .replace(/{{markdown_guide}}/g, "https://www.reddit.com/wiki/markdown")
+        .replace(/{{requirement}}/g, requirement.toString())
+        .replace(/{{subreddit}}/g, subredditName);
+
+    if (titleKey) {
+        subsequentPostRestrictionMessage =
+            subsequentPostRestrictionMessage.replace(/{{title}}/g, titleKey);
+    }
+
+    if (helpPage) {
+        subsequentPostRestrictionMessage =
+            subsequentPostRestrictionMessage.replace(
+                /{{helpPage}}/g,
+                `https://www.reddit.com/r/${subredditName}/wiki/${helpPage}`
+            );
+    }
+    if (discordLink) {
+        subsequentPostRestrictionMessage =
+            subsequentPostRestrictionMessage.replace(
+                /{{discord}}/g,
+                discordLink
+            );
+    }
+
+    if (lastValidPost) {
+        subsequentPostRestrictionMessage =
+            subsequentPostRestrictionMessage.replace(
+                /{{permalink}}/g,
+                lastValidPost
+            );
+    }
+
+    // 🗨️ Post comment
+    const postRestrictionComment = await context.reddit.submitComment({
+        id: event.post.id,
+        text: subsequentPostRestrictionMessage,
+    });
+
+    // 🏅 Distinguish and pin the comment, remove the new post
+    await postRestrictionComment.distinguish(true);
+    await context.reddit.remove(event.post.id, false);
+
+    logger.info("🚫 Removed post from restricted user", {
+        username: author.username,
+        postId: event.post.id,
+    });
 }
 
 async function getUserIsSuperuser(
@@ -528,49 +527,193 @@ async function maybeNotifyRestrictionLifted(
 ): Promise<void> {
     const restrictedKey = `restrictedUser:${username}`;
     const requiredKey = `awardsRequired:${username}`;
-    const markerKey = `restrictionRemovedOnce:${username}`;
+    const notifiedKey = `restrictionNotifiedOnce:${username}`;
+
+    logger.debug("🔔 maybeNotifyRestrictionLifted called", {
+        username,
+        restrictedKey,
+        requiredKey,
+        notifiedKey,
+    });
 
     try {
-        const [restrictedExists, remainingRaw, markerExists] =
+        const [restrictedExists, remainingRaw, notifiedExists] =
             await Promise.all([
                 context.redis.exists(restrictedKey),
                 context.redis.get(requiredKey),
-                context.redis.exists(markerKey),
+                context.redis.exists(notifiedKey),
             ]);
 
-        // If restriction flag is gone AND no remaining required awards
-        // AND we haven't notified before → send a comment reply.
+        logger.debug("📊 Restriction state snapshot", {
+            username,
+            restrictedExists,
+            remainingRaw,
+            notifiedExists,
+        });
+
+        // If we've already notified once, don't notify again
+        if (notifiedExists) {
+            logger.debug(
+                "ℹ️ Restriction lift notification already sent; skipping",
+                { username }
+            );
+            return;
+        }
+
+        let remaining: number | null = null;
         if (
-            !restrictedExists &&
-            (!remainingRaw || remainingRaw === "0") &&
-            !markerExists
+            remainingRaw !== undefined &&
+            remainingRaw !== null &&
+            remainingRaw !== ""
         ) {
-            await context.redis.set(markerKey, "true");
-
-            const liftMessage = `🎉 Good news, u/${username}! Your posting restriction has been removed — you've met the required number of awards to other users. You can now create new posts again.`;
-
-            try {
-                const reply = await context.reddit.submitComment({
-                    id: event.comment!.id,
-                    text: liftMessage,
-                });
-
-                await reply.distinguish();
-
-                logger.info("✅ Posted restriction-lifted reply", {
-                    username,
-                    commentId: event.comment?.id,
-                });
-            } catch (err) {
-                logger.error(
-                    "❌ Failed to post restriction-lifted reply comment",
-                    {
-                        username,
-                        err,
-                    }
+            const parsedRemaining = Number(remainingRaw);
+            if (Number.isFinite(parsedRemaining) && parsedRemaining >= 0) {
+                remaining = parsedRemaining;
+            } else {
+                logger.warn(
+                    "⚠️ Invalid remaining awardsRequired value; treating as null",
+                    { username, remainingRaw }
                 );
             }
         }
+
+        // If the restricted flag still exists OR remaining>0, then they're still restricted
+        if (restrictedExists || (remaining !== null && remaining > 0)) {
+            logger.debug(
+                "ℹ️ Marker present but user still appears restricted; not notifying yet",
+                {
+                    username,
+                    restrictedExists,
+                    remaining,
+                }
+            );
+            return;
+        }
+
+        // At this point:
+        // - restrictedKey does not exist
+        // - remaining is null or 0
+        // → This is our "restriction fully lifted" condition.
+
+        const settings = await context.settings.getAll();
+
+        // 1️⃣ Determine how to notify (fallback: none)
+        const notifySetting = (settings[
+            AppSetting.NotifyOnRestrictionLifted
+        ] as string[] | undefined) ?? [
+            NotifyOnRestrictionLiftedReplyOptions.NoReply,
+        ];
+
+        const notifyMode =
+            (notifySetting[0] as NotifyOnRestrictionLiftedReplyOptions) ??
+            NotifyOnRestrictionLiftedReplyOptions.NoReply;
+
+        logger.debug("⚙️ NotifyOnRestrictionLifted setting resolved", {
+            username,
+            notifySetting,
+            notifyMode,
+        });
+
+        // If set to "none", mark as notified and bail
+        if (notifyMode === NotifyOnRestrictionLiftedReplyOptions.NoReply) {
+            await context.redis.set(notifiedKey, "true");
+            logger.info(
+                "✅ Restriction lifted but NotifyOnRestrictionLifted=none; no user-facing message sent",
+                { username }
+            );
+            return;
+        }
+
+        // 2️⃣ Build message template & placeholders
+        const pointName =
+            (settings[AppSetting.PointName] as string | undefined) ?? "point";
+        const awardsRequired =
+            (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) ??
+            0;
+
+        const pointTriggerWordsRaw =
+            (settings[AppSetting.PointTriggerWords] as string | undefined) ??
+            "!award\n.award";
+
+        const triggerWordsArray = pointTriggerWordsRaw
+            .split(/\r?\n/)
+            .map((w) => w.trim())
+            .filter(Boolean);
+
+        const commandsList = triggerWordsArray.join(", ");
+
+        const helpPage = settings[AppSetting.PointSystemHelpPage] as
+            | string
+            | undefined;
+        const discordLink = settings[AppSetting.DiscordServerLink] as
+            | string
+            | undefined;
+
+        const subredditName =
+            event.subreddit?.name ??
+            (await context.reddit.getCurrentSubreddit()).name;
+
+        const template =
+            (settings[AppSetting.RestrictionRemovedMessage] as string) ??
+            TemplateDefaults.RestrictionRemovedMessage;
+
+        const commentPermalink = event.comment?.permalink ?? "";
+
+        const messageBody = formatMessage(template, {
+            awarder: username,
+            name: pointName,
+            subreddit: subredditName,
+            requirement: awardsRequired.toString(),
+            helpPage: helpPage
+                ? `https://old.reddit.com/r/${subredditName}/wiki/${helpPage}`
+                : "",
+            discord: discordLink ?? "",
+        });
+
+        logger.debug("✉️ Built restriction-removed message body", {
+            username,
+            messagePreview: messageBody.slice(0, 200),
+        });
+
+        // 3️⃣ Deliver notification
+        if (
+            notifyMode === NotifyOnRestrictionLiftedReplyOptions.ReplyAsComment
+        ) {
+            if (!event.comment) {
+                logger.warn(
+                    "⚠️ NotifyOnRestrictionLifted=ReplyAsComment but no comment in event; falling back to PM",
+                    { username }
+                );
+
+                await context.reddit.sendPrivateMessage({
+                    to: username,
+                    subject: `Your posting restriction has been lifted in r/${subredditName}`,
+                    text: messageBody,
+                });
+            } else {
+                const reply = await context.reddit.submitComment({
+                    id: event.comment.id,
+                    text: messageBody,
+                });
+                await reply.distinguish();
+            }
+        } else if (
+            notifyMode === NotifyOnRestrictionLiftedReplyOptions.ReplyByPM
+        ) {
+            await context.reddit.sendPrivateMessage({
+                to: username,
+                subject: `Your posting restriction has been lifted in r/${subredditName}`,
+                text: messageBody,
+            });
+        }
+
+        // Mark as notified so we don't message again
+        await context.redis.set(notifiedKey, "true");
+
+        logger.info("📬 Restriction lift notification sent", {
+            username,
+            notifyMode,
+        });
     } catch (err) {
         logger.error("❌ Error while checking / notifying restriction lift", {
             username,
@@ -918,8 +1061,10 @@ export async function handleThanksEvent(
             });
 
             // Restriction progress (ALT)
-            await updateAuthorRedis(context, awarder);
-            await maybeNotifyRestrictionLifted(context, event, awarder);
+            const restrictionLifted = await updateAuthorRedis(context, awarder);
+            if (restrictionLifted) {
+                await maybeNotifyRestrictionLifted(context, event, awarder);
+            }
 
             // Notify success (ALT)
             const leaderboard = `https://old.reddit.com/r/${subredditName}/wiki/${
@@ -1285,8 +1430,10 @@ export async function handleThanksEvent(
         });
 
         // Restriction progress (MOD)
-        await updateAuthorRedis(context, awarder);
-        await maybeNotifyRestrictionLifted(context, event, awarder);
+        const restrictionLifted = await updateAuthorRedis(context, awarder);
+        if (restrictionLifted) {
+            await maybeNotifyRestrictionLifted(context, event, awarder);
+        }
 
         // Build success message
         const modSuccessTemplate =
@@ -1615,8 +1762,10 @@ export async function handleThanksEvent(
     });
 
     // Restriction counters (normal)
-    await updateAuthorRedis(context, awarder);
-    await maybeNotifyRestrictionLifted(context, event, awarder);
+    const restrictionLifted = await updateAuthorRedis(context, awarder);
+    if (restrictionLifted) {
+        await maybeNotifyRestrictionLifted(context, event, awarder);
+    }
 
     // Success notify (normal)
     {
@@ -1828,7 +1977,6 @@ export async function updateAuthorRedisManualRequirementRemoval(
         const deleted = await Promise.all([
             context.redis.del(requiredKey),
             context.redis.del(lastValidPostKey),
-            context.redis.set(`restrictionRemovedOnce:${username}`, "true"),
         ]);
 
         logger.info("🧹 Manual requirement removal complete", {
@@ -1844,6 +1992,60 @@ export async function updateAuthorRedisManualRequirementRemoval(
     }
 }
 
+export async function updateAuthorRedisOnPostSubmit(
+    context: TriggerContext,
+    username: string
+): Promise<void> {
+    const restrictedKey = `restrictedUser:${username}`;
+    const requiredKey = `awardsRequired:${username}`;
+
+    logger.debug("🔔 updateAuthorRedisOnPostSubmit called", {
+        username,
+        restrictedKey,
+        requiredKey,
+    });
+
+    const [restrictedExists, requiredExists] = await Promise.all([
+        context.redis.exists(restrictedKey),
+        context.redis.exists(requiredKey),
+    ]);
+
+    // If they already have counters, don't reset them
+    if (restrictedExists || requiredExists) {
+        logger.debug(
+            "ℹ️ User already has restriction counters; leaving as-is on post submit",
+            { username, restrictedExists, requiredExists }
+        );
+        return;
+    }
+
+    const settings = await context.settings.getAll();
+    const awardsRequired =
+        (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) ?? 0;
+
+    if (awardsRequired <= 0) {
+        logger.debug(
+            "ℹ️ awardsRequiredToCreateNewPosts <= 0; not initializing restriction counters",
+            { username, awardsRequired }
+        );
+        return;
+    }
+
+    // Initialize with 0 progress and full remaining requirement
+    await Promise.all([
+        context.redis.set(restrictedKey, "0"),
+        context.redis.set(requiredKey, awardsRequired.toString()),
+    ]);
+
+    logger.info("🚧 Initial restriction counters set on post submit", {
+        username,
+        restrictedKey,
+        requiredKey,
+        restrictedUser: 0,
+        remaining: awardsRequired,
+    });
+}
+
 export async function updateAuthorRedis(
     context: TriggerContext,
     username: string
@@ -1852,7 +2054,7 @@ export async function updateAuthorRedis(
     const requiredKey = `awardsRequired:${username}`;
     const lastValidPostKey = `lastValidPost:${username}`;
 
-    logger.debug("🔔 updateAuthorRedis called", {
+    logger.debug("🔔 updateAuthorRedis called (award path)", {
         username,
         restrictedKey,
         requiredKey,
@@ -1868,15 +2070,9 @@ export async function updateAuthorRedis(
         rawType: typeof raw,
     });
 
-    let currentCount: number;
+    let currentCount = 0;
 
-    if (raw === undefined || raw === null || raw === "") {
-        // No existing value → start at 0
-        currentCount = 0;
-        logger.debug("ℹ️ No existing restricted count, starting at 0", {
-            username,
-        });
-    } else {
+    if (raw !== undefined && raw !== null && raw !== "") {
         const parsed = Number(raw);
         if (Number.isFinite(parsed) && parsed >= 0) {
             currentCount = parsed;
@@ -1885,13 +2081,15 @@ export async function updateAuthorRedis(
                 parsedCount: currentCount,
             });
         } else {
-            // Bad data → reset to 0
-            currentCount = 0;
-            logger.warn("⚠️ Invalid restricted value in Redis, resetting to 0", {
-                username,
-                raw,
-            });
+            logger.warn(
+                "⚠️ Invalid restricted value in Redis, resetting to 0",
+                { username, raw }
+            );
         }
+    } else {
+        logger.debug("ℹ️ No existing restricted count, starting at 0", {
+            username,
+        });
     }
 
     const newCount = currentCount + 1;
@@ -1914,7 +2112,23 @@ export async function updateAuthorRedis(
         awardsRequired,
     });
 
-    const remaining = Math.max(0, (awardsRequired + 1) - newCount);
+    // If feature is off or misconfigured, don't keep them restricted
+    if (awardsRequired <= 0) {
+        logger.warn(
+            "⚠️ awardsRequiredToCreateNewPosts <= 0, clearing restriction keys",
+            { username, awardsRequired }
+        );
+
+        await Promise.all([
+            context.redis.del(restrictedKey),
+            context.redis.del(requiredKey),
+            context.redis.del(lastValidPostKey),
+        ]);
+
+        return false;
+    }
+
+    const remaining = Math.max(0, awardsRequired + 1 - newCount);
 
     logger.debug("📊 Computed remaining awards required", {
         username,
@@ -1923,14 +2137,14 @@ export async function updateAuthorRedis(
         remaining,
     });
 
-    // Still under the requirement → store remaining and keep restriction
+    // Still under requirement → store remaining and keep restriction
     if (remaining > 0) {
         await context.redis.set(requiredKey, remaining.toString());
 
         logger.info("📊 Updated Redis (restriction still active)", {
             username,
             restrictedUser: newCount,
-            awardsRequiredRemaining: remaining,
+            remaining,
             restrictedKey,
             requiredKey,
         });
@@ -1938,22 +2152,21 @@ export async function updateAuthorRedis(
         return false; // requirement NOT yet met
     }
 
-    // 🎉 Requirement COMPLETED — clean up keys
+    // 🎉 Requirement COMPLETED — clean up keys & set permanent marker
     await Promise.all([
         context.redis.del(restrictedKey),
         context.redis.del(requiredKey),
         context.redis.del(lastValidPostKey),
     ]);
 
-    await context.redis.set(`restrictionRemovedOnce:${username}`, "true");
-
     logger.info("🎉 User restriction fully lifted and keys cleared", {
         username,
         finalCount: newCount,
+        awardsRequired,
         removedKeys: [restrictedKey, requiredKey, lastValidPostKey],
     });
 
-    return true; // requirement was met this call
+    return true; // requirement was met on this call
 }
 
 async function updateAwardeeFlair(
@@ -2287,17 +2500,23 @@ export async function manualPostRestrictionRemovalHandler(
         await updateAuthorRedisManualRequirementRemoval(context, authorName);
     }
     // ──────────────── Remove All Restriction Data ────────────────
-    await Promise.all([context.redis.del(lastValidPostKey), context.redis.del(lastValidTitleKey)]);
+    await Promise.all([
+        context.redis.del(lastValidPostKey),
+        context.redis.del(lastValidTitleKey),
+    ]);
 
     logger.info("✅ Restriction fully removed from Redis", {
         username: user.username,
-        removedKeys: [restrictionKey, requiredKey, lastValidPostKey, lastValidTitleKey],
+        removedKeys: [
+            restrictionKey,
+            requiredKey,
+            lastValidPostKey,
+            lastValidTitleKey,
+        ],
     });
 
     // ──────────────── Notify Moderator ────────────────
-    context.ui.showToast(
-        `✅ Post restriction removed for u/${user.username}.`
-    );
+    context.ui.showToast(`✅ Post restriction removed for u/${user.username}.`);
     logger.info(
         `✅ Manual post restriction removal successful for u/${user.username}.`
     );

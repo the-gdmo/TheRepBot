@@ -55,6 +55,9 @@ If the application is removed from a subreddit, all data is deleted although the
 This app is open source and licensed under the BSD 3-Clause License. You can find the source code on GitHub [here](https://github.com/the-gdmo/TheRepBot).
 
 ## Version History
+### 15.0.0
+* Make it so that a user will actually have their post restriction removed when they should
+* Add a setting for how to notify the user when their restriction is removed
 ### 14.1.0
 * Make `{{awardeePage}}` link to the user page (incorrect formatting previously)
 ### 14.0.1

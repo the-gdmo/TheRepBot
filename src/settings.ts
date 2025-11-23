@@ -97,10 +97,11 @@ export enum AppSetting {
     UsernameLengthMessage = "usernameLengthMessage",
     NoUsernameMentionMessage = "noUsernameMentionMessage",
     RestrictionRemovedMessage = "restrictionRemovedMessage",
+    NotifyOnRestrictionLifted = "notifyOnRestrictionLifted",
 }
 
 export enum TemplateDefaults {
-    SubsequentPostRestrictionMessage = "***ATTENTION to OP: You must award {{name}}s by replying to the successful comments. Before you can create new posts, you must award **{{requirement}}** {{name}}s to users who respond on [{{title}}]({{permalink}}).",
+    SubsequentPostRestrictionMessage = "***ATTENTION to OP:*** You must award {{name}}s by replying to the successful comments. Before you can create new posts, you must award **{{requirement}}** {{name}}s to users who respond on [{{title}}]({{permalink}}).",
     UnflairedPostMessage = "Points cannot be awarded on posts without flair. Please award only on flaired posts.",
     OPOnlyDisallowedMessage = "Only moderators, approved users, and Post Authors (OPs) can award {{name}}s.",
     LeaderboardHelpPageMessage = "[How to award points with RepBot.]({{helpPage}})",
@@ -151,6 +152,12 @@ export enum NotifyOnModApproveReplyOptions {
 }
 
 export enum NotifyOnModOnlyDisallowedReplyOptions {
+    NoReply = "none",
+    ReplyByPM = "replybypm",
+    ReplyAsComment = "replybycomment",
+}
+
+export enum NotifyOnRestrictionLiftedReplyOptions {
     NoReply = "none",
     ReplyByPM = "replybypm",
     ReplyAsComment = "replybycomment",
@@ -240,6 +247,21 @@ const NotifyOnPointAlreadyAwardedReplyOptionChoices = [
     {
         label: "Reply as comment",
         value: NotifyOnPointAlreadyAwardedReplyOptions.ReplyAsComment,
+    },
+];
+
+export const NotifyOnRestrictionLiftedReplyOptionChoices = [
+    {
+        label: "No Notification",
+        value: NotifyOnRestrictionLiftedReplyOptions.NoReply,
+    },
+    {
+        label: "Send user a private message",
+        value: NotifyOnRestrictionLiftedReplyOptions.ReplyByPM,
+    },
+    {
+        label: "Reply as comment",
+        value: NotifyOnRestrictionLiftedReplyOptions.ReplyAsComment,
     },
 ];
 
@@ -603,10 +625,21 @@ export const appSettings: SettingsFormField[] = [
                 onValidate: validateRegexes,
             },
             {
+                name: AppSetting.NotifyOnRestrictionLifted,
+                type: "select",
+                label: "Notify on post restriction removal",
+                helpText:
+                    "Choose how the bot should notify users when their posting restriction is fully removed.",
+                options: NotifyOnRestrictionLiftedReplyOptionChoices,
+                multiSelect: false,
+                defaultValue: [NotifyOnRestrictionLiftedReplyOptions.NoReply],
+                onValidate: selectFieldHasOptionChosen,
+            },
+            {
                 name: AppSetting.RestrictionRemovedMessage,
                 type: "paragraph",
-                label: "Restriction Removed Message",
-                helpText: "Required even if not used. Message to send the user when their restriction is removed",
+                label: "Message to send the user when their restriction is removed",
+                helpText: "Required even if not used. Placeholders Supported: {{awarder}}, {{subreddit}}, {{requirement}}, {{name}}, {{helpPage}}, {{discord}}",
                 defaultValue: TemplateDefaults.RestrictionRemovedMessage,
                 onValidate: paragraphFieldContainsText,
             },
@@ -718,7 +751,7 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.UsernameLengthMessage,
                 type: "paragraph",
                 label: "Message to send the user if a username is too short or long to be valid",
-                helpText: "Supported placeholders: {{awarder}}, {{awardee}}",
+                helpText: "Placeholders Supported: {{awarder}}, {{awardee}}",
                 defaultValue: TemplateDefaults.UsernameLengthMessage,
                 onValidate: paragraphFieldContainsText,
             },
@@ -726,7 +759,7 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.NoUsernameMentionMessage,
                 type: "paragraph",
                 label: "Message to send the user if there isn't a username mentioned (ie, contains a u/)",
-                helpText: "Supported placeholders: {{awarder}}, {{awardee}}",
+                helpText: "Placeholders Supported: {{awarder}}, {{awardee}}",
                 defaultValue: TemplateDefaults.NoUsernameMentionMessage,
                 onValidate: paragraphFieldContainsText,
             },
@@ -745,7 +778,7 @@ export const appSettings: SettingsFormField[] = [
                 label: "Treat users with this many points as automatically a trusted user",
                 helpText:
                     "If zero, only explicitly named users above will be treated as trusted users",
-                    onValidate: numberFieldHasValidOption,
+                onValidate: numberFieldHasValidOption,
             },
             {
                 type: "paragraph",
@@ -835,7 +868,8 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.NotifyOnModAwardSuccess,
                 type: "select",
                 label: "Notify on mod award success",
-                helpText: "How to notify users when a moderator or trusted user awards a point",
+                helpText:
+                    "How to notify users when a moderator or trusted user awards a point",
                 options: NotifyOnModAwardSuccessOptionChoices,
                 defaultValue: [NotifyOnModAwardSuccessReplyOptions.NoReply],
                 onValidate: selectFieldHasOptionChosen,
@@ -868,7 +902,8 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.ModAwardAlreadyGiven,
                 type: "paragraph",
                 label: `Message to send user when the "Trusted User/Mod award command" has already been used on the comment.`,
-                helpText: "Optional. Placeholders Supported: {{awardee}}, {{name}}",
+                helpText:
+                    "Optional. Placeholders Supported: {{awardee}}, {{name}}",
                 defaultValue: TemplateDefaults.ModAwardAlreadyGivenMessage,
                 onValidate: paragraphFieldContainsText,
             },

@@ -214,7 +214,6 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
             | string
             | undefined;
 
-
         // 🧩 Build the base text replacement
         let restrictionText = restrictionTemplate
             .replace(/{{name}}/g, pointName)
@@ -535,11 +534,10 @@ async function maybeNotifyRestrictionLifted(
     });
 
     try {
-        const [restrictedExists, remainingRaw ] =
-            await Promise.all([
-                context.redis.exists(restrictedKey),
-                context.redis.get(requiredKey),
-            ]);
+        const [restrictedExists, remainingRaw] = await Promise.all([
+            context.redis.exists(restrictedKey),
+            context.redis.get(requiredKey),
+        ]);
 
         logger.debug("📊 Restriction state snapshot", {
             username,
@@ -878,50 +876,64 @@ export async function handleThanksEvent(
     // ─────────────────────────────────────────────────────────────
     let mentionedUsername: string | undefined;
 
-    if (triggerUsed !== modCommand) {
+    const altUserSetting =
+        (settings[AppSetting.AlternatePointCommandUsers] as
+            | string
+            | undefined) ?? "";
+    const altUsers = altUserSetting
+        .split(",")
+        .map((user) => user.trim().toLowerCase());
+    // Is the awarder an ALT user?
+    const awarderLower = event.author.name.toLowerCase();
+    const userIsAltUser = altUsers.includes(awarderLower);
+
+    if (!userIsAltUser) {
+        logger.debug("⛔ ALT flow skipped — awarder is NOT an ALT user", {
+            awarder,
+            triggerUsed,
+            altUsers,
+            userIsAltUser,
+        });
+        return;
+    }
+
+    if (triggerUsed && userIsAltUser) {
         // Extract username token immediately after the trigger
         const idx = commentBody.indexOf(triggerUsed);
         if (idx >= 0) {
-            const after =
-                commentBody
-                    .slice(idx + triggerUsed.length)
-                    .trim()
-                    .split(/\s+/)[0] ?? "";
+            const rawAfter = commentBody.slice(idx + triggerUsed.length);
 
-            if (after) {
-                // Require u/ prefix, otherwise treat as "no username"
-                if (!after.startsWith("u/")) {
-                    const noUsernameMentionTemplate = formatMessage(
-                        (settings[AppSetting.NoUsernameMentionMessage] as
-                            | string
-                            | undefined) ??
-                            TemplateDefaults.NoUsernameMentionMessage,
-                        { awarder }
-                    );
+            // Must have a space and then u/<username>
+            // Example: " u/ryry50583583"
+            const spaceMatch = rawAfter.match(/\su\/([A-Za-z0-9_-]+)/);
 
-                    const newComment = await context.reddit.submitComment({
-                        id: event.comment.id,
-                        text: noUsernameMentionTemplate,
-                    });
-                    await newComment.distinguish();
-                    logger.warn("❌ ALT command used without u/username", {
+            // Log if match is truly null
+            if (spaceMatch === null) {
+                logger.debug(
+                    "❌ ALT username parse failed — spaceMatch was null",
+                    {
                         awarder,
                         triggerUsed,
-                    });
-                    return;
-                }
-
-                mentionedUsername = after.slice(2);
+                        rawAfter,
+                        spaceMatch,
+                    }
+                );
+                return;
             }
+
+            // Extract username BEFORE any validation
+            mentionedUsername = spaceMatch[1].toLowerCase();
+
+            logger.debug("🔍 ALT extracted username (pre-validation)", {
+                awarder,
+                triggerUsed,
+                rawAfter,
+                extracted: mentionedUsername,
+            });
         }
 
+        // If we extracted a username, validate + continue ALT logic
         if (mentionedUsername) {
-            mentionedUsername = mentionedUsername.toLowerCase();
-        }
-
-        // If a username was mentioned, validate and possibly run ALT flow
-        if (mentionedUsername) {
-            // Length / character validation
             if (!/^[a-z0-9_-]{3,21}$/i.test(mentionedUsername)) {
                 const usernameLengthTemplate = formatMessage(
                     (settings[AppSetting.UsernameLengthMessage] as
@@ -935,6 +947,7 @@ export async function handleThanksEvent(
                     text: usernameLengthTemplate,
                 });
                 await newComment.distinguish();
+
                 logger.warn("❌ ALT username failed validation", {
                     awarder,
                     mentionedUsername,
@@ -977,13 +990,13 @@ export async function handleThanksEvent(
                 return;
             }
 
-            // MAIN ALT FLOW
+            // MAIN ALT FLOW (everything stays exactly the same)
             logger.debug("🔎 ALT flow username probe", {
                 extracted: mentionedUsername,
                 triggerUsed,
             });
 
-            // Duplicate-prevention for ALT flow: unique per post & target
+            // Duplicate-prevention for ALT flow
             const altDupKey = `customAward-${event.post.id}-${mentionedUsername}`;
             if (await context.redis.exists(altDupKey)) {
                 const dupMsg = formatMessage(
@@ -1135,7 +1148,7 @@ export async function handleThanksEvent(
                 `🏅 ALT award: ${awarder} → ${mentionedUsername} +1 ${pointName}`
             );
 
-            // Update user wikis for the awarder + mentioned user
+            // Update user wikis
             try {
                 const givenData = {
                     postTitle: event.post.title,
@@ -1157,7 +1170,7 @@ export async function handleThanksEvent(
                 });
             }
 
-            return; // ALT path handled fully
+            return; // ALT path fully handled
         }
     }
 

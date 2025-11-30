@@ -55,6 +55,9 @@ If the application is removed from a subreddit, all data is deleted although the
 This app is open source and licensed under the BSD 3-Clause License. You can find the source code on GitHub [here](https://github.com/the-gdmo/TheRepBot).
 
 ## Version History
+### 16.0.0
+* Make it so alternate command award can be used without issue
+* Make it so users aren't infinitely put into a restriction key
 ### 15.1.0
 * Make it so alternate award logic won't be triggered by non-alternate command users
 * If an invalid alternate command is used (eg !awarded, .awarding), then no comment will be left on the comment

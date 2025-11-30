@@ -41,9 +41,7 @@ export async function getSubredditName(
     }
 
     const subreddit = await context.reddit.getCurrentSubreddit();
-    await context.redis.set("subredditname", subreddit.name, {
-        expiration: addWeeks(new Date(), 1),
-    });
+    await context.redis.set("subredditname", subreddit.name);
     return subreddit.name;
 }
 

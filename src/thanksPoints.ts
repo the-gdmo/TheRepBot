@@ -29,6 +29,7 @@ import {
     AutoSuperuserReplyOptions,
     NotifyOnRestrictionLiftedReplyOptions,
     appSettings,
+    NotifyOnBotAwardReplyOptions,
 } from "./settings.js";
 import { setCleanupForUsers } from "./cleanupTasks.js";
 import { isLinkId } from "@devvit/shared-types/tid.js";
@@ -42,10 +43,11 @@ import { InitialUserWikiOptions, updateUserWiki } from "./leaderboard.js";
 export const POINTS_STORE_KEY = "thanksPointsStore";
 
 function formatMessage(
-    template: string,
+    template: string | undefined | null,
     placeholders: Record<string, string>
 ): string {
-    let result = template;
+    let result = String(template ?? ""); // <-- ensures result is a string
+
     for (const [key, value] of Object.entries(placeholders)) {
         const regex = new RegExp(`{{${key}}}`, "g");
         result = result.replace(regex, value);
@@ -150,7 +152,6 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         username: authorName,
         currentScore,
     });
-
     await context.scheduler.runJob({
         name: "updateLeaderboard",
         runAt: new Date(),
@@ -160,6 +161,7 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
     });
     logger.info("✅ Scheduled leaderboard update", { username: authorName });
 
+    // 🔒 Post restriction system
     const awardsRequiredEntry =
         (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) ?? 0;
     if (awardsRequiredEntry === 0) {
@@ -169,20 +171,24 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         return;
     }
 
-    // ──────────────── Redis Keys ────────────────
+    // Redis keys
     const restrictedFlagKey = `restrictedUser:${author.username}`;
     const requiredKey = `awardsRequired:${author.username}`;
     const lastValidPostKey = `lastValidPost:${author.username}`;
     const lastValidPostTitleKey = `lastValidPostTitle:${author.username}`;
+    const awaitingPostKey = `restrictionLiftedAwaitingPost:${author.username}`;
+    const postRestrictionCommentKey = `postRestrictionNotificationSent:${author.username}`;
 
     logger.debug("🔑 Redis keys for restriction tracking", {
         restrictedFlagKey,
         requiredKey,
         lastValidPostKey,
         lastValidPostTitleKey,
+        awaitingPostKey,
+        postRestrictionCommentKey,
     });
 
-    // ──────────────── Check mod exemption ────────────────
+    // Mod exemption
     const modsExempt =
         (settings[AppSetting.ModeratorsExempt] as boolean) ?? true;
     const isMod = await isModerator(context, subredditName, authorName);
@@ -193,31 +199,47 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         return;
     }
 
-    // ──────────────── Determine if user is restricted ────────────────
-    const restrictedFlagExists = await restrictedKeyExists(context, authorName);
-    const requiredFlagExists = await requiredKeyExists(context, authorName);
-    const isRestricted = restrictedFlagExists || requiredFlagExists;
+    // Determine restriction state
+    const restrictedFlagExists = await context.redis.exists(restrictedFlagKey);
+    const requiredFlagExists = await context.redis.exists(requiredKey);
+    const awaitingPostFlag = await context.redis.get(awaitingPostKey);
+    const postRestrictionSent = await context.redis.get(
+        postRestrictionCommentKey
+    );
+
+    const isRestricted =
+        restrictedFlagExists === 1 ||
+        requiredFlagExists === 1 ||
+        awaitingPostFlag === "1";
 
     logger.debug("⚙️ Restriction check", {
         username: authorName,
-        restrictedFlagExists,
-        requiredFlagExists,
-        awardsRequired: awardsRequiredEntry,
+        restrictedFlagExists: restrictedFlagExists === 1,
+        requiredFlagExists: requiredFlagExists === 1,
+        awaitingPostFlag,
+        postRestrictionSent,
         isRestricted,
     });
 
-    // ✅ First post allowed — mark user as restricted after posting
-    if (!isRestricted) {
-        const restrictionTemplate =
-            (settings[AppSetting.MessageToRestrictedUsers] as string) ??
-            TemplateDefaults.MessageToRestrictedUsers;
+    // CASE 1 — Restriction was lifted recently & user is now allowed
+    if (awaitingPostFlag === "1") {
+        logger.info(
+            `🔓 Restriction was lifted previously — marking awaitingPost=0 for ${author.username}`
+        );
+        await context.redis.set(awaitingPostKey, "0");
+        await context.redis.del(restrictedFlagKey);
+        await context.redis.del(requiredKey);
+        await context.redis.set(postRestrictionCommentKey, "0"); // reset notification
 
-        const pointTriggerWords =
+        const restrictionTemplate =
+            (settings[AppSetting.RestrictionRemovedMessage] as string) ??
+            TemplateDefaults.RestrictionRemovedMessage;
+
+        const PointTriggerWords =
             (settings[AppSetting.PointTriggerWords] as string) ??
             "!award\n.award";
 
-        const triggerWordsArray = pointTriggerWords
-            .split(/\r?\n/)
+        const triggerWordsArray = PointTriggerWords.split(/\r?\n/)
             .map((word) => word.trim())
             .filter(Boolean);
 
@@ -231,7 +253,7 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
             | string
             | undefined;
 
-        // 🧩 Build restriction message
+        // 🧩 Build the base text replacement
         let restrictionText = restrictionTemplate
             .replace(/{{name}}/g, pointName)
             .replace(/{{commands}}/g, commandList)
@@ -241,6 +263,7 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
             )
             .replace(/{{subreddit}}/g, subredditName);
 
+        // Add help page and/or discord links as needed
         if (helpPage) {
             restrictionText = restrictionText.replace(
                 /{{helpPage}}/g,
@@ -254,57 +277,111 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
             );
         }
 
-        logger.debug("✉️ Built first-post restriction message", {
-            username: authorName,
-            messagePreview: restrictionText.slice(0, 200),
-        });
-
         // 🗨️ Post comment
         const postRestrictionComment = await context.reddit.submitComment({
             id: event.post.id,
             text: restrictionText,
         });
 
+        // 🏅 Distinguish and pin the comment
         await postRestrictionComment.distinguish(true);
-        logger.info("📌 Restriction comment posted and distinguished", {
+
+        logger.info(
+            "🧹 Cleared old restriction keys and reset postRestrictionNotificationSent",
+            { username: authorName }
+        );
+
+        // Store new last valid post
+        await context.redis.set(lastValidPostKey, event.post.permalink);
+        await context.redis.set(lastValidPostTitleKey, event.post.title);
+        logger.debug("💾 Stored last valid post after restriction lift", {
+            username: authorName,
+        });
+        return;
+    }
+
+    // CASE 2 — User is NOT restricted (first post)
+    if (!isRestricted) {
+        const restrictionTemplate =
+            (settings[AppSetting.MessageToRestrictedUsers] as string) ??
+            TemplateDefaults.MessageToRestrictedUsers;
+        const pointTriggerWords =
+            (settings[AppSetting.PointTriggerWords] as string) ??
+            "!award\n.award";
+
+        const triggerWordsArray = pointTriggerWords
+            .split(/\r?\n/)
+            .map((w) => w.trim())
+            .filter(Boolean);
+        const commandList = triggerWordsArray.join(", ");
+        const pointName = (settings[AppSetting.PointName] as string) ?? "point";
+
+        const helpPage = settings[AppSetting.PointSystemHelpPage] as
+            | string
+            | undefined;
+        const discordLink = settings[AppSetting.DiscordServerLink] as
+            | string
+            | undefined;
+
+        let restrictionText = restrictionTemplate
+            .replace(/{{name}}/g, pointName)
+            .replace(/{{commands}}/g, commandList)
+            .replace(
+                /{{markdown_guide}}/g,
+                "https://www.reddit.com/wiki/markdown"
+            )
+            .replace(/{{subreddit}}/g, subredditName);
+
+        if (helpPage)
+            restrictionText = restrictionText.replace(
+                /{{helpPage}}/g,
+                `https://www.reddit.com/r/${subredditName}/wiki/${helpPage}`
+            );
+        if (discordLink)
+            restrictionText = restrictionText.replace(
+                /{{discord}}/g,
+                discordLink
+            );
+
+        const postRestrictionComment = await context.reddit.submitComment({
+            id: event.post.id,
+            text: restrictionText,
+        });
+        await postRestrictionComment.distinguish(true);
+        logger.info("📌 Posted first-post restriction notice", {
             username: authorName,
             commentId: postRestrictionComment.id,
         });
 
-        // 🧠 Store last valid post
+        // Store first valid post
         await context.redis.set(lastValidPostKey, event.post.permalink);
         await context.redis.set(lastValidPostTitleKey, event.post.title);
-        logger.debug("💾 Stored last valid post in Redis", {
-            username: authorName,
-            lastValidPostKey,
-            lastValidPostTitleKey,
-        });
 
-        // 🧮 Initialize restriction requirement
+        // Initialize restriction requirement
         await updateAuthorRedisOnPostSubmit(context, authorName);
-        logger.info("✅ User restriction initialized post first submission", {
-            username: authorName,
-        });
+
+        // Mark restriction warning as not sent yet (just in case)
+        await context.redis.set(postRestrictionCommentKey, "0");
 
         return;
     }
 
-    // ──────────────── Subsequent posts while restricted ────────────────
-    logger.debug("⚠️ User attempted subsequent post while restricted", {
+    // CASE 3 — User IS restricted & is posting again
+    logger.debug("⚠️ Restricted user attempted new post", {
         username: authorName,
     });
 
     const titleKey = await context.redis.get(lastValidPostTitleKey);
     const lastValidPost = await context.redis.get(lastValidPostKey);
-    const PointTriggerWords =
+    const pointTriggerWords =
         (settings[AppSetting.PointTriggerWords] as string) ?? "!award\n.award";
-
-    const triggerWordsArray = PointTriggerWords.split(/\r?\n/)
-        .map((word) => word.trim())
+    const triggerWordsArray = pointTriggerWords
+        .split(/\r?\n/)
+        .map((w) => w.trim())
         .filter(Boolean);
-
     const commandList = triggerWordsArray.join(", ");
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
+
     const helpPageNotEmpty = settings[AppSetting.PointSystemHelpPage] !== "";
     const helpPage = helpPageNotEmpty
         ? `https://www.reddit.com/r/${subredditName}/wiki/${
@@ -315,60 +392,44 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
     const discordLink = discordLinkNotEmpty
         ? (settings[AppSetting.DiscordServerLink] as string)
         : "";
-
-    const requirement =
-        (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) ?? 0;
+    const requirement = awardsRequiredEntry;
 
     const subsequentPostRestrictionTemplate =
         (settings[AppSetting.SubsequentPostRestrictionMessage] as string) ??
         TemplateDefaults.SubsequentPostRestrictionMessage;
 
-    let subsequentPostRestrictionMessage = subsequentPostRestrictionTemplate
-        .replace(/{{name}}/g, pointName)
-        .replace(/{{commands}}/g, commandList)
-        .replace(/{{markdown_guide}}/g, "https://www.reddit.com/wiki/markdown")
-        .replace(/{{requirement}}/g, requirement.toString())
-        .replace(/{{subreddit}}/g, subredditName);
+    // Only send restriction comment if not already sent
+    if (postRestrictionSent !== "1") {
+        let msg = subsequentPostRestrictionTemplate
+            .replace(/{{name}}/g, pointName)
+            .replace(/{{commands}}/g, commandList)
+            .replace(
+                /{{markdown_guide}}/g,
+                "https://www.reddit.com/wiki/markdown"
+            )
+            .replace(/{{requirement}}/g, requirement.toString())
+            .replace(/{{subreddit}}/g, subredditName);
 
-    if (titleKey) {
-        subsequentPostRestrictionMessage =
-            subsequentPostRestrictionMessage.replace(/{{title}}/g, titleKey);
-    }
-    if (helpPageNotEmpty) {
-        subsequentPostRestrictionMessage =
-            subsequentPostRestrictionMessage.replace(
-                /{{helpPage}}/g,
-                `https://www.reddit.com/r/${subredditName}/wiki/${helpPage}`
-            );
-    }
-    if (discordLinkNotEmpty) {
-        subsequentPostRestrictionMessage =
-            subsequentPostRestrictionMessage.replace(
-                /{{discord}}/g,
-                discordLink
-            );
-    }
-    if (lastValidPost) {
-        subsequentPostRestrictionMessage =
-            subsequentPostRestrictionMessage.replace(
-                /{{permalink}}/g,
-                lastValidPost
-            );
-    }
-    // 🗨️ Post comment and remove post
-    const postRestrictionComment = await context.reddit.submitComment({
-        id: event.post.id,
-        text: subsequentPostRestrictionMessage,
-    });
+        if (titleKey) msg = msg.replace(/{{title}}/g, titleKey);
+        if (helpPageNotEmpty) msg = msg.replace(/{{helpPage}}/g, helpPage);
+        if (discordLinkNotEmpty) msg = msg.replace(/{{discord}}/g, discordLink);
+        if (lastValidPost) msg = msg.replace(/{{permalink}}/g, lastValidPost);
 
-    await postRestrictionComment.distinguish(true);
+        const postRestrictionComment = await context.reddit.submitComment({
+            id: event.post.id,
+            text: msg,
+        });
+        await postRestrictionComment.distinguish(true);
+        await context.redis.set(postRestrictionCommentKey, "1"); // mark as sent
+        logger.info("🚫 Removed restricted user's post and posted warning", {
+            username: authorName,
+            postId: event.post.id,
+            commentId: postRestrictionComment.id,
+        });
+    }
+
+    // Remove the post regardless
     await context.reddit.remove(event.post.id, false);
-
-    logger.info("🚫 Removed post from restricted user and posted warning", {
-        username: authorName,
-        postId: event.post.id,
-        commentId: postRestrictionComment.id,
-    });
 }
 
 async function getUserIsAltUser(
@@ -669,7 +730,6 @@ export async function maybeNotifyRestrictionLifted(
             awarder: username,
             name: pointName,
             subreddit: subredditName,
-            requirement: awardsRequired.toString(),
             helpPage: helpPage
                 ? `https://old.reddit.com/r/${subredditName}/wiki/${helpPage}`
                 : "",
@@ -794,409 +854,628 @@ async function notifyUser(
     }
 }
 
+//todo: Figure out why this and updateAuthorRedis() award 
+//todo: points to OP and system users and make it not happen
 export async function handleThanksEvent(
     event: CommentSubmit | CommentUpdate,
     context: TriggerContext
 ) {
-    if (!event.comment) return;
-    if (!event.post) return;
-    if (!event.subreddit) return;
+    logger.debug("✅ Event triggered", {
+        commentId: event.comment?.id,
+        postId: event.post?.id,
+        author: event.author?.name,
+        subreddit: event.subreddit?.name,
+    });
+    if (!event.comment || !event.post || !event.author || !event.subreddit)
+        return;
+
+    const settings = await context.settings.getAll();
+    const subredditName = event.subreddit.name;
+    const awarder = event.author.name;
+    const commentBody = (event.comment.body ?? "").toLowerCase();
     const commentId = event.comment.id;
     const postId = event.post.id;
-    const awarder  = event.comment.author;
-    const awarderName = await context.reddit.getUserByUsername(event.comment.author);;
-    const subredditName = event.subreddit.name;
-    const settings = await context.settings.getAll();
+    const pointName = (settings[AppSetting.PointName] as string) ?? "point";
+    const pointSymbol = (settings[AppSetting.PointSymbol] as string) ?? "";
+    const redisKey = POINTS_STORE_KEY;
+    const accessControl = ((settings[AppSetting.AccessControl] as string[]) ?? [
+        "everyone",
+    ])[0];
+    const isMod = await isModerator(context, subredditName, awarder);
+    const isSuperUser = await getUserIsSuperuser(awarder, context);
+    const isOP = event.author.id === event.post.authorId;
 
-    logger.debug("✅ Event triggered", {
-        commentId,
-        postId,
-        awarder,
-        subredditName,
-    });
+    const disallowedFlairList = (
+        (settings[AppSetting.DisallowedFlairs] as string) ?? ""
+    )
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean);
 
-    if (!awarder || !subredditName || !commentId) {
-        logger.error("❌ Missing critical event info", {
-            awarder,
-            subredditName,
-            commentId,
-        });
+    const userCommands = (
+        (settings[AppSetting.PointTriggerWords] as string) ?? "!award\n.award"
+    )
+        .split("\n")
+        .map((c) => c.toLowerCase().trim())
+        .filter(Boolean);
+    const modCommand = (
+        (settings[AppSetting.ModAwardCommand] as string) ?? "!modaward"
+    )
+        .toLowerCase()
+        .trim();
+    const allTriggers = Array.from(
+        new Set([...userCommands, modCommand].filter((t) => t && t.length > 0))
+    );
+    const triggerUsed = allTriggers.find((t) => commentBody.includes(t));
+    if (!triggerUsed) return;
+
+    const lowerAwarder = awarder.toLowerCase();
+    const botName = context.appName.toLowerCase();
+    const isAutomod = lowerAwarder === "automoderator";
+
+    // ---------------------------
+    // Prevent awarding OP, Automod, or the Bot
+    // ---------------------------
+    if (isAutomod || isOP || lowerAwarder === botName) {
+        const botAwardMessage = formatMessage(
+            (settings[AppSetting.BotAwardMessage] as string) ??
+                TemplateDefaults.BotAwardMessage,
+            { name: pointName }
+        );
+
+        const notify =
+            ((settings[AppSetting.NotifyOnBotAward] as string[]) ??
+                [NotifyOnBotAwardReplyOptions.NoReply])[0];
+
+        if (notify === NotifyOnBotAwardReplyOptions.ReplyAsComment) {
+            const newComment = await context.reddit.submitComment({
+                id: commentId,
+                text: botAwardMessage,
+            });
+            await newComment.distinguish();
+        } else if (notify === NotifyOnBotAwardReplyOptions.ReplyByPM) {
+            await context.reddit.sendPrivateMessage({
+                subject: "You attempted to award TheRepBot / OP / Automoderator",
+                to: awarder,
+                text: botAwardMessage,
+            });
+        }
         return;
     }
 
-    const content = event.comment.body.trim();
+    // ---------------------------
+    // Fetch parent comment
+    // ---------------------------
+    let parentComment: Comment | undefined;
+    try {
+        parentComment = await context.reddit.getCommentById(
+            event.comment.parentId
+        );
+    } catch {
+        parentComment = undefined;
+    }
+    if (!parentComment) {
+        logger.warn("❌ Parent comment not found (normal/mod flow).");
+        return;
+    }
 
-    // ───────────────────────────────
-    // Determine if this is a normal award or ALT award
-    const pointTriggerWords: string[] = Array.isArray(
-        settings[AppSetting.PointTriggerWords]
+    // ---------------------------
+    // Handle restricted users
+    // ---------------------------
+    const postRestrictionCommentKey = `postRestrictionNotificationSent:${awarder}`;
+    const userIsRestricted = await getUserIsRestricted(awarder, context);
+    const restrictionAlreadySent = await context.redis.get(
+        postRestrictionCommentKey
+    );
+    if (userIsRestricted && restrictionAlreadySent !== "1") {
+        const helpPage = settings[AppSetting.PointSystemHelpPage] as
+            | string
+            | undefined;
+        const discordLink = settings[AppSetting.DiscordServerLink] as
+            | string
+            | undefined;
+
+        const restrictionTemplate = formatMessage(
+            (settings[AppSetting.RestrictionRemovedMessage] as string) ??
+                TemplateDefaults.RestrictionRemovedMessage,
+            {
+                awarder,
+                name: pointName,
+                subreddit: subredditName,
+                helpPage: helpPage
+                    ? `https://old.reddit.com/r/${subredditName}/wiki/${helpPage}`
+                    : "",
+                discord: discordLink ?? "",
+            }
+        );
+        const newComment = await context.reddit.submitComment({
+            id: commentId,
+            text: restrictionTemplate,
+        });
+        await newComment.distinguish(true);
+        await context.redis.set(postRestrictionCommentKey, "1");
+        return;
+    }
+
+    // ---------------------------
+    // Alternate command users
+    // ---------------------------
+    const altCommandUsers = (
+        (settings[AppSetting.AlternatePointCommandUsers] as string) ?? ""
     )
-        ? settings[AppSetting.PointTriggerWords]
-        : [];
+        .split("\n")
+        .map((u) => u.trim().toLowerCase())
+        .filter(Boolean);
+    const altUsersSet = new Set(altCommandUsers);
+    const userIsAltUser = altUsersSet.has(lowerAwarder);
 
-    const modTriggerWords: string[] = Array.isArray(
-        settings[AppSetting.ModAwardCommand]
-    )
-        ? settings[AppSetting.ModAwardCommand]
-        : [];
+    const notifyOnAutoSuperuserString = ((settings[
+        AppSetting.NotifyOnAutoSuperuser
+    ] as string[] | undefined) ?? [
+        AutoSuperuserReplyOptions.NoReply,
+    ])[0] as AutoSuperuserReplyOptions;
 
-    const userCommandRegex = new RegExp(
-        `^(!|\\?)(${pointTriggerWords.join("|")})\\b`,
-        "i"
-    );
-    const modCommandRegex = new RegExp(
-        `^(!|\\?)(${modTriggerWords.join("|")})\\b`,
-        "i"
-    );
-    const altCommandRegex = new RegExp(
-        `^(!|\\?)(${[
-            ...(settings[AppSetting.PointTriggerWords] as string),
-            ...(settings[AppSetting.ModAwardCommand] as string),
-        ].join("|")})\\s+u/([a-z0-9_-]{3,21})`,
-        "i"
-    );
+    // ---------------------------
+    // Alternate command handling
+    // ---------------------------
+    if (
+        userIsAltUser &&
+        (userCommands.includes(triggerUsed) || modCommand.includes(triggerUsed))
+    ) {
+        const idx = commentBody.indexOf(triggerUsed);
+        if (idx >= 0) {
+            const after = commentBody.slice(idx + triggerUsed.length);
+            const spaceUMatch = after.match(/\s+u\/([a-z0-9_-]{3,21})/i);
+            if (spaceUMatch) {
+                const mentionedUsername = spaceUMatch[1].toLowerCase();
+                const altDupKey = `customAward-${postId}-${mentionedUsername}`;
+                if (await context.redis.exists(altDupKey)) {
+                    const alreadyMsg = formatMessage(
+                        (settings[
+                            AppSetting.PointAlreadyAwardedToUserMessage
+                        ] as string) ??
+                            TemplateDefaults.PointAlreadyAwardedToUserMessage,
+                        { awardee: mentionedUsername, name: pointName, awarder }
+                    );
+                    await replyToUser(
+                        context,
+                        notifyOnAutoSuperuserString,
+                        awarder,
+                        alreadyMsg,
+                        commentId
+                    );
+                    return;
+                }
+                await context.redis.set(altDupKey, "1");
+                const newScore = await context.redis.zIncrBy(
+                    redisKey,
+                    mentionedUsername,
+                    1
+                );
 
-    let triggerUsed: string | null = null;
-    let mentionedUsername: string | null = null;
-    let isAlt = false;
-    let isModCommand = false;
+                await context.scheduler.runJob({
+                    name: "updateLeaderboard",
+                    runAt: new Date(),
+                    data: {
+                        reason: `Alternate award from ${awarder} to ${mentionedUsername} (new: ${newScore})`,
+                    },
+                });
 
-    const altMatch = content.match(altCommandRegex);
-    if (altMatch) {
-        isAlt = true;
-        triggerUsed = altMatch[2];
-        mentionedUsername = altMatch[3];
-        const modCommands: string[] = Array.isArray(
-            settings[AppSetting.ModAwardCommand]
-        )
-            ? settings[AppSetting.ModAwardCommand]
-            : [];
-        isModCommand = modCommands.includes(triggerUsed);
-    } else {
-        const userMatch = content.match(userCommandRegex);
-        const modMatch = content.match(modCommandRegex);
-        if (modMatch) {
-            triggerUsed = modMatch[2];
-            isModCommand = true;
-        } else if (userMatch) {
-            triggerUsed = userMatch[2];
-            isModCommand = false;
-        } else {
-            logger.debug("⏩ No trigger matched, ignoring comment");
-            return;
+                // Update OP restrictions if necessary
+                try {
+                    const authorUser = await context.reddit.getUserByUsername(
+                        awarder
+                    );
+                    const isPostAuthor = event.post.authorId === authorUser?.id;
+                    if (!authorUser) return;
+                    if (isPostAuthor) {
+                        const restrictionLifted = await updateAuthorRedis(
+                            context,
+                            awarder,
+                            commentId
+                        );
+
+                        if (restrictionLifted)
+                            await maybeNotifyRestrictionLifted(
+                                context,
+                                event,
+                                awarder
+                            );
+                    }
+
+                    logger.debug(
+                        `🧩 OP ${authorUser.username} restriction counter incremented`
+                    );
+                } catch (err) {
+                    logger.error(
+                        `Error incrementing user restriction counter`,
+                        { err, awarder }
+                    );
+                }
+
+                const leaderboard = `https://old.reddit.com/r/${subredditName}/wiki/${
+                    settings[AppSetting.LeaderboardName] ?? "leaderboard"
+                }`;
+                const awardeePage = `https://old.reddit.com/r/${subredditName}/wiki/user/${mentionedUsername}`;
+                const successMessage = formatMessage(
+                    (settings[
+                        AppSetting.AlternateCommandSuccessMessage
+                    ] as string) ??
+                        TemplateDefaults.AlternateCommandSuccessMessage,
+                    {
+                        name: pointName,
+                        awardee: mentionedUsername,
+                        awarder,
+                        total: newScore.toString(),
+                        symbol: pointSymbol,
+                        leaderboard,
+                        awardeePage,
+                    }
+                );
+                await replyToUser(
+                    context,
+                    notifyOnAutoSuperuserString,
+                    awarder,
+                    successMessage,
+                    commentId
+                );
+
+                try {
+                    const recipientUser =
+                        await context.reddit.getUserByUsername(
+                            mentionedUsername
+                        );
+                    if (recipientUser) {
+                        const { currentScore: recipientScore } =
+                            await getCurrentScore(
+                                recipientUser,
+                                context,
+                                settings
+                            );
+                        const zscore = await context.redis.zScore(
+                            redisKey,
+                            mentionedUsername
+                        );
+                        const recipientIsRestricted = await getUserIsRestricted(
+                            mentionedUsername,
+                            context
+                        );
+                        await updateAwardeeFlair(
+                            context,
+                            subredditName,
+                            mentionedUsername,
+                            (zscore ?? recipientScore) || 0,
+                            settings,
+                            recipientIsRestricted
+                        );
+                    }
+                } catch {}
+                return;
+            }
         }
     }
 
-    const redisKey = POINTS_STORE_KEY;
-    const pointName = (settings[AppSetting.PointName] as string) ?? "point";
-    const pointSymbol = (settings[AppSetting.PointSymbol] as string) ?? "";
-
-    // ───────────────────────────────
-    // ALT command logic
-    if (isAlt && mentionedUsername) {
-        logger.debug("🔎 ALT flow detected", {
-            triggerUsed,
-            mentionedUsername,
-        });
-
-        // Username validation
-        if (!/^[a-z0-9_-]{3,21}$/i.test(mentionedUsername)) {
-            const msg = formatMessage(
-                (settings[AppSetting.UsernameLengthMessage] as string) ??
-                    TemplateDefaults.UsernameLengthMessage,
-                { awardee: mentionedUsername, awarder }
+    // ---------------------------
+    // Mod award handling
+    // ---------------------------
+    if (triggerUsed === modCommand) {
+        let modAwardUsername: string | undefined;
+        const idx = commentBody.indexOf(triggerUsed);
+        if (idx >= 0) {
+            const after =
+                commentBody
+                    .slice(idx + triggerUsed.length)
+                    .trim()
+                    .split(/\s+/)[0] ?? "";
+            modAwardUsername = after
+                ? after.startsWith("u/")
+                    ? after.slice(2)
+                    : after
+                : undefined;
+        }
+        if (!modAwardUsername) return;
+        if (!/^[a-z0-9_-]{3,21}$/i.test(modAwardUsername))
+            modAwardUsername = modAwardUsername.toLowerCase();
+        if (modAwardUsername === botName) {
+            const botMsg = formatMessage(
+                (settings[AppSetting.BotAwardMessage] as string) ??
+                    TemplateDefaults.BotAwardMessage,
+                { name: pointName }
             );
-            const newComment = await context.reddit.submitComment({
-                id: commentId,
-                text: msg,
-            });
-            await newComment.distinguish();
-            logger.warn("❌ ALT username failed validation", {
+            await replyToUser(
+                context,
+                notifyOnAutoSuperuserString,
                 awarder,
-                mentionedUsername,
-            });
+                botMsg,
+                commentId
+            );
             return;
         }
-
-        // ALT authorization
-        const altCommandUsers: string[] = Array.isArray(
-            settings[AppSetting.AlternatePointCommandUsers]
-        )
-            ? settings[AppSetting.AlternatePointCommandUsers].map((u) =>
-                  u.toLowerCase()
-              )
-            : [];
-
-        if (!altCommandUsers.includes(awarder.toLowerCase())) {
-            const failMessage = formatMessage(
-                (settings[AppSetting.AlternateCommandFailMessage] as string) ??
-                    TemplateDefaults.AlternateCommandFailMessage,
-                {
-                    altCommand: triggerUsed,
-                    subreddit: subredditName,
-                }
+        const authorized = isMod || isSuperUser;
+        if (!authorized) {
+            const failMsg = formatMessage(
+                (settings[AppSetting.ModAwardCommandFail] as string) ??
+                    TemplateDefaults.ModAwardCommandFailMessage,
+                { awarder, command: modCommand, name: pointName }
             );
-
-            if (
-                settings[AppSetting.NotifyOnAlternateCommandFail] ===
-                NotifyOnAlternateCommandFailReplyOptions.ReplyAsComment
-            ) {
-                const failComment = await context.reddit.submitComment({
-                    id: commentId,
-                    text: failMessage,
-                });
-                await failComment.distinguish();
-            } else if (
-                settings[AppSetting.NotifyOnAlternateCommandFail] ===
-                NotifyOnAlternateCommandFailReplyOptions.ReplyByPM
-            ) {
-                await context.reddit.sendPrivateMessage({
-                    to: awarder,
-                    subject: "Alternate Command Not Allowed",
-                    text: failMessage,
-                });
-            }
-
-            logger.warn("🚫 Unauthorized ALT award attempt", {
+            await replyToUser(
+                context,
+                notifyOnAutoSuperuserString,
                 awarder,
-                triggerUsed,
-                mentionedUsername,
-            });
+                failMsg,
+                commentId
+            );
             return;
         }
-
-        // Duplicate prevention
-        const altDupKey = `customAward-${postId}-${mentionedUsername}`;
-        if (await context.redis.exists(altDupKey)) {
-            const dupMsg = formatMessage(
-                (settings[
-                    AppSetting.PointAlreadyAwardedToUserMessage
-                ] as string) ??
-                    TemplateDefaults.PointAlreadyAwardedToUserMessage,
-                { name: pointName, awardee: mentionedUsername }
+        const modDupKey = `modAward-${event.comment.parentId}`;
+        if (await context.redis.exists(modDupKey)) {
+            const alreadyMsg = formatMessage(
+                (settings[AppSetting.ModAwardAlreadyGiven] as string) ??
+                    TemplateDefaults.ModAwardAlreadyGivenMessage,
+                { awardee: modAwardUsername, name: pointName }
             );
-            const notify = ((settings[
-                AppSetting.NotifyOnPointAlreadyAwardedToUser
-            ] as string[]) ?? ["none"])[0];
-
-            if (
-                notify ===
-                NotifyOnPointAlreadyAwardedToUserReplyOptions.ReplyByPM
-            ) {
-                await context.reddit.sendPrivateMessage({
-                    to: awarder,
-                    subject: `Already awarded`,
-                    text: dupMsg,
-                });
-            } else if (
-                notify ===
-                NotifyOnPointAlreadyAwardedToUserReplyOptions.ReplyAsComment
-            ) {
-                const newComment = await context.reddit.submitComment({
-                    id: commentId,
-                    text: dupMsg,
-                });
-                await newComment.distinguish();
-            }
-
-            logger.info("❌ Duplicate ALT award attempt", {
+            await replyToUser(
+                context,
+                notifyOnAutoSuperuserString,
                 awarder,
-                mentionedUsername,
-            });
+                alreadyMsg,
+                commentId
+            );
             return;
         }
-        await context.redis.set(altDupKey, "1");
-
-        // Award points
+        await context.redis.set(modDupKey, "1");
         const newScore = await context.redis.zIncrBy(
             redisKey,
-            mentionedUsername,
+            modAwardUsername,
             1
         );
-
-        // Update leaderboard
         await context.scheduler.runJob({
             name: "updateLeaderboard",
             runAt: new Date(),
             data: {
-                reason: `ALT award: ${awarder} → ${mentionedUsername} (new: ${newScore})`,
+                reason: `Mod award from ${awarder} to ${modAwardUsername} (new: ${newScore})`,
             },
         });
 
-        // Update flair
-        const recipientIsRestricted = await getUserIsRestricted(
-            mentionedUsername,
-            context
-        );
-        await updateAwardeeFlair(
-            context,
-            subredditName,
-            mentionedUsername,
-            newScore,
-            settings,
-            recipientIsRestricted
-        );
+        try {
+            const authorUser = await context.reddit.getUserByUsername(awarder);
+            const isPostAuthor = event.post.authorId === authorUser?.id;
+            if (!authorUser) return;
+            if (isPostAuthor) {
+                const restrictionLifted = await updateAuthorRedis(
+                    context,
+                    awarder,
+                    commentId
+                );
+                if (restrictionLifted)
+                    await maybeNotifyRestrictionLifted(context, event, awarder);
+            }
 
-        // Notify ALT success
+            logger.debug(
+                `🧩 OP ${authorUser.username} restriction counter incremented`
+            );
+        } catch (err) {
+            logger.error(`Error incrementing user restriction counter`, {
+                err,
+                awarder,
+            });
+        }
+
         const leaderboard = `https://old.reddit.com/r/${subredditName}/wiki/${
             settings[AppSetting.LeaderboardName] ?? "leaderboard"
         }`;
-        const awardeePage = `https://old.reddit.com/r/${subredditName}/wiki/user/${mentionedUsername}`;
-        const successMessage = formatMessage(
-            (settings[AppSetting.AlternateCommandSuccessMessage] as string) ??
-                TemplateDefaults.AlternateCommandSuccessMessage,
+        const awardeePage = `https://old.reddit.com/r/${subredditName}/wiki/user/${modAwardUsername}`;
+        const successMsg = formatMessage(
+            (settings[AppSetting.ModAwardCommandSuccess] as string) ??
+                TemplateDefaults.ModAwardCommandSuccessMessage,
             {
-                name: pointName,
-                awardee: mentionedUsername,
+                awardee: modAwardUsername,
                 awarder,
                 total: newScore.toString(),
                 symbol: pointSymbol,
                 leaderboard,
                 awardeePage,
+                name: pointName,
             }
         );
-
-        if (
-            settings[AppSetting.NotifyOnAlternateCommandSuccess] ===
-            NotifyOnAlternateCommandSuccessReplyOptions.ReplyAsComment
-        ) {
-            const newComment = await context.reddit.submitComment({
-                id: commentId,
-                text: successMessage,
-            });
-            await newComment.distinguish();
-        } else if (
-            settings[AppSetting.NotifyOnAlternateCommandSuccess] ===
-            NotifyOnAlternateCommandSuccessReplyOptions.ReplyByPM
-        ) {
-            await context.reddit.sendPrivateMessage({
-                to: awarder,
-                subject: "ALT Command Successful",
-                text: successMessage,
-            });
-        }
-
-        // Auto-superuser notification
-        await maybeNotifyAutoSuperuser(
+        await replyToUser(
             context,
-            settings,
-            mentionedUsername,
-            event.comment.permalink,
-            commentId,
-            newScore,
-            isModCommand ? "mod" : "user" // convert boolean to string
+            notifyOnAutoSuperuserString,
+            awarder,
+            successMsg,
+            commentId
         );
+        return;
+    }
 
-        logger.info(
-            `🏅 ALT award: ${awarder} → ${mentionedUsername} +1 ${pointName}`
+    // ---------------------------
+    // Normal awarding flow
+    // ---------------------------
+    const hasPermission =
+        accessControl === "everyone" ||
+        (accessControl === "moderators-only" && isMod) ||
+        (accessControl === "moderators-and-superusers" &&
+            (isMod || isSuperUser)) ||
+        (accessControl === "moderators-superusers-and-op" &&
+            (isMod || isSuperUser || isOP));
+    if (!hasPermission) {
+        const msgKey =
+            accessControl === "moderators-only"
+                ? AppSetting.ModOnlyDisallowedMessage
+                : accessControl === "moderators-and-superusers"
+                ? AppSetting.ApprovedOnlyDisallowedMessage
+                : AppSetting.OPOnlyDisallowedMessage;
+        const notifyKey =
+            accessControl === "moderators-only"
+                ? AppSetting.NotifyOnModOnlyDisallowed
+                : accessControl === "moderators-and-superusers"
+                ? AppSetting.NotifyOnApprovedOnlyDisallowed
+                : AppSetting.NotifyOnOPOnlyDisallowed;
+        const denyMsg = formatMessage(
+            (settings[msgKey] as string) ??
+                TemplateDefaults.ModOnlyDisallowedMessage,
+            { awarder, name: pointName }
         );
+        await replyToUser(
+            context,
+            notifyOnAutoSuperuserString,
+            awarder,
+            denyMsg,
+            commentId
+        );
+        return;
+    }
 
-        // Update user wiki
-        try {
-            await updateUserWiki(context, awarder, mentionedUsername, {
-                postTitle: event.post.title,
-                postUrl: event.post.permalink,
-                commentUrl: event.comment.permalink,
-            });
-        } catch (err) {
-            logger.error("❌ Failed to update user wiki (ALT)", {
+    try {
+        const postFlairText =
+            (event.post as any)?.linkFlair?.text ?? (event.post as any)?.flairText ?? "";
+        if (disallowedFlairList.some(
+            (f) => f.toLowerCase() === String(postFlairText).toLowerCase()
+        )) {
+            const msg = formatMessage(
+                (settings[AppSetting.DisallowedFlairMessage] as string) ??
+                    TemplateDefaults.DisallowedFlairMessage,
+                { awarder, name: pointName }
+            );
+            await replyToUser(
+                context,
+                notifyOnAutoSuperuserString,
                 awarder,
-                mentionedUsername,
-                err,
-            });
+                msg,
+                commentId
+            );
+            return;
         }
+    } catch {}
 
-        return; // ALT path fully handled
-    }
-
-    // ───────────────────────────────
-    // Normal award logic (user/mod command without ALT)
-    const awardeeUsername = await context.reddit.getUserByUsername(event.comment.);
-    console.log("awardeeUsername:", awardeeUsername);
-    if (awardeeUsername === awarder) {
-        logger.warn("❌ Self-award detected or no awardee", { awarder });
-        return;
-    }
-
-    const dupKey = `customAward-${postId}-${awardeeUsername}`;
+    const dupKey = `thanks-${event.comment.parentId}`;
     if (await context.redis.exists(dupKey)) {
-        logger.info("❌ Duplicate award attempt", { awarder, awardeeUsername });
+        const alreadyMsg = formatMessage(
+            (settings[AppSetting.DuplicateAwardMessage] as string) ??
+                TemplateDefaults.DuplicateAwardMessage,
+            { awarder, name: pointName }
+        );
+        await replyToUser(
+            context,
+            notifyOnAutoSuperuserString,
+            awarder,
+            alreadyMsg,
+            commentId
+        );
         return;
     }
 
-    await context.redis.set(dupKey, "1");
-    const newScore = await context.redis.zIncrBy(redisKey, awardeeUsername, 1);
+    if (event.author.id === parentComment.authorId) {
+        const selfMsg = formatMessage(
+            (settings[AppSetting.SelfAwardMessage] as string) ??
+                TemplateDefaults.NotifyOnSelfAwardTemplate,
+            { awarder, name: pointName }
+        );
+        await replyToUser(
+            context,
+            notifyOnAutoSuperuserString,
+            awarder,
+            selfMsg,
+            commentId
+        );
+        return;
+    }
 
-    // Leaderboard update
+    // Award the point normally
+    await context.redis.set(dupKey, "1");
+    const recipient = parentComment?.authorName ?? "";
+    const newScoreNormal = await context.redis.zIncrBy(redisKey, recipient, 1);
     await context.scheduler.runJob({
         name: "updateLeaderboard",
         runAt: new Date(),
         data: {
-            reason: `Award from ${awarder} → ${awardeeUsername} (new: ${newScore})`,
+            reason: `Awarded a point to ${recipient}. New score: ${newScoreNormal}`,
         },
     });
 
-    const recipientIsRestricted = await getUserIsRestricted(
-        awardeeUsername,
-        context
-    );
-    await updateAwardeeFlair(
-        context,
-        subredditName,
-        awardeeUsername,
-        newScore,
-        settings,
-        recipientIsRestricted
-    );
-
-    // Notify success
-    const leaderboard = `https://old.reddit.com/r/${subredditName}/wiki/${
-        settings[AppSetting.LeaderboardName] ?? "leaderboard"
-    }`;
-    const awardeePage = `https://old.reddit.com/r/${subredditName}/wiki/user/${awardeeUsername}`;
-    const successMessage = formatMessage(
-        (settings[AppSetting.SuccessMessage] as string) ??
-            TemplateDefaults.NotifyOnSuccessTemplate,
-        {
-            name: pointName,
-            awardee: awardeeUsername,
-            awarder,
-            total: newScore.toString(),
-            symbol: pointSymbol,
-            leaderboard,
-            awardeePage,
+    try {
+        const authorUser = await context.reddit.getUserByUsername(awarder);
+        const isPostAuthor = event.post.authorId === authorUser?.id;
+        if (!authorUser) return;
+        if (isPostAuthor) {
+            const restrictionLifted = await updateAuthorRedis(
+                context,
+                awarder,
+                commentId
+            );
+            if (restrictionLifted)
+                await maybeNotifyRestrictionLifted(context, event, awarder);
         }
-    );
-
-    const notifyOnSuccess = ((settings[
-        AppSetting.NotifyOnSuccess
-    ] as string[]) ?? [NotifyOnSuccessReplyOptions.NoReply])[0];
-    if (notifyOnSuccess === NotifyOnSuccessReplyOptions.ReplyAsComment) {
-        const newComment = await context.reddit.submitComment({
-            id: commentId,
-            text: successMessage,
-        });
-        await newComment.distinguish();
-    } else if (notifyOnSuccess === NotifyOnSuccessReplyOptions.ReplyByPM) {
-        await context.reddit.sendPrivateMessage({
-            to: awarder,
-            subject: "Award Successful",
-            text: successMessage,
+        logger.debug(
+            `🧩 OP ${authorUser.username} restriction counter incremented`
+        );
+    } catch (err) {
+        logger.error(`Error incrementing user restriction counter`, {
+            err,
+            awarder,
         });
     }
 
-    // Auto-superuser notification
-    await maybeNotifyAutoSuperuser(
+    try {
+        const recipientUser = await context.reddit.getUserByUsername(recipient);
+        if (recipientUser) {
+            const { currentScore: recipientScore } = await getCurrentScore(
+                recipientUser,
+                context,
+                settings
+            );
+            const score = await context.redis.zScore(redisKey, recipient);
+            const recipientIsRestricted = await getUserIsRestricted(
+                recipient,
+                context
+            );
+            await updateAwardeeFlair(
+                context,
+                subredditName,
+                recipient,
+                (score ?? recipientScore) || 0,
+                settings,
+                recipientIsRestricted
+            );
+        }
+    } catch {}
+
+    const leaderboard = `https://old.reddit.com/r/${subredditName}/wiki/${
+        settings[AppSetting.LeaderboardName] ?? "leaderboard"
+    }`;
+    const awardeePage = `https://old.reddit.com/r/${subredditName}/wiki/user/${recipient}`;
+    const successMsg = formatMessage(
+        (settings[AppSetting.SuccessMessage] as string) ??
+            TemplateDefaults.NotifyOnSuccessTemplate,
+        {
+            awardee: recipient,
+            awarder,
+            total: newScoreNormal.toString(),
+            symbol: pointSymbol,
+            leaderboard,
+            awardeePage,
+            name: pointName,
+        }
+    );
+    await replyToUser(
         context,
-        settings,
-        awardeeUsername,
-        event.comment.permalink,
-        commentId,
-        newScore,
-        isModCommand ? "mod" : "user" // convert boolean to string
+        notifyOnAutoSuperuserString,
+        awarder,
+        successMsg,
+        commentId
     );
 
-    logger.info(`🏅 Award: ${awarder} → ${awardeeUsername} +1 ${pointName}`);
+    try {
+        await maybeNotifyAutoSuperuser(
+            context,
+            settings,
+            recipient,
+            parentComment.permalink ?? event.post.permalink,
+            event.comment.parentId,
+            newScoreNormal,
+            "user"
+        );
+    } catch {}
 }
 
 export async function requiredKeyExists(

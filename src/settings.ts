@@ -6,7 +6,6 @@ import {
     TriggerContext,
 } from "@devvit/public-api";
 import { VALIDATE_REGEX_JOB } from "./constants.js";
-import { selectorFromJSON } from "@devvit/protos/types/devvit/options/options.js";
 
 export enum ExistingFlairOverwriteHandling {
     OverwriteNumericSymbol = "overwritenumericsymbol",
@@ -21,6 +20,8 @@ export enum LeaderboardMode {
 }
 
 export enum AppSetting {
+    NotifyOnPostAuthorAward = "notifyOnPostAuthorAward",
+    PostAuthorAwardMessage = "postAuthorAwardMessage",
     AlternatePointCommandUsers = "alternatePointCommandUsers",
     AwardsRequiredToCreateNewPosts = "awardsRequiredToCreateNewPosts",
     NotifyOnRestorePoints = "notifyOnRestorePoints",
@@ -128,6 +129,7 @@ export enum TemplateDefaults {
     InvalidUsernameMessage = "Your target is not valid. Reddit usernames contain only letters, numbers, hyphens, and underscores.",
     NoUsernameMentionMessage = "You must mention a user (eg u/{{awardee}}) to award specific users.",
     RestrictionRemovedMessage = "Your posting restriction has been removed. You now have permission to make a post again!",
+    PostAuthorAwardMessage = "OPs cannot be awarded points.",
 }
 
 export enum AutoSuperuserReplyOptions {
@@ -154,6 +156,12 @@ export enum NotifyOnModApproveReplyOptions {
 }
 
 export enum NotifyOnModOnlyDisallowedReplyOptions {
+    NoReply = "none",
+    ReplyByPM = "replybypm",
+    ReplyAsComment = "replybycomment",
+}
+
+export enum NotifyOnPostAuthorAwardReplyOptions {
     NoReply = "none",
     ReplyByPM = "replybypm",
     ReplyAsComment = "replybycomment",
@@ -249,6 +257,21 @@ const NotifyOnPointAlreadyAwardedReplyOptionChoices = [
     {
         label: "Reply as comment",
         value: NotifyOnPointAlreadyAwardedReplyOptions.ReplyAsComment,
+    },
+];
+
+export const NotifyOnPostAuthorAwardReplyOptionChoices = [
+    {
+        label: "No Notification",
+        value: NotifyOnPostAuthorAwardReplyOptions.NoReply,
+    },
+    {
+        label: "Send user a private message",
+        value: NotifyOnPostAuthorAwardReplyOptions.ReplyByPM,
+    },
+    {
+        label: "Reply as comment",
+        value: NotifyOnPostAuthorAwardReplyOptions.ReplyAsComment,
     },
 ];
 
@@ -625,6 +648,22 @@ export const appSettings: SettingsFormField[] = [
                 label: "Treat user commands as regular expressions",
                 defaultValue: false,
                 onValidate: validateRegexes,
+            },
+            {
+                name: AppSetting.NotifyOnPostAuthorAward,
+                type: "select",
+                label: "Notify on post author award",
+                helpText: "How to notify the user when they try to award a point to the Post Author (OP)",
+                options: NotifyOnPostAuthorAwardReplyOptionChoices,
+                defaultValue: [NotifyOnPostAuthorAwardReplyOptions.NoReply],
+                onValidate: selectFieldHasOptionChosen,
+            },
+            {
+                name: AppSetting.PostAuthorAwardMessage,
+                type: "paragraph",
+                label: "Message to send when someone tries to award the Post Author (OP)",
+                defaultValue: TemplateDefaults.PostAuthorAwardMessage,
+                onValidate: paragraphFieldContainsText,
             },
             {
                 name: AppSetting.NotifyOnRestrictionLifted,

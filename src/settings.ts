@@ -31,7 +31,7 @@ export enum AppSetting {
     NotifyUsersWhenAPointIsAwarded = "notifyUsersWhenAPointIsAwarded",
     UsersWhoCannotAwardPointsMessage = "usersWhoCannotAwardPointsMessage",
     ThanksCommandUsesRegex = "thanksCommandUsesRegex",
-    ModAwardCommand = "approveCommand",
+    ModAwardCommand = "modAwardCommand",
     SuperUsers = "superUsers",
     AutoSuperuserThreshold = "autoSuperuserThreshold",
     NotifyOnAutoSuperuser = "notifyOnAutoSuperuser",
@@ -62,7 +62,6 @@ export enum AppSetting {
     PointName = "pointName",
     DisallowedFlairs = "disallowedFlairs",
     DisallowedFlairMessage = "disallowedFlairMessage",
-    InvalidPostMessage = "invalidPostMessage",
     ApproveMessage = "approveMessage",
     PointSymbol = "pointSymbol",
     AccessControl = "accessControl",
@@ -100,6 +99,8 @@ export enum AppSetting {
     RestrictionRemovedMessage = "restrictionRemovedMessage",
     NotifyOnRestrictionLifted = "notifyOnRestrictionLifted",
     InvalidUsernameMessage = "invalidUsernameMessage",
+    NotifyOnInitialRestriction = "notifyOnInitialRestriction",
+    NotifyOnSubsequentRestriction = "notifyOnSubsequentRestriction",
 }
 
 export enum TemplateDefaults {
@@ -114,7 +115,6 @@ export enum TemplateDefaults {
     DuplicateAwardMessage = "This comment has already been awarded a {{name}}.",
     SelfAwardMessage = "You can't award yourself a {{name}}.",
     BotAwardMessage = "You can't award u/TheRepBot a {{name}}.",
-    InvalidPostMessage = "Points cannot be awarded on this post because the recipient is suspended or shadowbanned.",
     NotifyOnSelfAwardTemplate = "Hello {{awarder}}, you cannot award a {{name}} to yourself.",
     NotifyOnSuccessTemplate = "+1 {{name}} awarded to u/{{awardee}} by u/{{awarder}}. Total: {{total}}{{symbol}}. {{awardee}}'s user page is located [here]({{awardeePage}}). Leaderboard is located [here]({{leaderboard}}).",
     NotifyOnSuperuserTemplate = 'Hello {{awardee}},\n\nNow that you have reached {{threshold}} points you can now award points yourself, even if normal users do not have permission to. Please use the command "{{command}}" if you\'d like to do this.',
@@ -134,11 +134,6 @@ export enum TemplateDefaults {
 
 export enum AutoSuperuserReplyOptions {
     NoReply = "none",
-    ReplyByPM = "replybypm",
-    ReplyAsComment = "replybycomment",
-}
-
-export enum NotifyOpOnPostRestrictionReplyOptions {
     ReplyByPM = "replybypm",
     ReplyAsComment = "replybycomment",
 }
@@ -186,12 +181,6 @@ export enum NotifyOnOPOnlyDisallowedReplyOptions {
 }
 
 export enum NotifyOnDisallowedFlairReplyOptions {
-    NoReply = "none",
-    ReplyByPM = "replybypm",
-    ReplyAsComment = "replybycomment",
-}
-
-export enum NotifyOnInvalidPostReplyOptions {
     NoReply = "none",
     ReplyByPM = "replybypm",
     ReplyAsComment = "replybycomment",
@@ -457,6 +446,42 @@ const NotifyOnSuccessReplyOptionChoices = [
     },
 ];
 
+export enum NotifyOnInitialRestrictionReplyOptions {
+    NoReply = "none",
+    ReplyByPM = "replybypm",
+    ReplyAsComment = "replybycomment",
+}
+
+const initialRestrictionOptionChoices = [
+    { label: "No Notification", value: NotifyOnInitialRestrictionReplyOptions.NoReply },
+    {
+        label: "Send user a private message",
+        value: NotifyOnInitialRestrictionReplyOptions.ReplyByPM,
+    },
+    {
+        label: "Reply as comment",
+        value: NotifyOnInitialRestrictionReplyOptions.ReplyAsComment,
+    },
+];
+
+export enum NotifyOnSubsequentRestrictionReplyOptions {
+    NoReply = "none",
+    ReplyByPM = "replybypm",
+    ReplyAsComment = "replybycomment",
+}
+
+const subsequentRestrictionOptionChoices = [
+    { label: "No Notification", value: NotifyOnSubsequentRestrictionReplyOptions.NoReply },
+    {
+        label: "Send user a private message",
+        value: NotifyOnSubsequentRestrictionReplyOptions.ReplyByPM,
+    },
+    {
+        label: "Reply as comment",
+        value: NotifyOnSubsequentRestrictionReplyOptions.ReplyAsComment,
+    },
+];
+
 const AccessControlOptionChoices = [
     {
         label: "Moderators Only",
@@ -600,6 +625,15 @@ export const appSettings: SettingsFormField[] = [
                     "Decide whether or not point awarding is required for moderators as well",
                 defaultValue: true,
             },
+            //TODO: Make this notify users on post restriction
+            {
+                type: "select",
+                name: AppSetting.NotifyOnInitialRestriction,
+                label: "Notify on initial post restriction",
+                helpText: "How to notify the post author on initial post restriction",
+                options: initialRestrictionOptionChoices,
+                onValidate: selectFieldHasOptionChosen,
+            },
             {
                 type: "paragraph",
                 name: AppSetting.MessageToRestrictedUsers,
@@ -608,6 +642,15 @@ export const appSettings: SettingsFormField[] = [
                     "Sent on initial post. Required even if not used. Placeholders Supported: {{name}}, {{commands}}, {{markdown_guide}}, {{subreddit}}, {{helpPage}}, {{discord}}",
                 defaultValue: TemplateDefaults.MessageToRestrictedUsers,
                 onValidate: paragraphFieldContainsText,
+            },
+            //TODO: Make this notify users when making next posts while restricted
+            {
+                type: "select",
+                name: AppSetting.NotifyOnSubsequentRestriction,
+                label: "Notify on subsequent posts",
+                helpText: "How to notify the post author when they are restricted",
+                options: subsequentRestrictionOptionChoices,
+                onValidate: selectFieldHasOptionChosen,
             },
             {
                 name: AppSetting.SubsequentPostRestrictionMessage,

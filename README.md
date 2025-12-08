@@ -57,7 +57,7 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 ## Version History
 ### 16.0.0
 * Make it so alternate command award can be used without issue
-* Make it so users aren't infinitely put into a restriction key
+* Make it so users aren't infinitely put into a restriction key loop
 * Add customizable message for when someone tries to award the post author (OP)
 ### 15.1.0
 * Make it so alternate award logic won't be triggered by non-alternate command users

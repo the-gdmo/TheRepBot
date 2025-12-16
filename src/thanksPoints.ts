@@ -444,7 +444,8 @@ async function _replyToUser(
 
     if (replyMode === "replybypm") {
         const subredditName =
-            context.subredditName ?? (await context.reddit.getCurrentSubredditName());
+            context.subredditName ??
+            (await context.reddit.getCurrentSubredditName());
         try {
             await context.reddit.sendPrivateMessage({
                 subject: `Message from TheRepBot on ${subredditName}`,
@@ -463,7 +464,9 @@ async function _replyToUser(
             text: messageBody,
         });
         await Promise.all([newComment.distinguish(), newComment.lock()]);
-        console.log(`${commentId}: Public comment reply left for ${toUserName}`);
+        console.log(
+            `${commentId}: Public comment reply left for ${toUserName}`
+        );
     } else {
         console.warn(`${commentId}: Unknown replyMode "${replyMode}"`);
     }
@@ -744,12 +747,26 @@ export async function handleThanksEvent(
         return;
     }
 
+    let parentComment: Comment | undefined;
+    try {
+        parentComment = await context.reddit.getCommentById(
+            event.comment.parentId
+        );
+    } catch {
+        parentComment = undefined;
+    }
+
+    if (!parentComment) {
+        logger.warn("❌ Parent comment not found (normal/mod flow).");
+        return;
+    }
+
     // ─────────────────────────────────────────────────────────────
     // Settings & common locals
     // ─────────────────────────────────────────────────────────────
+    const awarder = event.author.name;
     const settings = await context.settings.getAll();
     const subredditName = event.subreddit.name;
-    const awarder = event.author.name; // redditor who typed the command
     const commentBodyRaw = event.comment.body ?? "";
     const commentBody = commentBodyRaw.toLowerCase();
 
@@ -757,23 +774,24 @@ export async function handleThanksEvent(
     const pointSymbol = (settings[AppSetting.PointSymbol] as string) ?? "";
     const redisKey = POINTS_STORE_KEY;
 
-    // Permissions scaffolding
     const accessControl = ((settings[AppSetting.AccessControl] as string[]) ?? [
         "everyone",
     ])[0];
+
     const isMod = await isModerator(context, subredditName, awarder);
     const isSuperUser = await getUserIsSuperuser(awarder, context);
     const userIsAltUser = await getUserIsAltUser(awarder, context);
     const isOP = event.author.id === event.post.authorId;
 
-    // Disallowed flair scaffolding (normal flow only — ALT FLOW BYPASSES)
+    // ─────────────────────────────────────────────────────────────
+    // Disallowed flair scaffolding (normal flow only — ALT bypasses)
+    // ─────────────────────────────────────────────────────────────
     const disallowedFlairList = (
         (settings[AppSetting.DisallowedFlairs] as string) ?? ""
     )
         .split("\n")
         .map((s) => s.trim())
         .filter(Boolean);
-
     const notifyModOnly = ((settings[
         AppSetting.NotifyOnModOnlyDisallowed
     ] as string[]) ?? [NotifyOnModOnlyDisallowedReplyOptions.NoReply])[0];
@@ -850,7 +868,6 @@ export async function handleThanksEvent(
     const altFailMessageTemplate =
         (settings[AppSetting.AlternateCommandFailMessage] as string) ??
         TemplateDefaults.AlternateCommandFailMessage;
-
     // Triggers: normal user commands (array of strings)
     const userCommands = (
         (settings[AppSetting.PointTriggerWords] as string) ?? "!award\n.award"
@@ -877,23 +894,140 @@ export async function handleThanksEvent(
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Detect if any trigger exists in comment (case-insensitive)
-    // Capture the EXACT typed command (preserving case) as usedCommandRaw
+    // Redis Keys (LOGIC PRESERVING)
     // ─────────────────────────────────────────────────────────────
+
+    const recipient = parentComment.authorName;
+    const commentId = event.comment.id;
+    const postId = event.post.id;
+    const postLink = event.post.permalink;
+    const postTitle = event.post.title;
+
+    const userBlockedFromAwardingPointsKey = `award:block:${subredditName}:${awarder}`;
+
+    const userIsAuthorizedModAwardKey = `award:mod:auth:${subredditName}:${awarder}`;
+
+    const originalAltDupKey = `award:alt:dup:${postId}`;
+
+    const altSuccessKey = `award:alt:success:${commentId}`;
+
+    const normalDupKey = `award:normal:dup:${commentId}:${awarder}`;
+
+    const normalSuccess = `award:normal:success:${commentId}`;
+
+    const selfAwardKey = `award:self:${commentId}:${awarder}`;
+
+    const modDupKey = `award:mod:dup:${parentComment.id}`;
+
+    const modSuccessKey = `award:mod:success:${commentId}`;
+
+    const disallowedFlairKey = `award:blocked:flair:${postId}`;
+    // ─────────────────────────────────────────────────────────────
+    // Early Redis guards
+    // ─────────────────────────────────────────────────────────────
+
+    if ((await context.redis.get(selfAwardKey)) === "1") {
+        logger.debug("⛔ Recipient tried to award themselves", {
+            awarder,
+            recipient,
+        });
+        return;
+    }
+    if ((await context.redis.get(normalDupKey)) === "1") {
+        logger.debug("⛔ Comment has already received a normal award", {
+            commentId,
+            commentBodyRaw,
+        });
+        return;
+    }
+    if ((await context.redis.get(modDupKey)) === "1") {
+        logger.debug("⛔ Comment has already received a mod award", {
+            commentId,
+            commentBodyRaw,
+        });
+        return;
+    }
+    if ((await context.redis.get(disallowedFlairKey)) === "1") {
+        logger.debug("⛔ Post has disallowed flair", {
+            postId,
+            postTitle,
+            postLink,
+        });
+        return;
+    }
+    if ((await context.redis.get(userBlockedFromAwardingPointsKey)) === "1") {
+        logger.debug("⛔ User currently blocked from awarding points", {
+            awarder,
+        });
+        return;
+    }
+
+    if (
+        (await context.redis.get(altSuccessKey)) === `${commentId}-alt-success`
+    ) {
+        logger.debug("🧩 ALT award already handled for this comment", {
+            commentId,
+        });
+        return;
+    }
+
+    if ((await context.redis.get(normalSuccess)) === "1") {
+        logger.debug("🧩 Normal award already handled for this comment", {
+            commentId,
+        });
+        return;
+    }
+
+    if ((await context.redis.get(selfAwardKey)) === "1") {
+        logger.debug("🧩 Self-award already handled for this comment", {
+            commentId,
+        });
+        return;
+    }
+
+    if ((await context.redis.get(normalDupKey)) === "1") {
+        const dupMsg = formatMessage(dupAlreadyMessage, { name: pointName });
+
+        if (notifyDup === NotifyOnPointAlreadyAwardedReplyOptions.ReplyByPM) {
+            await context.reddit.sendPrivateMessage({
+                to: awarder,
+                subject: `Duplicate award attempt`,
+                text: dupMsg,
+            });
+        } else if (
+            notifyDup === NotifyOnPointAlreadyAwardedReplyOptions.ReplyAsComment
+        ) {
+            const newComment = await context.reddit.submitComment({
+                id: event.comment.id,
+                text: dupMsg,
+            });
+            await newComment.distinguish();
+        }
+
+        logger.info("❌ Duplicate award attempt (normal)", {
+            awarder,
+            parentId: parentComment.id,
+        });
+        return;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Detect trigger in comment
+    // ─────────────────────────────────────────────────────────────
+
     const triggerUsed = allTriggers.find((t) => commentBody.includes(t));
 
     if (!triggerUsed) {
-        logger.debug("❌ No valid award command found.");
+        logger.debug("❌ No valid award command found in comment");
         return;
     }
-    // typed (preserve case)
-    const usedCommandRaw = triggerUsed[1];
-    // normalized (lowercase) for logic checks
+
+    const usedCommandRaw = triggerUsed; // preserve original case
     const usedCommand = usedCommandRaw.toLowerCase();
 
     logger.debug("🧩 Command detected", { triggerUsed: usedCommandRaw });
 
-    // ban system users from triggering
+    // System users banned from awarding
     if (
         ["automoderator", context.appName.toLowerCase()].includes(
             awarder.toLowerCase()
@@ -904,29 +1038,20 @@ export async function handleThanksEvent(
     }
 
     // ─────────────────────────────────────────────────────────────
-    // ALT MENTION FLOW
-    // - Only when NOT using modCommand
-    // - pattern: "<triggerUsed> u/username"
-    // - username must be 3–21 chars [a-z0-9_-]
-    // - ALT rights: awarder must be in altCommandUsers
+    // ALT Mention Flow (non-modCommand, ALT user)
     // ─────────────────────────────────────────────────────────────
+
     let mentionedUsername: string | undefined;
-    if (!triggerUsed) {
-        logger.info(`❌ No valid award command found.`);
-        return;
-    }
     const altCommandMatch = commentBody.match(
-        new RegExp(`${triggerUsed}\\s+(\\S+)`, "i")
+        new RegExp(`${escapeForRegex(triggerUsed)}\\s+(\\S+)`, "i")
     );
 
-    // Only run ALT flow if trigger is a user command and user is an ALT user
     if (
-        (userCommands.includes(triggerUsed) ||
-            modCommand.includes(triggerUsed)) &&
         userIsAltUser &&
-        altCommandMatch
+        altCommandMatch &&
+        userCommands.includes(triggerUsed)
     ) {
-        // Regex: match valid ALT username with space + u/
+        // candidate username
         const validMatch = commentBody.match(
             new RegExp(
                 `${escapeForRegex(triggerUsed)}\\s+u/([a-z0-9_-]{3,21})`,
@@ -934,155 +1059,62 @@ export async function handleThanksEvent(
             )
         );
 
-        logger.debug(`🧩 TriggerUsed/validMatch:`, { triggerUsed, validMatch });
+        logger.debug("🧩 ALT trigger check", { triggerUsed, validMatch });
 
         if (validMatch) {
             mentionedUsername = validMatch[1];
-            const mentionUsername = mentionedUsername.slice(2);
+        }
+    }
+    // Validate username length
+    if (mentionedUsername) {
+        const mentionUsername = mentionedUsername;
 
-            // Validate username length explicitly (3–21 chars)
-            if (mentionUsername.length < 3 || mentionUsername.length > 21) {
-                const lengthMessage = formatMessage(
-                    (settings[AppSetting.UsernameLengthMessage] as string) ??
-                        TemplateDefaults.UsernameLengthMessage,
-                    { awarder, awardee: mentionUsername }
-                );
-
-                const reply = await context.reddit.submitComment({
-                    id: event.comment.id,
-                    text: lengthMessage,
-                });
-                await reply.distinguish();
-
-                logger.warn("❌ ALT username length invalid", {
-                    awarder,
-                    mentionUsername,
-                    mentionedUsername,
-                });
-                return;
-            }
-
-            // Validate allowed characters (letters, numbers, hyphen, underscore)
-            if (!/^[a-z0-9_-]+$/i.test(mentionUsername)) {
-                const invalidCharMessage = formatMessage(
-                    (settings[AppSetting.InvalidUsernameMessage] as string) ??
-                        TemplateDefaults.InvalidUsernameMessage,
-                    { awarder, awardee: mentionUsername }
-                );
-
-                const reply = await context.reddit.submitComment({
-                    id: event.comment.id,
-                    text: invalidCharMessage,
-                });
-                await reply.distinguish();
-
-                logger.warn(
-                    "❌ ALT command username contains invalid characters",
-                    {
-                        awarder,
-                        triggerUsed,
-                        mentionUsername,
-                        mentionedUsername,
-                    }
-                );
-                return; // Stop ALT flow
-            }
-        } else {
-            // User typed a word after trigger but missing u/ prefix
-            const fallbackMatch = commentBody.match(
-                new RegExp(`${triggerUsed}\\s+(\\S+)`, "i")
+        if (mentionUsername.length < 3 || mentionUsername.length > 21) {
+            const lengthMsg = formatMessage(
+                (settings[AppSetting.UsernameLengthMessage] as string) ??
+                    TemplateDefaults.UsernameLengthMessage,
+                { awarder, awardee: mentionUsername }
             );
 
-            if (fallbackMatch) {
-                const invalidMention = fallbackMatch[1];
-                const invalidMentionUsername = invalidMention.slice(2);
+            const reply = await context.reddit.submitComment({
+                id: event.comment.id,
+                text: lengthMsg,
+            });
+            await reply.distinguish();
 
-                // Validate length
-                if (
-                    invalidMentionUsername.length < 3 ||
-                    invalidMentionUsername.length > 21
-                ) {
-                    const lengthMessage = formatMessage(
-                        (settings[
-                            AppSetting.UsernameLengthMessage
-                        ] as string) ?? TemplateDefaults.UsernameLengthMessage,
-                        { awarder, awardee: invalidMention }
-                    );
-
-                    const reply = await context.reddit.submitComment({
-                        id: event.comment.id,
-                        text: lengthMessage,
-                    });
-                    await reply.distinguish();
-
-                    logger.warn("❌ ALT username length invalid", {
-                        awarder,
-                        invalidMention,
-                        invalidMentionUsername,
-                    });
-                    return;
-                }
-
-                // Validate allowed characters
-                if (!/^[a-z0-9_-]+$/i.test(invalidMentionUsername)) {
-                    const invalidCharMessage = formatMessage(
-                        (settings[
-                            AppSetting.InvalidUsernameMessage
-                        ] as string) ?? TemplateDefaults.InvalidUsernameMessage,
-                        { awarder, awardee: invalidMention }
-                    );
-
-                    const reply = await context.reddit.submitComment({
-                        id: event.comment.id,
-                        text: invalidCharMessage,
-                    });
-                    await reply.distinguish();
-
-                    logger.warn(
-                        "❌ ALT command username contains invalid characters",
-                        {
-                            awarder,
-                            triggerUsed,
-                            invalidMention,
-                            invalidMentionUsername,
-                        }
-                    );
-                    return; // Stop ALT flow
-                }
-
-                // Warn ALT user to use u/ prefix
-                const noUMessage = formatMessage(
-                    (settings[AppSetting.NoUsernameMentionMessage] as string) ??
-                        TemplateDefaults.NoUsernameMentionMessage,
-                    { awarder, awardee: invalidMention }
-                );
-
-                const reply = await context.reddit.submitComment({
-                    id: event.comment.id,
-                    text: noUMessage,
-                });
-                await reply.distinguish();
-
-                logger.warn("❌ ALT command used without u/ prefix", {
-                    awarder,
-                    triggerUsed,
-                    invalidMention,
-                    invalidMentionUsername,
-                });
-            } else {
-                logger.debug("❌ ALT command used but no username detected");
-            }
-
-            return; // Stop ALT flow if no valid username
+            logger.warn("❌ ALT username length invalid", {
+                awarder,
+                mentionUsername,
+            });
+            return;
         }
 
-        // MAIN ALT FLOW
+        // Validate allowed characters
+        if (!/^[a-z0-9_-]+$/i.test(mentionUsername)) {
+            const invalidCharMsg = formatMessage(
+                (settings[AppSetting.InvalidUsernameMessage] as string) ??
+                    TemplateDefaults.InvalidUsernameMessage,
+                { awarder, awardee: mentionUsername }
+            );
+
+            const reply = await context.reddit.submitComment({
+                id: event.comment.id,
+                text: invalidCharMsg,
+            });
+            await reply.distinguish();
+
+            logger.warn("❌ ALT username contains invalid characters", {
+                awarder,
+                mentionUsername,
+            });
+            return;
+        }
+
+        // Unauthorized ALT user check
         const authorized = altCommandUsers.includes(awarder.toLowerCase());
 
-        logger.debug(`🧩 authorizedVar Values:`, { awarder, authorized });
-
         if (!authorized) {
-            const failMessage = formatMessage(altFailMessageTemplate, {
+            const failMsg = formatMessage(altFailMessageTemplate, {
                 altCommand: triggerUsed,
                 subreddit: subredditName,
             });
@@ -1093,7 +1125,7 @@ export async function handleThanksEvent(
             ) {
                 const failComment = await context.reddit.submitComment({
                     id: event.comment.id,
-                    text: failMessage,
+                    text: failMsg,
                 });
                 await failComment.distinguish();
             } else if (
@@ -1103,27 +1135,23 @@ export async function handleThanksEvent(
                 await context.reddit.sendPrivateMessage({
                     to: awarder,
                     subject: "Alternate Command Not Allowed",
-                    text: failMessage,
+                    text: failMsg,
                 });
             }
 
             logger.warn("🚫 Unauthorized ALT award attempt", {
                 awarder,
-                triggerUsed,
                 mentionedUsername,
             });
             return;
         }
 
-        // MAIN ALT FLOW
-        logger.debug("🔎 ALT flow username probe", {
-            extracted: mentionedUsername,
-            triggerUsed,
-        });
-
-        // Duplicate-prevention for ALT flow: unique per post & target
+        // Duplicate ALT check
         const altDupKey = `customAward-${event.post.id}-${mentionedUsername}`;
-        if (await context.redis.exists(altDupKey)) {
+        if (
+            (await context.redis.get(altDupKey)) ===
+            `customAward-${event.post.id}-${mentionedUsername}`
+        ) {
             const dupMsg = formatMessage(
                 (settings[
                     AppSetting.PointAlreadyAwardedToUserMessage
@@ -1132,28 +1160,24 @@ export async function handleThanksEvent(
                 { name: pointName, awardee: mentionedUsername }
             );
 
-            const notify = ((settings[
-                AppSetting.NotifyOnPointAlreadyAwardedToUser
-            ] as string[]) ?? ["none"])[0];
-
             if (
-                notify ===
-                NotifyOnPointAlreadyAwardedToUserReplyOptions.ReplyByPM
-            ) {
-                await context.reddit.sendPrivateMessage({
-                    to: awarder,
-                    subject: `You've already awarded this comment`,
-                    text: dupMsg,
-                });
-            } else if (
-                notify ===
-                NotifyOnPointAlreadyAwardedToUserReplyOptions.ReplyAsComment
+                notifyAltSuccess ===
+                NotifyOnAlternateCommandSuccessReplyOptions.ReplyAsComment
             ) {
                 const newComment = await context.reddit.submitComment({
                     id: event.comment.id,
                     text: dupMsg,
                 });
                 await newComment.distinguish();
+            } else if (
+                notifyAltSuccess ===
+                NotifyOnAlternateCommandSuccessReplyOptions.ReplyByPM
+            ) {
+                await context.reddit.sendPrivateMessage({
+                    to: awarder,
+                    subject: "Already Awarded",
+                    text: dupMsg,
+                });
             }
 
             logger.info("❌ Duplicate ALT award attempt", {
@@ -1163,9 +1187,13 @@ export async function handleThanksEvent(
             return;
         }
 
-        await context.redis.set(altDupKey, "1");
+        // Record ALT award in Redis
+        await context.redis.set(
+            altDupKey,
+            `customAward-${event.post.id}-${mentionedUsername}`
+        );
 
-        // Award (ALT)
+        // Increment score
         const newScore = await context.redis.zIncrBy(
             redisKey,
             mentionedUsername,
@@ -1177,23 +1205,22 @@ export async function handleThanksEvent(
             name: "updateLeaderboard",
             runAt: new Date(),
             data: {
-                reason: `Alternate award from ${awarder} to ${mentionedUsername} (new: ${newScore})`,
+                reason: `ALT award from ${awarder} to ${mentionedUsername} (new: ${newScore})`,
             },
         });
 
-        // Notify success (ALT)
+        // Notify success
         const leaderboard = `https://old.reddit.com/r/${subredditName}/wiki/${
             settings[AppSetting.LeaderboardName] ?? "leaderboard"
         }`;
-        const symbol = pointSymbol;
         const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${mentionedUsername}`;
 
-        const successMessage = formatMessage(altSuccessMessageTemplate, {
+        const successMsg = formatMessage(altSuccessMessageTemplate, {
             name: pointName,
             awardee: mentionedUsername,
             awarder,
             total: newScore.toString(),
-            symbol,
+            symbol: pointSymbol,
             leaderboard,
             awardeePage,
         });
@@ -1204,7 +1231,7 @@ export async function handleThanksEvent(
         ) {
             const newComment = await context.reddit.submitComment({
                 id: event.comment.id,
-                text: successMessage,
+                text: successMsg,
             });
             await newComment.distinguish();
         } else if (
@@ -1213,8 +1240,8 @@ export async function handleThanksEvent(
         ) {
             await context.reddit.sendPrivateMessage({
                 to: awarder,
-                subject: "Alternate Command Successful",
-                text: successMessage,
+                subject: "ALT Award Successful",
+                text: successMsg,
             });
         }
 
@@ -1252,25 +1279,9 @@ export async function handleThanksEvent(
                 });
             }
         } catch (err) {
-            logger.error("❌ ALT flair update error", { err });
+            logger.error("❌ ALT flair update failed", { err });
         }
-
-        // Auto-superuser notification (ALT)
-        await maybeNotifyAutoSuperuser(
-            context,
-            settings,
-            mentionedUsername,
-            event.comment.permalink,
-            event.comment.id,
-            newScore,
-            modCommand
-        );
-
-        logger.info(
-            `🏅 ALT award: ${awarder} → ${mentionedUsername} +1 ${pointName}`
-        );
-
-        // Update user wikis for the awarder + mentioned user
+        // Update ALT user wikis
         try {
             const givenData = {
                 postTitle: event.post.title,
@@ -1285,50 +1296,40 @@ export async function handleThanksEvent(
                 givenData
             );
         } catch (err) {
-            logger.error("❌ Failed to update user wiki (ALT)", {
+            logger.error("❌ Failed to update ALT user wiki", {
                 awarder,
                 mentionedUsername,
                 err,
             });
         }
 
-        return; // ALT path handled fully
+        // Mark ALT award success in Redis
+        await context.redis.set(altSuccessKey, `${commentId}AwardSuccess`);
+
+        return; // ALT flow handled completely
     }
 
     // ─────────────────────────────────────────────────────────────
-    // From here on: flows that rely on parent comment
-    // (MOD AWARD + NORMAL FLOW)
+    // MOD AWARD + NORMAL FLOW relies on parent comment
     // ─────────────────────────────────────────────────────────────
 
-    // Parent comment guard (must not be a link)
+    // Guard: parent comment must not be a link
     if (isLinkId(event.comment.parentId)) {
         logger.debug("❌ Parent ID is a link — ignoring (normal/mod flow).");
         return;
     }
 
-    let parentComment: Comment | undefined;
-    try {
-        parentComment = await context.reddit.getCommentById(
-            event.comment.parentId
-        );
-    } catch {
-        parentComment = undefined;
-    }
-    if (!parentComment) {
-        logger.warn("❌ Parent comment not found (normal/mod flow).");
-        return;
-    }
-
-    const recipient = parentComment.authorName;
+    // Guard: recipient must exist
     if (!recipient) {
         logger.warn("❌ No recipient found (normal/mod flow).");
         return;
     }
 
-    // Ignored context (quote/alt/spoiler) check for *each* trigger found in text
+    // Check ignored contexts for each trigger in comment
     for (const trigger of allTriggers) {
         if (!new RegExp(`${escapeForRegex(trigger)}`, "i").test(commentBody))
             continue;
+
         if (commandUsedInIgnoredContext(commentBody, trigger)) {
             const ignoredText = getIgnoredContextType(commentBody, trigger);
             if (ignoredText) {
@@ -1358,11 +1359,7 @@ export async function handleThanksEvent(
 
                     logger.info(
                         "⚠️ Ignored command in special context; DM sent.",
-                        {
-                            user: event.author.name,
-                            trigger,
-                            ignoredText,
-                        }
+                        { user: event.author.name, trigger, ignoredText }
                     );
                 } else {
                     logger.info(
@@ -1376,7 +1373,7 @@ export async function handleThanksEvent(
         }
     }
 
-    // Bot can't be awardee
+    // Guard: bot cannot be awardee
     if (recipient === context.appName) {
         const newComment = await context.reddit.submitComment({
             id: event.comment.id,
@@ -1388,7 +1385,7 @@ export async function handleThanksEvent(
     }
 
     // ─────────────────────────────────────────────────────────────
-    // MOD AWARD FLOW (AppSetting.ModAwardCommand)
+    // MOD AWARD FLOW
     // ─────────────────────────────────────────────────────────────
     if (usedCommand === modCommand) {
         logger.debug("🔧 ModAwardCommand detected", {
@@ -1396,22 +1393,20 @@ export async function handleThanksEvent(
             triggerUsed: usedCommandRaw,
         });
 
-        // Extract target username after modCommand, if present
+        // Extract username after modCommand if present
         let modAwardUsername: string | undefined;
-        {
-            const idx = commentBody.indexOf(usedCommand);
-            if (idx >= 0) {
-                const after =
-                    commentBodyRaw
-                        .slice(idx + usedCommandRaw.length)
-                        .trim()
-                        .split(/\s+/)[0] ?? "";
+        const idx = commentBody.indexOf(usedCommand);
+        if (idx >= 0) {
+            const after =
+                commentBodyRaw
+                    .slice(idx + usedCommandRaw.length)
+                    .trim()
+                    .split(/\s+/)[0] ?? "";
 
-                if (after) {
-                    modAwardUsername = after.startsWith("u/")
-                        ? after.slice(2)
-                        : after;
-                }
+            if (after) {
+                modAwardUsername = after.startsWith("u/")
+                    ? after.slice(2)
+                    : after;
             }
         }
 
@@ -1419,7 +1414,7 @@ export async function handleThanksEvent(
             modAwardUsername = modAwardUsername.toLowerCase();
         }
 
-        // If no valid username token, default to parent comment author
+        // Default to parent comment author if no valid token
         if (!modAwardUsername || !/^[a-z0-9_-]{3,21}$/.test(modAwardUsername)) {
             modAwardUsername = recipient.toLowerCase();
             logger.debug(
@@ -1432,7 +1427,7 @@ export async function handleThanksEvent(
             });
         }
 
-        // Prevent awarding the bot itself
+        // Bot self-prevention
         if (modAwardUsername === context.appName.toLowerCase()) {
             const newComment = await context.reddit.submitComment({
                 id: event.comment.id,
@@ -1443,14 +1438,13 @@ export async function handleThanksEvent(
             return;
         }
 
-        // Authorization: must be mod or trusted user
+        // Authorization check (must be mod or superuser)
         const authorized = isMod || isSuperUser;
         if (!authorized) {
             const failTemplate =
                 (settings[AppSetting.ModAwardCommandFail] as string) ??
                 TemplateDefaults.ModAwardCommandFailMessage;
-
-            const failMessage = formatMessage(failTemplate, {
+            const failMsg = formatMessage(failTemplate, {
                 command: usedCommandRaw,
                 name: pointName,
                 awarder,
@@ -1466,7 +1460,7 @@ export async function handleThanksEvent(
             ) {
                 const comment = await context.reddit.submitComment({
                     id: event.comment.id,
-                    text: failMessage,
+                    text: failMsg,
                 });
                 await comment.distinguish();
             } else if (
@@ -1475,7 +1469,7 @@ export async function handleThanksEvent(
                 await context.reddit.sendPrivateMessage({
                     to: awarder,
                     subject: "Mod Award Command Not Allowed",
-                    text: failMessage,
+                    text: failMsg,
                 });
             }
 
@@ -1483,10 +1477,18 @@ export async function handleThanksEvent(
                 awarder,
                 modAwardUsername,
             });
+            await context.redis.set(
+                userIsAuthorizedModAwardKey,
+                `${awarder}-authorized`
+            );
             return;
         }
 
-        // Duplicate key specific to mod-award path (by comment+target)
+        await context.redis.set(
+            userIsAuthorizedModAwardKey,
+            `${awarder}-notAuthorized`
+        );
+        // Duplicate key specific to mod-award (comment + target)
         const modDupKey = `modAward-${parentComment.id}`;
         if (await context.redis.exists(modDupKey)) {
             const alreadyMsg =
@@ -1525,11 +1527,9 @@ export async function handleThanksEvent(
                 awarder,
                 modAwardUsername,
             });
+            await context.redis.set(modDupKey, "1");
             return;
         }
-
-        // Mark awarded
-        await context.redis.set(modDupKey, "1");
 
         // Increment score (mod-award)
         const newScore = await context.redis.zIncrBy(
@@ -1698,9 +1698,11 @@ export async function handleThanksEvent(
             });
         }
 
+        // Mark awarded
+        await context.redis.set(modSuccessKey, ``);
+
         return; // ✔ DONE — exit before normal flow starts
     }
-
     // ─────────────────────────────────────────────────────────────
     // NORMAL FLOW (user commands, no alt username, no modCommand)
     // ─────────────────────────────────────────────────────────────
@@ -1733,7 +1735,7 @@ export async function handleThanksEvent(
             default:
                 // fallback generic
                 replyChoice = notifyModOnly;
-                msg = `You do not have permission to award {{name}}s.`;
+                msg = msgModOnly;
         }
         const out = formatMessage(msg, { name: pointName });
 
@@ -1759,8 +1761,11 @@ export async function handleThanksEvent(
             awarder,
             accessControl,
         });
+        await context.redis.set(userBlockedFromAwardingPointsKey, "1");
         return;
     }
+
+    await context.redis.set(userBlockedFromAwardingPointsKey, "0");
 
     // Self-award prevention
     if (awarder === recipient) {
@@ -1781,6 +1786,7 @@ export async function handleThanksEvent(
                 text: selfText,
             });
         }
+        await context.redis.set(selfAwardKey, "1");
         logger.debug("❌ User tried to award themselves.");
         return;
     }
@@ -1816,6 +1822,8 @@ export async function handleThanksEvent(
                         text,
                     });
                 }
+
+                await context.redis.set(disallowedFlairKey, "1");
                 logger.warn("🚫 Award blocked by disallowed flair", {
                     postFlair,
                 });
@@ -1827,39 +1835,9 @@ export async function handleThanksEvent(
     }
 
     // Duplicate award per parent comment (NORMAL flow)
-    const alreadyKey = `thanks-${parentComment.id}`;
-    if (await context.redis.exists(alreadyKey)) {
-        const dupMsg = formatMessage(dupAlreadyMessage, {
-            name: pointName,
-        });
-
-        if (notifyDup === NotifyOnPointAlreadyAwardedReplyOptions.ReplyByPM) {
-            await context.reddit.sendPrivateMessage({
-                to: awarder,
-                subject: `You've already awarded this comment`,
-                text: dupMsg,
-            });
-        } else if (
-            notifyDup === NotifyOnPointAlreadyAwardedReplyOptions.ReplyAsComment
-        ) {
-            const newComment = await context.reddit.submitComment({
-                id: event.comment.id,
-                text: dupMsg,
-            });
-            await newComment.distinguish();
-        }
-
-        logger.info("❌ Duplicate award attempt (normal)", {
-            awarder,
-            parentId: parentComment.id,
-        });
-        return;
-    }
-
-    // Award (NORMAL)
     const authorUser = await context.reddit.getUserByUsername(awarder);
     const newScore = await context.redis.zIncrBy(redisKey, recipient, 1);
-    await context.redis.set(alreadyKey, "1");
+    await context.redis.set(normalDupKey, "1");
 
     await setCleanupForUsers([recipient], context);
     await context.scheduler.runJob({
@@ -1951,9 +1929,7 @@ export async function handleThanksEvent(
         }
 
         if (!recipientPage) {
-            logger.info("📄 Creating missing recipient wiki", {
-                recipient,
-            });
+            logger.info("📄 Creating missing recipient wiki", { recipient });
             await InitialUserWikiOptions(context, recipient);
         }
 

@@ -632,6 +632,7 @@ export const appSettings: SettingsFormField[] = [
                 label: "Notify on initial post restriction",
                 helpText: "How to notify the post author on initial post restriction",
                 options: initialRestrictionOptionChoices,
+                defaultValue: [NotifyOnInitialRestrictionReplyOptions.NoReply],
                 onValidate: selectFieldHasOptionChosen,
             },
             {
@@ -650,6 +651,7 @@ export const appSettings: SettingsFormField[] = [
                 label: "Notify on subsequent posts",
                 helpText: "How to notify the post author when they are restricted",
                 options: subsequentRestrictionOptionChoices,
+                defaultValue: [NotifyOnSubsequentRestrictionReplyOptions.NoReply],
                 onValidate: selectFieldHasOptionChosen,
             },
             {

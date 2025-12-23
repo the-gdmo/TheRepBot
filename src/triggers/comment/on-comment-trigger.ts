@@ -1,8 +1,16 @@
 import { CommentSubmit, CommentUpdate } from "@devvit/protos";
 import { Comment, TriggerContext } from "@devvit/public-api";
-import { CommentTriggerContext } from "./comment-trigger-context.js";
-import { commentContainsModCommand } from "../mod-user-action.js";
+import {
+    CommentTriggerContext,
+    parentComment,
+} from "./comment-trigger-context.js";
+import {
+    commentContainsModCommand,
+    executeModCommand,
+    modCommandExecutedByUserWithInsufficientPerms,
+} from "./user-specific-logic/mod-user-action.js";
 import { logger } from "../../logger.js";
+import { commentContainsAltCommand } from "./user-specific-logic/alt-user-action.js";
 
 export const handleOnCommentTrigger = async (
     event: CommentSubmit | CommentUpdate,
@@ -12,56 +20,43 @@ export const handleOnCommentTrigger = async (
     const context = new CommentTriggerContext();
     await context.init(event, devvitContext);
 
+    const comment = await parentComment(event, devvitContext);
     if (!event.comment) return;
-    let parentComment: Comment | undefined;
-    try {
-        parentComment = await devvitContext.reddit.getCommentById(
-            event.comment.parentId
-        );
-    } catch {
-        parentComment = undefined;
-    }
-    if (!parentComment) {
-        logger.warn("❌ Parent comment not found.");
-        return;
-    }
+    if (!comment) return;
 
     // Do this if true and continue to other actions
     const hasAltPermission = context.isAltUser;
     const hasPermission = context.isMod || context.isSuperUser;
     const userNotBlockedFromAwarding = context.userCanAward;
-    if (await commentContainsModCommand(devvitContext, parentComment.id)) {
+    if (await commentContainsAltCommand(event, devvitContext, comment.id)) {
+        if (hasAltPermission) {
+            await executeAltCommand(devvitContext, comment.id, awarder, recipient);
+        } else {
+            await altCommandExecutedByUserWithInsufficientPerms(
+                devvitContext,
+                comment.id
+            );
+        }
+    } else if (await commentContainsModCommand(devvitContext, comment.id)) {
         if (hasPermission) {
-            await executeModCommand(context);
+            await executeModCommand(devvitContext, comment.id);
         } else {
             await modCommandExecutedByUserWithInsufficientPerms(
                 devvitContext,
-                parentComment.id
+                comment.id
             );
-        }
-    } else if (
-        await commentContainsAltCommand(
-            devvitContext,
-            parentComment.id,
-            hasPermission
-        )
-    ) {
-        if (hasAltPermission) {
-            await executeAltCommand(devvitContext, parentComment.id);
-        } else {
-            await altCommandExecutedByUserWithInsufficientPerms();
         }
     } else if (
         await commentContainsUserCommand(
             devvitContext,
-            parentComment.id,
+            comment.id,
             userNotBlockedFromAwarding
         )
     ) {
         if (userNotBlockedFromAwarding) {
-            await executeUserCommand(devvitContext, parentComment.id);
+            await executeUserCommand(devvitContext, comment.id);
         } else {
-            await userCommandExecutedByBlockedUser();
+            await userCommandExecutedByBlockedUser(devvitContext, comment.id);
         }
     } else {
         logger.error("How did we get here?");

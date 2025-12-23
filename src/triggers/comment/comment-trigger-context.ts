@@ -1,11 +1,12 @@
 import { CommentSubmit, CommentUpdate } from "@devvit/protos";
-import { TriggerContext } from "@devvit/public-api";
+import { Comment, TriggerContext } from "@devvit/public-api";
 import {
   getUserCanAward,
     getUserIsAltUser,
     getUserIsSuperuser,
     isModerator,
 } from "../../utils/user-utilities.js";
+import { logger } from "../../logger.js";
 
 // src/triggers/comment/comment-trigger-context.ts
 export class CommentTriggerContext {
@@ -58,5 +59,22 @@ export class CommentTriggerContext {
         );
         this._userCanAward = await getUserCanAward(context, this._awarder);
         // More context setup
+    }
+}
+
+export async function parentComment(event: CommentSubmit | CommentUpdate, devvitContext: TriggerContext): Promise<Comment | undefined> {
+    let parentComment: Comment | undefined;
+    if (!event.comment) return undefined;
+    try {
+        parentComment = await devvitContext.reddit.getCommentById(
+            event.comment.parentId
+        );
+        return parentComment;
+    } catch {
+        parentComment = undefined;
+    }
+    if (!parentComment) {
+        logger.warn("❌ Parent comment not found.");
+        return undefined;
     }
 }

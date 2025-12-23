@@ -391,47 +391,9 @@ async function getUserIsSuperuser(
     }
 }
 
-export function getIgnoredContextType(
-    commentBody: string,
-    command: string
-): "quote" | "alt" | "spoiler" | undefined {
-    const quoteBlock = `> .*${command}.*`;
-    const altText = `\`.*${command}.*\``;
-    const spoilerText = `>!.*${command}.*!<`;
 
-    const patterns: { type: "quote" | "alt" | "spoiler"; regex: RegExp }[] = [
-        { type: "quote", regex: new RegExp(`${quoteBlock}`, "i") },
-        { type: "alt", regex: new RegExp(`${altText}`, "i") },
-        { type: "spoiler", regex: new RegExp(`${spoilerText}`, "i") },
-    ];
-
-    for (const { type, regex } of patterns) {
-        if (regex.test(commentBody)) return type;
-    }
-    return undefined;
-}
 // Detect if trigger word is inside quote (> ), alt text [text](url), or spoiler (>! !<)
-export function commandUsedInIgnoredContext(
-    commentBody: string,
-    command: string
-): boolean {
-    const quoteBlock = `> .*${command}.*`;
-    const altText = `\`.*${command}.*\``;
-    const spoilerText = `>!.*${command}.*!<`;
 
-    const patterns = [
-        // Quote block: > anything with command
-        new RegExp(`${quoteBlock}`, "i"),
-
-        // Alt text: [anything including command using `grave accent`]
-        new RegExp(`${altText}`, "i"),
-
-        // Spoiler block: >! anything with command !<
-        new RegExp(`${spoilerText}`, "i"),
-    ];
-
-    return patterns.some((p) => p.test(commentBody));
-}
 
 // ────────────────────────────────
 // Generic low-level helper

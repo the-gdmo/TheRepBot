@@ -62,7 +62,7 @@ export class CommentTriggerContext {
     }
 }
 
-export async function parentComment(event: CommentSubmit | CommentUpdate, devvitContext: TriggerContext): Promise<Comment | undefined> {
+export async function getParentComment(event: CommentSubmit | CommentUpdate, devvitContext: TriggerContext): Promise<Comment | undefined> {
     let parentComment: Comment | undefined;
     if (!event.comment) return undefined;
     try {

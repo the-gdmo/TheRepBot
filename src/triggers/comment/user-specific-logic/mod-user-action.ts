@@ -1,9 +1,12 @@
 import { TriggerContext } from "@devvit/public-api";
-import { modCommandValue, triggerUsed } from "../../../utils/common-utilities.js";
+import {
+    modCommandValue,
+    triggerUsed,
+} from "../../../utils/common-utilities.js";
 
-export async function commentContainsModCommand (
+export async function commentContainsModCommand(
     devvitContext: TriggerContext,
-    comment: string,
+    comment: string
 ): Promise<boolean> {
     const usedCommand = await triggerUsed(devvitContext, comment);
     const modCommand = await modCommandValue(devvitContext);
@@ -11,7 +14,7 @@ export async function commentContainsModCommand (
         return true;
     }
     return false;
-};
+}
 
 /*
 if (hasPermission) {
@@ -19,14 +22,22 @@ if (hasPermission) {
         } else {
             await modCommandExecutedByUserWithInsufficientPerms(
                 devvitContext,
-                parentComment.id
+                parentcomment.parentId
             );
         }
 */
-export async function executeModCommand(devvitContext: TriggerContext, commentId: string) {
 
-}
+async function pointAlreadyAwardedWithModCommand() {}
+async function notifyUserOnSuperUserModCommand() {}
+async function awardPointToUserModCommand() {}
 
-export async function modCommandExecutedByUserWithInsufficientPerms(devvitContext: TriggerContext, commentId: string) {
+//todo: add awarder and recipient logic directly into function
+export async function executeModCommand(
+    devvitContext: TriggerContext,
+    commentId: string
+) {}
 
-}
+export async function modCommandExecutedByUserWithInsufficientPerms(
+    devvitContext: TriggerContext,
+    commentId: string
+) {}

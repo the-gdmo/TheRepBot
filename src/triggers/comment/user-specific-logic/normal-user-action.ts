@@ -6,7 +6,6 @@ import {
 } from "../../utils/common-utilities.js";
 import {
     AppSetting,
-    NotifyOnPointAlreadyAwardedToUserReplyOptions,
     NotifyOnRestrictionLiftedReplyOptions,
     NotifyOnSuccessReplyOptions,
     TemplateDefaults,
@@ -343,54 +342,10 @@ export async function executeUserCommand(
         logger.warn("❌ Missing required event data", { event });
         return;
     }
+
     const awarder = event.author.name;
     const recipient = parentComment.authorName;
-    const userDupKey = `userAward:${parentComment.id}`;
     const settings = await context.settings.getAll();
-
-    const pointName = (settings[AppSetting.PointName] as string) ?? "point";
-    const subredditName = event.subreddit.name;
-    const dupMsg =
-        (settings[AppSetting.PointAlreadyAwardedToUserMessage] as string) ??
-        TemplateDefaults.PointAlreadyAwardedToUserMessage;
-    const dupTemplate = formatMessage(dupMsg, {
-        awarder,
-        awardee: recipient,
-        name: pointName,
-    });
-
-    if (await context.redis.exists(userDupKey)) {
-        const notifyAlreadyAwardedUserCommand = ((settings[
-            AppSetting.NotifyOnPointAlreadyAwardedToUser
-        ] as string[]) ?? [
-            NotifyOnPointAlreadyAwardedToUserReplyOptions.NoReply,
-        ])[0];
-        if (
-            notifyAlreadyAwardedUserCommand ===
-            NotifyOnPointAlreadyAwardedToUserReplyOptions.ReplyByPM
-        ) {
-            await context.reddit.sendPrivateMessage({
-                to: recipient,
-                subject: `You received a ${pointName} in ${subredditName}`,
-                text: dupTemplate,
-            });
-        } else if (
-            notifyAlreadyAwardedUserCommand ===
-            NotifyOnPointAlreadyAwardedToUserReplyOptions.ReplyAsComment
-        ) {
-            const reply = await context.reddit.submitComment({
-                id: event.comment.id,
-                text: dupTemplate,
-            });
-
-            await reply.distinguish();
-        }
-
-        logger.info(`Comment has already received a user award`, {
-            commentId: parentComment.id,
-        });
-        return;
-    }
 
     let user: User | undefined;
 
@@ -474,8 +429,6 @@ export async function executeUserCommand(
         });
         return;
     }
-
-    await context.redis.set(userDupKey, "1");
 
     // 🏆 Award point + side effects
     await awardPointToUserNormalCommand(event, context, awarder, recipient);

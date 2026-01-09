@@ -29,7 +29,7 @@ import {
     getTriggers,
     modCommandValue,
 } from "../utils/common-utilities.js";
-import { modDupKeyExists, restrictedKeyExists } from "../post-logic/redisKeys.js";
+import { restrictedKeyExists } from "../post-logic/redisKeys.js";
 
 export async function handleThanksEvent(
     event: CommentSubmit | CommentUpdate,
@@ -281,13 +281,6 @@ export async function handleThanksEvent(
     // ─────────────────────────────────────────────
     if (containsAlt && (containsUser || containsMod)) {
         const handled = await handleAltUserAction(event, devvitContext);
-        if (!restrictedFlagExists) {
-            await notifyPostAuthorWhenTheyBecomeUnrestricted(
-                event,
-                devvitContext,
-                awarder
-            );
-        }
         if (handled) return;
     }
 

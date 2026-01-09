@@ -107,14 +107,14 @@ export const logger = {
   error: async (
     message: string,
     context?: Record<string, any>,
-    devvitContext?: TriggerContext
+    triggerContext?: TriggerContext
   ) => {
     const msg = formatMessage(LogLevel.ERROR, message, context);
     const colored = colorize(LogLevel.ERROR, msg);
     logToConsole(LogLevel.ERROR, colored);
     writeToFile(msg);
-    if (devvitContext) {
-      await sendModPM(devvitContext, msg);
+    if (triggerContext) {
+      await sendModPM(triggerContext, msg);
     }
   },
 };

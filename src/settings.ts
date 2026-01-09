@@ -57,7 +57,6 @@ export enum AppSetting {
     PointTriggerWords = "pointTriggerWords",
     SuccessMessage = "successMessage",
     SelfAwardMessage = "selfAwardMessage",
-    DuplicateAwardMessage = "duplicateAwardMessage",
     BotAwardMessage = "botAwardMessage",
     PointName = "pointName",
     DisallowedFlairs = "disallowedFlairs",
@@ -96,11 +95,11 @@ export enum AppSetting {
     ModAwardAlreadyGiven = "modAwardAlreadyGiven",
     UsernameLengthMessage = "usernameLengthMessage",
     NoUsernameMentionMessage = "noUsernameMentionMessage",
-    RestrictionRemovedMessage = "restrictionRemovedMessage",
+    RestrictionLiftedMessage = "restrictionLiftedMessage",
     NotifyOnRestrictionLifted = "notifyOnRestrictionLifted",
     InvalidUsernameMessage = "invalidUsernameMessage",
-    NotifyOnInitialRestriction = "notifyOnInitialRestriction",
-    NotifyOnSubsequentRestriction = "notifyOnSubsequentRestriction",
+    EnableBackup = "enableBackup",
+    EnableRestore = "enableRestore",
 }
 
 export enum TemplateDefaults {
@@ -114,7 +113,7 @@ export enum TemplateDefaults {
     ApprovedOnlyDisallowedMessage = "Only moderators and approved users can award points.",
     DuplicateAwardMessage = "This comment has already been awarded a {{name}}.",
     SelfAwardMessage = "You can't award yourself a {{name}}.",
-    BotAwardMessage = "You can't award u/TheRepBot a {{name}}.",
+    BotAwardMessage = "You can't award u/{{awardee}} {{name}}s.",
     NotifyOnSelfAwardTemplate = "Hello {{awarder}}, you cannot award a {{name}} to yourself.",
     NotifyOnSuccessTemplate = "+1 {{name}} awarded to u/{{awardee}} by u/{{awarder}}. Total: {{total}}{{symbol}}. {{awardee}}'s user page is located [here]({{awardeePage}}). Leaderboard is located [here]({{leaderboard}}).",
     NotifyOnSuperuserTemplate = 'Hello {{awardee}},\n\nNow that you have reached {{threshold}} points you can now award points yourself, even if normal users do not have permission to. Please use the command "{{command}}" if you\'d like to do this.',
@@ -128,7 +127,7 @@ export enum TemplateDefaults {
     UsernameLengthMessage = "***{{awardee}}*** is not valid. Reddit usernames are between 3 and 21 characters long.",
     InvalidUsernameMessage = "Your target is not valid. Reddit usernames contain only letters, numbers, hyphens, and underscores.",
     NoUsernameMentionMessage = "You must mention a user (eg u/{{awardee}}) to award specific users.",
-    RestrictionRemovedMessage = "Your posting restriction has been removed. You now have permission to make a post again!",
+    RestrictionLiftedMessage = "Your posting restriction has been removed. You now have permission to make a post again!",
     PostAuthorAwardMessage = "OPs cannot be awarded points.",
 }
 
@@ -446,58 +445,29 @@ const NotifyOnSuccessReplyOptionChoices = [
     },
 ];
 
-export enum NotifyOnInitialRestrictionReplyOptions {
-    NoReply = "none",
-    ReplyByPM = "replybypm",
-    ReplyAsComment = "replybycomment",
+export enum AccessControlOptions {
+    ModOnly = "moderators-only",
+    ModsAndSuperusers = "moderators-and-superusers",
+    ModsSuperusersAndPostAuthor = "moderators-superusers-and-op",
+    Everyone = "everyone",
 }
-
-const initialRestrictionOptionChoices = [
-    { label: "No Notification", value: NotifyOnInitialRestrictionReplyOptions.NoReply },
-    {
-        label: "Send user a private message",
-        value: NotifyOnInitialRestrictionReplyOptions.ReplyByPM,
-    },
-    {
-        label: "Reply as comment",
-        value: NotifyOnInitialRestrictionReplyOptions.ReplyAsComment,
-    },
-];
-
-export enum NotifyOnSubsequentRestrictionReplyOptions {
-    NoReply = "none",
-    ReplyByPM = "replybypm",
-    ReplyAsComment = "replybycomment",
-}
-
-const subsequentRestrictionOptionChoices = [
-    { label: "No Notification", value: NotifyOnSubsequentRestrictionReplyOptions.NoReply },
-    {
-        label: "Send user a private message",
-        value: NotifyOnSubsequentRestrictionReplyOptions.ReplyByPM,
-    },
-    {
-        label: "Reply as comment",
-        value: NotifyOnSubsequentRestrictionReplyOptions.ReplyAsComment,
-    },
-];
 
 const AccessControlOptionChoices = [
     {
         label: "Moderators Only",
-        value: "moderators-only",
+        value: AccessControlOptions.ModOnly,
     },
     {
-        label: "Moderators and Approved Users",
-        value: "moderators-and-superusers",
+        label: "Moderators and Superusers",
+        value: AccessControlOptions.ModsAndSuperusers,
     },
     {
-        label: "Moderators, Approved Users, and Post Author (OP)",
-        value: "moderators-superusers-and-op",
+        label: "Moderators, Superusers, and Post Author (OP)",
+        value: AccessControlOptions.ModsSuperusersAndPostAuthor,
     },
     {
         label: "Everyone",
-        value: "everyone",
+        value: AccessControlOptions.Everyone,
     },
 ];
 
@@ -625,16 +595,6 @@ export const appSettings: SettingsFormField[] = [
                     "Decide whether or not point awarding is required for moderators as well",
                 defaultValue: true,
             },
-            //TODO: Make this notify users on post restriction
-            {
-                type: "select",
-                name: AppSetting.NotifyOnInitialRestriction,
-                label: "Notify on initial post restriction",
-                helpText: "How to notify the post author on initial post restriction",
-                options: initialRestrictionOptionChoices,
-                defaultValue: [NotifyOnInitialRestrictionReplyOptions.NoReply],
-                onValidate: selectFieldHasOptionChosen,
-            },
             {
                 type: "paragraph",
                 name: AppSetting.MessageToRestrictedUsers,
@@ -643,16 +603,6 @@ export const appSettings: SettingsFormField[] = [
                     "Sent on initial post. Required even if not used. Placeholders Supported: {{name}}, {{commands}}, {{markdown_guide}}, {{subreddit}}, {{helpPage}}, {{discord}}",
                 defaultValue: TemplateDefaults.MessageToRestrictedUsers,
                 onValidate: paragraphFieldContainsText,
-            },
-            //TODO: Make this notify users when making next posts while restricted
-            {
-                type: "select",
-                name: AppSetting.NotifyOnSubsequentRestriction,
-                label: "Notify on subsequent posts",
-                helpText: "How to notify the post author when they are restricted",
-                options: subsequentRestrictionOptionChoices,
-                defaultValue: [NotifyOnSubsequentRestrictionReplyOptions.NoReply],
-                onValidate: selectFieldHasOptionChosen,
             },
             {
                 name: AppSetting.SubsequentPostRestrictionMessage,
@@ -675,7 +625,9 @@ export const appSettings: SettingsFormField[] = [
                 label: "Who can award points?",
                 helpText: "Choose who is allowed to award points",
                 options: AccessControlOptionChoices,
-                defaultValue: ["moderators-superusers-and-op"],
+                defaultValue: [
+                    AccessControlOptions.ModsSuperusersAndPostAuthor,
+                ],
                 onValidate: selectFieldHasOptionChosen,
             },
             {
@@ -698,7 +650,8 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.NotifyOnPostAuthorAward,
                 type: "select",
                 label: "Notify on post author award",
-                helpText: "How to notify the user when they try to award a point to the Post Author (OP)",
+                helpText:
+                    "How to notify the user when they try to award a point to the Post Author (OP)",
                 options: NotifyOnPostAuthorAwardReplyOptionChoices,
                 defaultValue: [NotifyOnPostAuthorAwardReplyOptions.NoReply],
                 onValidate: selectFieldHasOptionChosen,
@@ -722,11 +675,12 @@ export const appSettings: SettingsFormField[] = [
                 onValidate: selectFieldHasOptionChosen,
             },
             {
-                name: AppSetting.RestrictionRemovedMessage,
+                name: AppSetting.RestrictionLiftedMessage,
                 type: "paragraph",
                 label: "Message to send the user when their restriction is removed",
-                helpText: "Required even if not used. Placeholders Supported: {{awarder}}, {{subreddit}}, {{requirement}}, {{name}}, {{helpPage}}, {{discord}}",
-                defaultValue: TemplateDefaults.RestrictionRemovedMessage,
+                helpText:
+                    "Required even if not used. Placeholders Supported: {{awarder}}, {{subreddit}}, {{requirement}}, {{name}}, {{helpPage}}, {{discord}}",
+                defaultValue: TemplateDefaults.RestrictionLiftedMessage,
                 onValidate: paragraphFieldContainsText,
             },
             {
@@ -834,6 +788,14 @@ export const appSettings: SettingsFormField[] = [
                 helpText: "Each username should be on a new line",
             },
             {
+                name: AppSetting.ModAwardCommand,
+                type: "string",
+                label: "Trusted User/Mod award command",
+                helpText:
+                    "Optional. Alternate command for mods and trusted users to award reputation points",
+                defaultValue: "!modaward",
+            },
+            {
                 name: AppSetting.InvalidUsernameMessage,
                 type: "paragraph",
                 label: "Message to send the user if a username contains invalid characters",
@@ -924,7 +886,7 @@ export const appSettings: SettingsFormField[] = [
                 type: "paragraph",
                 label: "Alternate Command Success Message",
                 helpText:
-                    "Message to send users when they use the Alternate Award Command and it is successful. Placeholders Supported: {{awardeePage}}, {{name}}, {{awardee}}, {{awarder}}, {{leaderboard}}, {{symbol}}, {{total}}",
+                    "Message to send users when they use the Alternate Award Command and it is successful. Placeholders Supported: {{awardeePage}}, {{awarderPage}}, {{name}}, {{awardee}}, {{awarder}}, {{leaderboard}}, {{symbol}}, {{total}}",
                 defaultValue: TemplateDefaults.AlternateCommandSuccessMessage,
                 onValidate: paragraphFieldContainsText,
             },
@@ -950,14 +912,6 @@ export const appSettings: SettingsFormField[] = [
                 onValidate: paragraphFieldContainsText,
             },
             {
-                name: AppSetting.ModAwardCommand,
-                type: "string",
-                label: "Trusted User/Mod award command",
-                helpText:
-                    "Optional. Alternate command for mods and trusted users to award reputation points",
-                defaultValue: "!modaward",
-            },
-            {
                 name: AppSetting.NotifyOnModAwardSuccess,
                 type: "select",
                 label: "Notify on mod award success",
@@ -971,7 +925,7 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.ModAwardCommandSuccess,
                 type: "paragraph",
                 label: "Mod Award Success Message",
-                helpText: `Optional. Message to send users when they successfully award a message with the "Trusted User/Mod award command". Placeholders Supported: {{awardeePage}}, {{awardee}}, {{awarder}}, {{symbol}}, {{total}}, {{name}}, {{leaderboard}}`,
+                helpText: `Optional. Message to send users when they successfully award a message with the "Trusted User/Mod award command". Placeholders Supported: {{awardeePage}}, {{awarderPage}}, {{awardee}}, {{awarder}}, {{symbol}}, {{total}}, {{name}}, {{leaderboard}}`,
                 defaultValue: TemplateDefaults.ModAwardCommandSuccessMessage,
                 onValidate: paragraphFieldContainsText,
             },
@@ -987,7 +941,7 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.ModAwardCommandFail,
                 type: "paragraph",
                 label: "Mod Award Fail Message",
-                helpText: `Optional. Message to send users when they aren't allowed to use the "Trusted User/Mod award command". Placeholders Supported: {{command}}, {{name}}, {{awarder}}`,
+                helpText: `Optional. Message to send users when they aren't allowed to use the "Trusted User/Mod award command". Placeholders Supported: {{command}}, {{name}}, {{awarder}}, {{awardee}}`,
                 defaultValue: TemplateDefaults.ModAwardCommandFailMessage,
                 onValidate: paragraphFieldContainsText,
             },
@@ -996,7 +950,7 @@ export const appSettings: SettingsFormField[] = [
                 type: "paragraph",
                 label: `Message to send user when the "Trusted User/Mod award command" has already been used on the comment.`,
                 helpText:
-                    "Optional. Placeholders Supported: {{awardee}}, {{name}}",
+                    "Optional. Placeholders Supported: {{awarder}}, {{awardee}}, {{name}}",
                 defaultValue: TemplateDefaults.ModAwardAlreadyGivenMessage,
                 onValidate: paragraphFieldContainsText,
             },
@@ -1046,15 +1000,6 @@ export const appSettings: SettingsFormField[] = [
                 onValidate: selectFieldHasOptionChosen,
             },
             {
-                type: "paragraph",
-                name: AppSetting.DuplicateAwardMessage,
-                label: "Point Already Awarded Message",
-                helpText:
-                    "Shown when a user tries to award a message they've already awarded. Placeholders Supported: {{name}}, {{awarder}}",
-                defaultValue: TemplateDefaults.DuplicateAwardMessage,
-                onValidate: paragraphFieldContainsText,
-            },
-            {
                 type: "select",
                 name: AppSetting.NotifyOnSelfAward,
                 label: "Notify users when they try to award themselves",
@@ -1084,7 +1029,7 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.SuccessMessage,
                 label: "Success Message",
                 helpText:
-                    "Message when a point is awarded. Placeholders Supported: {{awardeePage}}, {{awardee}}, {{awarder}}, {{symbol}}, {{total}}, {{name}}, {{leaderboard}}",
+                    "Message when a point is awarded. Placeholders Supported: {{awardeePage}}, {{awarderPage}}, {{awardee}}, {{awarder}}, {{symbol}}, {{total}}, {{name}}, {{leaderboard}}",
                 defaultValue: TemplateDefaults.NotifyOnSuccessTemplate,
                 onValidate: paragraphFieldContainsText,
             },
@@ -1126,7 +1071,7 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.BotAwardMessage,
                 label: "Bot Award Message",
                 helpText:
-                    "Message shown when someone tries to award the bot. Placeholders Supported: {{name}}",
+                    "Message shown when someone tries to award the bot. Placeholders Supported: {{name}}, {{awardee}}",
                 defaultValue: TemplateDefaults.BotAwardMessage,
                 onValidate: paragraphFieldContainsText,
             },
@@ -1260,27 +1205,26 @@ export const appSettings: SettingsFormField[] = [
             },
         ],
     },
-    //TODO: try and make this work
-    // {
-    //     type: "group",
-    //     label: "Backup and Restore",
-    //     fields: [
-    //         {
-    //             name: AppSetting.EnableBackup,
-    //             type: "boolean",
-    //             label: "Enable Backup",
-    //             defaultValue: true,
-    //         },
-    //         {
-    //             name: AppSetting.EnableRestore,
-    //             type: "boolean",
-    //             label: "Enable Restore",
-    //             helpText:
-    //                 "This should be left disabled to prevent inadvertent score overwriting. Only enable during restore operations",
-    //             defaultValue: false,
-    //         },
-    //     ],
-    // },
+    {
+        type: "group",
+        label: "Backup and Restore",
+        fields: [
+            {
+                name: AppSetting.EnableBackup,
+                type: "boolean",
+                label: "Enable Backup",
+                defaultValue: true,
+            },
+            {
+                name: AppSetting.EnableRestore,
+                type: "boolean",
+                label: "Enable Restore",
+                helpText:
+                    "This should be left disabled to prevent inadvertent score overwriting. Only enable during restore operations.",
+                defaultValue: false,
+            },
+        ],
+    },
 ];
 
 function isFlairTemplateValid(event: SettingsFormFieldValidatorEvent<string>) {

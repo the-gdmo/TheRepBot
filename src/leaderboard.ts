@@ -12,10 +12,9 @@ import { getSubredditName, SafeWikiClient } from "./utility.js";
 import pluralize from "pluralize";
 import { logger } from "./logger.js";
 import { contextTypeToJSON } from "@devvit/protos/types/devvit/actor/reddit/context_type.js";
+import { POINTS_STORE_KEY } from "./triggers/post-logic/redisKeys.js";
 
 export const TIMEFRAMES = ["alltime"] as const;
-
-const POINTS_STORE_KEY = "thanksPointsStore";
 
 function capitalize(word: string): string {
     return word.charAt(0).toUpperCase() + word.slice(1);

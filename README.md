@@ -38,6 +38,7 @@ I recommend testing settings out on a test subreddit before deploying to a real 
 * `{{altCommand}}`: Alternate command to directly award users. Used in 'Alternate Command Success/Fail Message'.
 * `{{subreddit}}`: Get the name of the subreddit. Will not contain 'r/'.
 * `{{awardeePage}}`: Link to a user's individual page. Logs all points received and given that are not alternate commands.
+* `{{awarderPage}}`: Link to a user's individual page. Logs all points received and given that are not alternate commands.
 * `{{title}}`: The title of the most recent valid post by the poster.
 
 ## Data Stored

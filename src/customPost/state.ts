@@ -8,6 +8,7 @@ import {
 import { AppSetting } from "../settings.js";
 import pluralize from "pluralize";
 import { logger } from "../logger.js";
+import { POINTS_STORE_KEY } from "../triggers/post-logic/redisKeys.js";
 
 export type LeaderboardEntry = {
     username: string;
@@ -15,8 +16,6 @@ export type LeaderboardEntry = {
     rank: number;
     pointName: string;
 };
-
-const POINTS_STORE_KEY = `thanksPointsStore`;
 
 export class LeaderboardState {
     readonly leaderboardEntries: UseStateResult<LeaderboardEntry[]>;

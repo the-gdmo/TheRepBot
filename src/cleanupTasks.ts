@@ -3,10 +3,10 @@ import { addDays, addMinutes, subMinutes } from "date-fns";
 import { CronExpressionParser } from "cron-parser";
 import { ADHOC_CLEANUP_JOB, CLEANUP_JOB_CRON } from "./constants.js";
 import { AppSetting } from "./settings.js";
+import { POINTS_STORE_KEY } from "./triggers/post-logic/redisKeys.js";
 
 const CLEANUP_LOG_KEY = "cleanupStore";
 const DAYS_BETWEEN_CHECKS = 28;
-const POINTS_STORE_KEY = "thanksPointsStore";
 
 export async function setCleanupForUsers(usernames: string[], context: TriggerContext) {
     if (usernames.length === 0) {

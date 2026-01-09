@@ -1,6 +1,6 @@
-import { TriggerContext } from "@devvit/public-api";
-import { AppSetting } from "../settings.js";
-import { logger } from "../logger.js";
+import { SettingsValues, TriggerContext } from "@devvit/public-api";
+import { AppSetting, ExistingFlairOverwriteHandling } from "../../settings.js";
+import { logger } from "../../logger.js";
 import { CommentSubmit, CommentUpdate } from "@devvit/protos";
 
 export function formatMessage(
@@ -13,13 +13,12 @@ export function formatMessage(
         result = result.replace(regex, value);
     }
 
-    const footer =
-        "\n\n---\n\n^(I am a bot - please contact the mods with any questions)";
+    const footer = `\n\n---\n\n^(I am a bot - please contact the mods with any questions)`;
     if (
         !result
             .trim()
             .endsWith(
-                "^(I am a bot - please contact the mods with any questions)"
+                `\n\n---\n\n^(I am a bot - please contact the mods with any questions)`
             )
     ) {
         result = result.trim() + footer;
@@ -29,12 +28,12 @@ export function formatMessage(
 }
 
 export async function triggerUsed(
-    devvitContext: TriggerContext,
-    comment: string
+    context: TriggerContext,
+    commentBody: string
 ) {
-    const allTriggers = await getTriggers(devvitContext);
+    const allTriggers = await getTriggers(context);
 
-    const triggerUsed = allTriggers.find((t) => comment.includes(t));
+    const triggerUsed = allTriggers.find((t) => commentBody.includes(t));
 
     if (!triggerUsed) {
         logger.debug("❌ No valid award command found.");
@@ -48,18 +47,16 @@ export async function triggerUsed(
     return usedCommand;
 }
 
-export async function modCommandValue(devvitContext: TriggerContext) {
-    const settings = await devvitContext.settings.getAll();
-    const modCommand = (
-        (settings[AppSetting.ModAwardCommand] as string) ?? "!modaward"
-    )
+export async function modCommandValue(context: TriggerContext) {
+    const settings = await context.settings.getAll();
+    const modCommand = ((settings[AppSetting.ModAwardCommand] as string) ?? "")
         .toLowerCase()
         .trim();
     return modCommand;
 }
 
-export async function userCommandValues(devvitContext: TriggerContext) {
-    const settings = await devvitContext.settings.getAll();
+export async function userCommandValues(context: TriggerContext) {
+    const settings = await context.settings.getAll();
     const userCommands = (
         (settings[AppSetting.PointTriggerWords] as string) ?? "!award\n.award"
     )
@@ -74,8 +71,8 @@ export function escapeForRegex(string: string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-export async function getTriggers(devvitContext: TriggerContext) {
-    const settings = await devvitContext.settings.getAll();
+export async function getTriggers(context: TriggerContext) {
+    const settings = await context.settings.getAll();
     const userCommands = (
         (settings[AppSetting.PointTriggerWords] as string) ?? "!award\n.award"
     )
@@ -94,6 +91,64 @@ export async function getTriggers(devvitContext: TriggerContext) {
         new Set([...userCommands, modCommand].filter((t) => t && t.length > 0))
     );
     return allTriggers;
+}
+
+export async function updateAwardeeFlair(
+    context: TriggerContext,
+    subredditName: string,
+    commentAuthor: string,
+    newScore: number,
+    settings: SettingsValues
+) {
+    const pointSymbol = (settings[AppSetting.PointSymbol] as string) ?? "";
+    const flairSetting = ((settings[AppSetting.ExistingFlairHandling] as
+        | string[]
+        | undefined) ?? [
+        ExistingFlairOverwriteHandling.OverwriteNumeric,
+    ])[0] as ExistingFlairOverwriteHandling;
+
+    // Make sure newScore is a safe primitive
+    const scoreValue =
+        newScore !== undefined && newScore !== null ? Number(newScore) : 0;
+
+    let flairText = "";
+    switch (flairSetting) {
+        case ExistingFlairOverwriteHandling.OverwriteNumericSymbol:
+            flairText = `${scoreValue}${pointSymbol}`;
+            break;
+        case ExistingFlairOverwriteHandling.OverwriteNumeric:
+        default:
+            flairText = `${scoreValue}`;
+            break;
+    }
+
+    // CSS class + template logic
+    let cssClass = settings[AppSetting.CSSClass] as string | undefined;
+    let flairTemplate = settings[AppSetting.FlairTemplate] as
+        | string
+        | undefined;
+
+    // If using a flair template, CSS class cannot be used
+    if (flairTemplate) cssClass = undefined;
+
+    try {
+        await context.reddit.setUserFlair({
+            subredditName,
+            username: commentAuthor,
+            cssClass,
+            flairTemplateId: flairTemplate,
+            text: flairText,
+        });
+
+        logger.info(
+            `🧑‍🎨 Awardee flair updated: u/${commentAuthor} → (“${flairText}”)`
+        );
+    } catch (err) {
+        logger.error("❌ Failed to update awardee flair", {
+            user: commentAuthor,
+            err,
+        });
+    }
 }
 
 export function commandUsedInIgnoredContext(
@@ -139,12 +194,12 @@ export function getIgnoredContextType(
 }
 
 export async function checkIgnoredContext(
-    devvitContext: TriggerContext,
+    context: TriggerContext,
     event: CommentSubmit | CommentUpdate,
     comment: string
 ) {
     // Check ignored contexts for each trigger in comment
-    for (const trigger of await getTriggers(devvitContext)) {
+    for (const trigger of await getTriggers(context)) {
         if (!new RegExp(`${escapeForRegex(trigger)}`, "i").test(comment))
             continue;
 
@@ -155,9 +210,7 @@ export async function checkIgnoredContext(
             const ignoredText = getIgnoredContextType(comment, trigger);
             if (ignoredText) {
                 const ignoreKey = `ignoreDM:${event.author.name.toLowerCase()}:${ignoredText}`;
-                const alreadyConfirmed = await devvitContext.redis.exists(
-                    ignoreKey
-                );
+                const alreadyConfirmed = await context.redis.exists(ignoreKey);
 
                 if (!alreadyConfirmed) {
                     const contextLabel =
@@ -179,13 +232,13 @@ export async function checkIgnoredContext(
                     
                     ---`;
 
-                    await devvitContext.reddit.sendPrivateMessage({
+                    await context.reddit.sendPrivateMessage({
                         to: event.author.name,
                         subject: `Your ${trigger} command was ignored`,
                         text: dmText,
                     });
 
-                    await devvitContext.redis.set(
+                    await context.redis.set(
                         `pendingConfirm:${event.author.name.toLowerCase()}`,
                         ignoredText
                     );

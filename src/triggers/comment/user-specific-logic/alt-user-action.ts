@@ -1,227 +1,366 @@
-import { CommentSubmit, CommentUpdate } from "@devvit/protos";
-import { TriggerContext } from "@devvit/public-api";
+import { CommentCreate, CommentSubmit, CommentUpdate } from "@devvit/protos";
+import { SettingsValues, TriggerContext } from "@devvit/public-api";
+
 import {
     escapeForRegex,
     formatMessage,
+    getTriggers,
     modCommandValue,
-    triggerUsed,
+    updateAwardeeFlair,
     userCommandValues,
-} from "../../../utils/common-utilities.js";
-import { CommentTriggerContext } from "../comment-trigger-context.js";
-import { logger } from "../../../logger.js";
-import { AppSetting, TemplateDefaults } from "../../../settings.js";
+} from "../../utils/common-utilities.js";
 
+import { getAltDupKey, setAltDupKey } from "../../post-logic/redisKeys.js";
+
+import { logger } from "../../../logger.js";
+import {
+    AppSetting,
+    AutoSuperuserReplyOptions,
+    ExistingFlairOverwriteHandling,
+    TemplateDefaults,
+} from "../../../settings.js";
+import { getParentComment } from "../comment-trigger-context.js";
+import { handleAutoSuperuserPromotion } from "../../utils/user-utilities.js";
+
+/* ─────────────────────────────────────────────────────────────
+ * Public entry
+ * ───────────────────────────────────────────────────────────── */
+
+export async function handleAltUserAction(
+    event: CommentCreate | CommentUpdate,
+    context: TriggerContext
+): Promise<boolean> {
+    if (!event.comment || !event.post) return false;
+
+    const commentBody = event.comment.body?.toLowerCase() ?? "";
+    const awarder = event.author?.name;
+    if (!awarder) return false;
+
+    const triggerUsed = await detectAltTrigger(context, commentBody);
+    if (!triggerUsed) return false;
+
+    const mentionedUsername = extractAltUsername(commentBody, triggerUsed);
+    if (!mentionedUsername) {
+        await notifyMissingAltUsername(event, context, awarder);
+        return true;
+    }
+
+    if (await validateAltUsername(event, context, awarder, mentionedUsername)) {
+        return true;
+    }
+
+    if (!(await isAuthorizedAltUser(context, awarder))) {
+        await notifyAltPermissionFailure(event, context, awarder, triggerUsed);
+        return true;
+    }
+
+    if (await altDuplicateExists(event, context)) {
+        await notifyAltDuplicate(event, context, awarder, mentionedUsername);
+        return true;
+    }
+
+    await executeAltAward(
+        event,
+        context,
+        awarder,
+        mentionedUsername,
+        triggerUsed
+    );
+    return true;
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Detection
+ * ───────────────────────────────────────────────────────────── */
 export async function commentContainsAltCommand(
     event: CommentSubmit | CommentUpdate,
-    devvitContext: TriggerContext,
-    commentId: string
+    context: TriggerContext
 ): Promise<boolean> {
     if (!event.comment) return false;
 
-    const commentBodyRaw = event.comment.body ?? "";
-    const commentBody = commentBodyRaw.toLowerCase();
+    const body = event.comment.body ?? "";
 
-    logger.info(`Comment registered in commentContainsAltCommand()`, {
-        commentId,
-    });
-    const triggerUsedInCommand = await triggerUsed(devvitContext, commentId);
-    if (!triggerUsedInCommand) {
-        logger.info(`❌ No valid award command found.`);
-        return false;
-    }
+    // Fetch commands
+    const modCommand = await modCommandValue(context); // e.g., "!mod"
+    const userCommands = await userCommandValues(context); // e.g., ["!snipe", "!thanks"]
 
-    const altCommandMatch = commentBody.match(
-        new RegExp(`${triggerUsed}\\s+(\\S+)`, "i")
+    // Build regex for mod command: "!mod u/username"
+    const modRegex = new RegExp(
+        `${escapeForRegex(modCommand)}\\s+u/[a-z0-9_-]{3,21}`,
+        "i"
     );
 
-    logger.info(`altCommandMatch:`, {
-        altCommandMatch,
-    });
+    // Build regex for all user commands: "!snipe u/username"
+    const userRegexes = userCommands.map(
+        (cmd) => new RegExp(`${escapeForRegex(cmd)}\\s+u/[a-z0-9_-]{3,21}`, "i")
+    );
 
-    if (altCommandMatch) {
-        return true;
-    } else {
-        return false;
-    }
+    const isModAlt = modRegex.test(body);
+    const isUserAlt = userRegexes.some((regex) => regex.test(body));
+
+    const result = isModAlt || isUserAlt;
+
+    logger.debug("🧩 Alt command check", { body, isModAlt, isUserAlt, result });
+
+    return result;
 }
 
-//TODO: IMPLEMENT POINT ALREADY AWARDED TO USER WITH ALT COMMAND ON POST LOGIC, NOTIFY IF USER BECOMES SUPERUSER FROM ALT COMMAND LOGIC
-async function pointAlreadyAwardedWithAltCommand() {}
-async function notifyUserOnSuperUserAltCommand() {}
-async function awardPointToUserAltCommand() {}
-async function invalidAltUsername(
-    event: CommentSubmit | CommentUpdate,
-    devvitContext: TriggerContext,
-    commentId: string,
-    awarder: string
-) {
-    if (!event.comment) return false;
+async function detectAltTrigger(
+    context: TriggerContext,
+    commentBody: string
+): Promise<string | null> {
+    const triggers = await getTriggers(context);
+    return triggers.find((t) => commentBody.includes(t)) ?? null;
+}
 
-    const settings = await devvitContext.settings.getAll();
-    const commentBodyRaw = event.comment.body;
-    const commentBody = commentBodyRaw.toLowerCase();
-    const usedTrigger = await triggerUsed(devvitContext, commentId);
-    const userCommands = await userCommandValues(devvitContext);
-    const modCommand = await modCommandValue(devvitContext);
-
-    let mentionedUsername: string | undefined;
-    if (!usedTrigger) return;
-    if (!event.comment) return;
-
-    // Regex: match valid ALT username with space + u/
-    const validMatch = commentBody.match(
-        new RegExp(
-            `${escapeForRegex(usedTrigger)}\\s+u/([a-z0-9_-]{3,21})`,
-            "i"
-        )
+function extractAltUsername(body: string, trigger: string): string | null {
+    const match = body.match(
+        new RegExp(`${escapeForRegex(trigger)}\\s+u/([a-z0-9_-]{3,21})`, "i")
     );
+    return match?.[1] ?? null;
+}
 
-    logger.debug(`🧩 TriggerUsed/validMatch:`, { triggerUsed, validMatch });
+/* ─────────────────────────────────────────────────────────────
+ * Validation
+ * ───────────────────────────────────────────────────────────── */
 
-    if (validMatch) {
-        mentionedUsername = validMatch[1];
-        const mentionUsername = mentionedUsername.slice(2);
+async function validateAltUsername(
+    event: CommentCreate | CommentUpdate,
+    context: TriggerContext,
+    awarder: string,
+    username: string
+): Promise<boolean> {
+    const settings = await context.settings.getAll();
 
-        // Validate allowed characters (letters, numbers, hyphen, underscore)
-        if (!/^[a-z0-9_-]+$/i.test(mentionUsername)) {
-            const invalidCharMessage = formatMessage(
+    if (!/^[a-z0-9_-]+$/i.test(username)) {
+        await reply(
+            context,
+            event.comment!.id,
+            formatMessage(
                 (settings[AppSetting.InvalidUsernameMessage] as string) ??
                     TemplateDefaults.InvalidUsernameMessage,
-                { awarder, awardee: mentionUsername }
-            );
-
-            const reply = await devvitContext.reddit.submitComment({
-                id: event.comment.id,
-                text: invalidCharMessage,
-            });
-            await reply.distinguish();
-
-            logger.warn("❌ ALT command username contains invalid characters", {
-                awarder,
-                triggerUsed,
-                mentionUsername,
-                mentionedUsername,
-            });
-            return; // Stop ALT flow
-        }
-    } else {
-        // User typed a word after trigger but missing u/ prefix
-        const fallbackMatch = commentBody.match(
-            new RegExp(`${usedTrigger}\\s+(\\S+)`, "i")
-        );
-
-        if (fallbackMatch) {
-            const invalidMention = fallbackMatch[1];
-            const invalidMentionUsername = invalidMention.slice(2);
-
-            // Validate allowed characters
-            if (!/^[a-z0-9_-]+$/i.test(invalidMentionUsername)) {
-                const invalidCharMessage = formatMessage(
-                    (settings[AppSetting.InvalidUsernameMessage] as string) ??
-                        TemplateDefaults.InvalidUsernameMessage,
-                    { awarder, awardee: invalidMention }
-                );
-
-                const reply = await devvitContext.reddit.submitComment({
-                    id: event.comment.id,
-                    text: invalidCharMessage,
-                });
-                await reply.distinguish();
-
-                logger.warn(
-                    "❌ ALT command username contains invalid characters",
-                    {
-                        awarder,
-                        triggerUsed,
-                        invalidMention,
-                        invalidMentionUsername,
-                    }
-                );
-            }
-        }
-    }
-}
-
-async function altUsernameLengthInvalid(
-    event: CommentSubmit | CommentUpdate,
-    devvitContext: TriggerContext,
-    commentId: string,
-    awarder: string
-) {
-    const usedTrigger = await triggerUsed(devvitContext, commentId);
-    const userCommands = await userCommandValues(devvitContext);
-    const modCommand = await modCommandValue(devvitContext);
-
-    let mentionedUsername: string | undefined;
-    if (!usedTrigger) return;
-    if (!event.comment) return;
-
-    const commentBodyRaw = event.comment.body ?? "";
-    const commentBody = commentBodyRaw.toLowerCase();
-
-    const settings = await devvitContext.settings.getAll();
-    // Only run ALT flow if user is an ALT user
-    if (
-        userCommands.includes(usedTrigger) ||
-        modCommand.includes(usedTrigger)
-    ) {
-        // Regex: match valid ALT username with space + u/
-        const validMatch = commentBody.match(
-            new RegExp(
-                `${escapeForRegex(usedTrigger)}\s+u\/([a-z0-9_-]{3,21})`,
-                "i"
+                { awarder, awardee: username }
             )
         );
+        return true;
+    }
 
-        logger.debug(`🧩 usedTrigger/validMatch:`, { usedTrigger, validMatch });
+    if (username.length < 3 || username.length > 21) {
+        await reply(
+            context,
+            event.comment!.id,
+            formatMessage(
+                (settings[AppSetting.UsernameLengthMessage] as string) ??
+                    TemplateDefaults.UsernameLengthMessage,
+                { awarder, awardee: username }
+            )
+        );
+        return true;
+    }
 
-        if (validMatch) {
-            mentionedUsername = validMatch[1];
-            const mentionUsername = mentionedUsername.slice(2);
+    return false;
+}
 
-            // Validate username length explicitly (3–21 chars)
-            if (mentionUsername.length < 3 || mentionUsername.length > 21) {
-                const lengthMessage = formatMessage(
-                    (settings[AppSetting.UsernameLengthMessage] as string) ??
-                        TemplateDefaults.UsernameLengthMessage,
-                    { awarder, awardee: mentionUsername }
-                );
+/* ─────────────────────────────────────────────────────────────
+ * Authorization
+ * ───────────────────────────────────────────────────────────── */
 
-                const reply = await devvitContext.reddit.submitComment({
-                    id: event.comment.parentId,
-                    text: lengthMessage,
-                });
-                await reply.distinguish();
+async function isAuthorizedAltUser(
+    context: TriggerContext,
+    awarder: string
+): Promise<boolean> {
+    const settings = await context.settings.getAll();
+    const altUsers =
+        (settings[AppSetting.AlternatePointCommandUsers] as string)
+            ?.split("\n")
+            .map((u) => u.trim().toLowerCase()) ?? [];
 
-                logger.warn("❌ ALT username length invalid", {
-                    awarder,
-                    mentionUsername,
-                    mentionedUsername,
-                });
-                return;
-            }
+    return altUsers.includes(awarder.toLowerCase());
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Duplicate handling
+ * ───────────────────────────────────────────────────────────── */
+
+async function altDuplicateExists(
+    event: CommentCreate | CommentUpdate,
+    context: TriggerContext
+): Promise<boolean> {
+    const key = await getAltDupKey(event, context);
+    if (!key) return false;
+    return (await context.redis.exists(key)) === 1;
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Execution
+ * ───────────────────────────────────────────────────────────── */
+async function executeAltAward(
+    event: CommentCreate | CommentUpdate,
+    context: TriggerContext,
+    awarder: string,
+    awardee: string,
+    triggerUsed: string
+) {
+    if (!event.subreddit) return;
+    const settings = await context.settings.getAll();
+
+    // Award point
+    const newScore = await context.redis.zIncrBy(
+        "thanksPointsStore",
+        awardee,
+        1
+    );
+
+    await setAltDupKey(event, context, "1");
+
+    // Update flair
+    await updateAwardeeFlair(
+        context,
+        event.subreddit.name,
+        awardee,
+        newScore,
+        settings
+    );
+
+    // Auto-superuser promotion
+    await handleAutoSuperuserPromotion(
+        event,
+        context,
+        event.comment!.id,
+        awardee,
+        newScore,
+        triggerUsed
+    );
+
+    // ALT success notification
+    await notifyAlternateCommandSuccess(
+        event,
+        context,
+        awarder,
+        awardee,
+        newScore
+    );
+
+    logger.info("🏅 ALT award fully processed", {
+        awarder,
+        awardee,
+        newScore,
+    });
+}
+/* ─────────────────────────────────────────────────────────────
+ * Notifications
+ * ───────────────────────────────────────────────────────────── */
+
+async function notifyAltDuplicate(
+    event: CommentCreate | CommentUpdate,
+    context: TriggerContext,
+    awarder: string,
+    awardee: string
+) {
+    const settings = await context.settings.getAll();
+    const pointName = (settings[AppSetting.PointName] as string) ?? "point";
+    const message = formatMessage(
+        (settings[AppSetting.PointAlreadyAwardedToUserMessage] as string) ??
+            TemplateDefaults.PointAlreadyAwardedToUserMessage,
+        { awardee, name: pointName, awarder }
+    );
+
+    await reply(context, event.comment!.id, message);
+}
+
+async function notifyAlternateCommandSuccess(
+    event: CommentCreate | CommentUpdate,
+    context: TriggerContext,
+    awarder: string,
+    awardee: string,
+    newScore: number
+) {
+    if (!event.subreddit) return;
+    const settings = await context.settings.getAll();
+
+    const notifyMode = (
+        settings[AppSetting.NotifyOnAlternateCommandSuccess] as string[]
+    )?.[0];
+
+    if (!notifyMode || notifyMode === "none") return;
+
+    const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${awardee}`;
+    const awarderPage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${awarder}`;
+
+    const message = formatMessage(
+        (settings[AppSetting.AlternateCommandSuccessMessage] as string) ??
+            TemplateDefaults.AlternateCommandSuccessMessage,
+        {
+            awarder,
+            awardee,
+            name: awarder,
+            total: newScore.toString(),
+            symbol: (settings[AppSetting.PointSymbol] as string) ?? "",
+            leaderboard: (settings[AppSetting.LeaderboardName] as string) ?? "",
+            awardeePage,
+            awarderPage,
         }
+    );
+
+    if (notifyMode === "replybypm") {
+        await context.reddit.sendPrivateMessage({
+            to: awarder,
+            subject: "Alternate command successful",
+            text: message,
+        });
+    } else {
+        const reply = await context.reddit.submitComment({
+            id: event.comment!.id,
+            text: message,
+        });
+        await reply.distinguish();
     }
 }
 
-/*
-if (hasAltPermission) {
-    await executeAltCommand(devvitContext, comment.parentId, awarder, recipient);
-    } else {
-    await altCommandExecutedByUserWithInsufficientPerms(
-        devvitContext,
-        comment.parentId
+async function notifyAltPermissionFailure(
+    event: CommentCreate | CommentUpdate,
+    context: TriggerContext,
+    awarder: string,
+    command: string
+) {
+    if (!event.subreddit) return;
+    const settings = await context.settings.getAll();
+
+    const message = formatMessage(
+        (settings[AppSetting.AlternateCommandFailMessage] as string) ??
+            TemplateDefaults.AlternateCommandFailMessage,
+        {
+            altCommand: command,
+            subreddit: event.subreddit.name,
+        }
+    );
+
+    await reply(context, event.comment!.id, message);
+}
+
+async function notifyMissingAltUsername(
+    event: CommentCreate | CommentUpdate,
+    context: TriggerContext,
+    awarder: string
+) {
+    const settings = await context.settings.getAll();
+
+    await reply(
+        context,
+        event.comment!.id,
+        formatMessage(
+            (settings[AppSetting.NoUsernameMentionMessage] as string) ??
+                TemplateDefaults.NoUsernameMentionMessage,
+            { awarder, awardee: "" }
+        )
     );
 }
-*/
 
-//todo: add awarder and recipient logic directly into function
-export async function executeAltCommand(
-    devvitContext: TriggerContext,
-    commentId: string
-) {}
+/* ─────────────────────────────────────────────────────────────
+ * Utility
+ * ───────────────────────────────────────────────────────────── */
 
-export async function altCommandExecutedByUserWithInsufficientPerms(
-    devvitContext: TriggerContext,
-    commentId: string
-) {}
+async function reply(context: TriggerContext, commentId: string, text: string) {
+    const r = await context.reddit.submitComment({ id: commentId, text });
+    await r.distinguish();
+}

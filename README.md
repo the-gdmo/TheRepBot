@@ -8,7 +8,7 @@ You can also set an optional post flair if a point is awarded, such as to mark t
 
 ## Limitations
 
-* The optional leaderboard will not pull in points for users until this app awards one. If you have previously used /u/Clippy_Office_Asst or a similar bot to award reputation points in the past, this will make the leaderboard misleading unless you restore from a backup.
+* The optional leaderboard will not pull in points for users until this app awards one. If you have previously used /u/Clippy_Office_Asst or a similar bot to award reputation points in the past, this will make the leaderboard misleading.
 * For flair setting options, if you specify both a CSS class and a flair template, the flair template will be used.
 
 ## Suggestions

@@ -24,12 +24,6 @@ import {
     manualPostRestrictionRemovalHandler,
     manualSetPointsFormHandler,
 } from "./triggers/utils/mod-utilities.js";
-import {
-    backupAllScores,
-    restoreForm,
-    restoreFormHandler,
-    showRestoreForm,
-} from "./triggers/backup-restore/backupAndRestore.js";
 
 Devvit.addSettings(appSettings);
 
@@ -109,25 +103,7 @@ Devvit.addMenuItem({
     onPress: handleManualPointSetting,
 });
 
-export const restoreFormKey = Devvit.createForm(
-    restoreForm,
-    restoreFormHandler
-);
 Devvit.addCustomPostType(leaderboardCustomPost);
-
-Devvit.addMenuItem({
-    label: "Backup ReputatorBot Scores",
-    forUserType: "moderator",
-    location: "subreddit",
-    onPress: backupAllScores,
-});
-
-Devvit.addMenuItem({
-    label: "Restore TheRepBot Scores",
-    forUserType: "moderator",
-    location: "subreddit",
-    onPress: showRestoreForm,
-});
 
 export const customPostFormKey = Devvit.createForm(
     customPostForm,

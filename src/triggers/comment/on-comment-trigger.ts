@@ -29,7 +29,7 @@ import {
     getTriggers,
     modCommandValue,
 } from "../utils/common-utilities.js";
-import { restrictedKeyExists } from "../post-logic/redisKeys.js";
+import { modDupKeyExists, restrictedKeyExists } from "../post-logic/redisKeys.js";
 
 export async function handleThanksEvent(
     event: CommentSubmit | CommentUpdate,

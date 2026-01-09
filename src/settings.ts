@@ -98,6 +98,8 @@ export enum AppSetting {
     RestrictionLiftedMessage = "restrictionLiftedMessage",
     NotifyOnRestrictionLifted = "notifyOnRestrictionLifted",
     InvalidUsernameMessage = "invalidUsernameMessage",
+    EnableBackup = "enableBackup",
+    EnableRestore = "enableRestore",
 }
 
 export enum TemplateDefaults {
@@ -1200,6 +1202,26 @@ export const appSettings: SettingsFormField[] = [
                     "Message shown when a user tries to award points on a post without flair. Placeholders Supported: {{name}}",
                 defaultValue: TemplateDefaults.UnflairedPostMessage,
                 onValidate: paragraphFieldContainsText,
+            },
+        ],
+    },
+    {
+        type: "group",
+        label: "Backup and Restore",
+        fields: [
+            {
+                name: AppSetting.EnableBackup,
+                type: "boolean",
+                label: "Enable Backup",
+                defaultValue: true,
+            },
+            {
+                name: AppSetting.EnableRestore,
+                type: "boolean",
+                label: "Enable Restore",
+                helpText:
+                    "This should be left disabled to prevent inadvertent score overwriting. Only enable during restore operations.",
+                defaultValue: false,
             },
         ],
     },

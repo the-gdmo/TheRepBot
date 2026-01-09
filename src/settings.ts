@@ -127,7 +127,7 @@ export enum TemplateDefaults {
     UsernameLengthMessage = "***{{awardee}}*** is not valid. Reddit usernames are between 3 and 21 characters long.",
     InvalidUsernameMessage = "Your target is not valid. Reddit usernames contain only letters, numbers, hyphens, and underscores.",
     NoUsernameMentionMessage = "You must mention a user (eg u/{{awardee}}) to award specific users.",
-    RestrictionLiftedMessage = "Your posting restriction has been removed. You now have permission to make a post again!",
+    RestrictionLiftedMessage = "Your posting restriction has been removed. You now have permission to make a post again in r/{{subreddit}}!",
     PostAuthorAwardMessage = "OPs cannot be awarded points.",
 }
 

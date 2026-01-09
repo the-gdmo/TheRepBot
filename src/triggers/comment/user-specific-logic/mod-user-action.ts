@@ -4,6 +4,7 @@ import {
     AppSetting,
     NotifyOnModAwardFailReplyOptions,
     NotifyOnModAwardSuccessReplyOptions,
+    NotifyOnRestrictionLiftedReplyOptions,
     NotifyOnSelfAwardReplyOptions,
     TemplateDefaults,
 } from "../../../settings.js";
@@ -21,14 +22,18 @@ import {
     getParentComment,
 } from "../comment-trigger-context.js";
 import { logger } from "../../../logger.js";
-import { getModDupKey, setModDupKey } from "../../post-logic/redisKeys.js";
+import {
+    getModDupKey,
+    restrictedKeyExists,
+    setModDupKey,
+} from "../../post-logic/redisKeys.js";
 import { handleAutoSuperuserPromotion } from "../../utils/user-utilities.js";
 import {
     InitialUserWikiOptions,
     updateUserWiki,
 } from "../../../leaderboard.js";
 import { SafeWikiClient } from "../../../utility.js";
-import { updateAuthorRedisIfOP } from "./normal-user-action.js";
+import { updateAuthorRedis } from "./normal-user-action.js";
 
 export async function commentContainsModCommand(
     event: CommentSubmit | CommentUpdate,
@@ -277,6 +282,16 @@ export async function awardPointToUserModCommand(
     const awarder = event.author.name;
     const awardee = parentComment.authorName;
 
+    let user: User | undefined;
+
+    try {
+        user = await context.reddit.getUserByUsername(awarder);
+    } catch {
+        user = undefined;
+    }
+
+    if (!user) return;
+
     // 🏆 Award point
     const newScore = await context.redis.zIncrBy(
         "thanksPointsStore",
@@ -286,15 +301,6 @@ export async function awardPointToUserModCommand(
 
     // 🔒 Prevent duplicates
     await setModDupKey(event, context, "1");
-
-    let user: User | undefined;
-    try {
-        user = await context.reddit.getUserByUsername(awarder);
-    } catch {
-        //
-    }
-
-    await updateAuthorRedisIfOP(event, user, context);
 
     // 🎨 Update flair
     await updateAwardeeFlair(
@@ -403,13 +409,27 @@ export async function awardPointToUserModCommand(
             err,
         });
     }
+
+    if (await restrictedKeyExists(context, awarder)) {
+        await updateAuthorRedis(event, user, context);
+    }
 }
 
 export async function executeModCommand(
     event: CommentSubmit | CommentUpdate,
     context: TriggerContext
 ) {
-    if (!event.comment) return;
+    if (!event.comment || !event.author || !event.post) return;
+    const awarder = event.author.name;
+    const settings = await context.settings.getAll();
+
+    let user: User | undefined;
+    try {
+        user = await context.reddit.getUserByUsername(awarder);
+    } catch {
+        user = undefined;
+    }
+    if (!user) return;
 
     const body = (event.comment.body ?? "").toLowerCase();
     const triggers = await getTriggers(context);
@@ -432,6 +452,5 @@ export async function executeModCommand(
         }
 
         await awardPointToUserModCommand(event, context);
-        return;
     }
 }

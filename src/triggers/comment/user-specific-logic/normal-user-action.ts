@@ -1,11 +1,12 @@
 import { TriggerContext, User } from "@devvit/public-api";
 import {
     formatMessage,
+    updateAwardeeFlair,
     userCommandValues,
 } from "../../utils/common-utilities.js";
 import {
     AppSetting,
-    NotifyOnSelfAwardReplyOptions,
+    NotifyOnRestrictionLiftedReplyOptions,
     NotifyOnSuccessReplyOptions,
     TemplateDefaults,
 } from "../../../settings.js";
@@ -15,11 +16,9 @@ import {
     deleteRestrictedKey,
     getRestrictedKey,
     POINTS_STORE_KEY,
+    restrictedKeyExists,
 } from "../../post-logic/redisKeys.js";
-import {
-    getCurrentScore,
-    getParentComment,
-} from "../comment-trigger-context.js";
+import { getParentComment } from "../comment-trigger-context.js";
 import {
     InitialUserWikiOptions,
     updateUserWiki,
@@ -50,15 +49,15 @@ async function pointAlreadyAwardedWithNormalCommand(
     event: CommentSubmit | CommentUpdate,
     context: TriggerContext,
     recipientId: string
-): Promise<boolean | undefined> {
-    if (!event.comment) return;
+): Promise<boolean> {
+    if (!event.comment) return false;
     const key = `userCommand:${recipientId}-${event.comment.id}`;
     const exists = await context.redis.exists(key);
     return exists === 1;
 }
 
 /**
- * Awards a point to a normal user.
+ * Awards a point to a normal user and performs all success side-effects.
  */
 async function awardPointToUserNormalCommand(
     event: CommentSubmit | CommentUpdate,
@@ -72,33 +71,27 @@ async function awardPointToUserNormalCommand(
 
     const awardee = parentComment.authorName;
     const settings = await context.settings.getAll();
-    const key = `userCommand:${recipient}-${event.comment.id}`;
+    const awardKey = `userCommand:${recipient}-${event.comment.id}`;
 
-    await context.redis.set(key, "1"); // Mark as awarded
-    const scoreKey = `score:${recipient}`;
+    // Mark as awarded
+    await context.redis.set(awardKey, "1");
 
-    let user: User | undefined;
-    try {
-        user = await context.reddit.getUserByUsername(awarder);
-    } catch {
-        //
-    }
-    if (!user) return;
-
-    // Increment recipient score
+    // Increment score
     const newScore = await context.redis.zIncrBy(POINTS_STORE_KEY, awardee, 1);
-    await context.redis.set(scoreKey, newScore.toString());
 
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
     const pointSymbol = (settings[AppSetting.PointSymbol] as string) ?? "";
     const notifySuccess =
-        (settings[AppSetting.NotifyOnSuccess] as NotifyOnSuccessReplyOptions) ??
+        (settings[AppSetting.NotifyOnSuccess] as string[])?.[0] ??
         NotifyOnSuccessReplyOptions.NoReply;
+
     const leaderboard = `https://old.reddit.com/r/${
         event.subreddit.name
     }/wiki/${settings[AppSetting.LeaderboardName] ?? "leaderboard"}`;
+
     const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${recipient}`;
     const awarderPage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${awarder}`;
+
     const successMessage = formatMessage(
         (settings[AppSetting.SuccessMessage] as string) ??
             TemplateDefaults.NotifyOnSuccessTemplate,
@@ -128,45 +121,205 @@ async function awardPointToUserNormalCommand(
             }),
         ]);
     } else if (notifySuccess === NotifyOnSuccessReplyOptions.ReplyAsComment) {
-        const newComment = await context.reddit.submitComment({
+        const reply = await context.reddit.submitComment({
             id: event.comment.id,
             text: successMessage,
         });
-        await newComment.distinguish();
+        await reply.distinguish();
+    }
+
+    // 🎨 Update flair
+    await updateAwardeeFlair(
+        context,
+        event.subreddit.name,
+        awardee,
+        newScore,
+        settings
+    );
+
+    let user: User | undefined;
+
+    try {
+        user = await context.reddit.getUserByUsername(awarder);
+    } catch {
+        user = undefined;
+    }
+    if (!user) return;
+
+    if (await restrictedKeyExists(context, awarder)) {
+        await updateAuthorRedis(event, user, context);
     }
 
     logger.info(`✅ Awarded 1 point to ${recipient} from ${awarder}`, {
         newScore,
     });
+}
 
-    const subredditName = event.subreddit.name;
+/**
+ * Updates OP restricted award count.
+ * Missing restriction key = already eligible (never re-count).
+ */
+export async function updateAuthorRedis(
+    event: CommentSubmit | CommentUpdate,
+    author: User | undefined,
+    context: TriggerContext
+): Promise<void> {
+    if (!event.author || !event.post || !author) return;
+
+    const isPostAuthor = event.post.authorId === event.author.id;
+    if (!isPostAuthor) return;
+
+    const settings = await context.settings.getAll();
+    const awardsRequired =
+        (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) ?? 0;
+    const awarder = event.author.name;
+
+    let user: User | undefined;
+
     try {
-        const safeWiki = new SafeWikiClient(context.reddit);
-        const awarderPage = await safeWiki.getWikiPage(
-            subredditName,
-            `user/${awarder.toLowerCase()}`
+        user = await context.reddit.getUserByUsername(awarder);
+    } catch {
+        user = undefined;
+    }
+    if (!user) return;
+
+    const restrictionKey = await getRestrictedKey(author);
+    const raw = await context.redis.get(restrictionKey);
+
+    // 🔒 If the restriction key no longer exists, NEVER re-increment
+    if (raw === null) {
+        const notificationKey = `liftedMessageSent:${user.username}:${event.post.id}`;
+
+        logger.debug(
+            "Checking if restriction lifted notification already sent",
+            {
+                notificationKey,
+            }
         );
-        const recipientPage = await safeWiki.getWikiPage(
-            subredditName,
-            `user/${recipient}`
-        );
 
-        if (!awarderPage) await InitialUserWikiOptions(context, awarder);
-        if (!recipientPage) await InitialUserWikiOptions(context, recipient);
+        const notificationSent = await context.redis.exists(notificationKey);
+        if (notificationSent) {
+            logger.info("Notification has already been sent, skipping.", {
+                notificationKey,
+            });
+            return;
+        }
 
-        const givenData = {
-            postTitle: event.post.title,
-            postUrl: event.post.permalink,
-            recipient,
-            commentUrl: event.comment.permalink,
-        };
+        logger.debug("Marking notification as sent in Redis", {
+            notificationKey,
+        });
+        await context.redis.set(notificationKey, "1");
 
-        await updateUserWiki(context, awarder, recipient, givenData);
-    } catch (err) {
-        logger.error("❌ Failed to update user wiki (Normal award)", {
+        const subredditName = event.subreddit?.name ?? "";
+
+        logger.debug("Preparing lifted restriction message", {
             awarder,
-            recipient,
-            err,
+            subredditName,
+        });
+
+        const liftedMsg = formatMessage(
+            (settings[AppSetting.RestrictionLiftedMessage] as string) ??
+                TemplateDefaults.RestrictionLiftedMessage,
+            { awarder, subreddit: subredditName }
+        );
+
+        try {
+            logger.info(`Sending restriction lifted PM to u/${user.username}`, {
+                subject: `Restriction lifted in r/${subredditName}`,
+                preview: liftedMsg.slice(0, 1000),
+            });
+
+            await context.reddit.sendPrivateMessage({
+                to: user.username,
+                subject: `Restriction lifted in r/${subredditName}`,
+                text: liftedMsg,
+            });
+
+            logger.info(
+                `✅ Successfully sent restriction lifted PM to u/${user.username}`
+            );
+        } catch (err) {
+            logger.error("❌ Failed to send restriction lifted PM", {
+                username: user.username,
+                subreddit: subredditName,
+                error: err,
+            });
+        }
+        logger.debug(
+            `🔓 User ${author.username} already unrestricted — skipping restriction counter`
+        );
+        return;
+    }
+
+    const currentCount = Number(raw) || 0;
+
+    if (currentCount < awardsRequired) {
+        await context.redis.set(restrictionKey, (currentCount + 1).toString());
+
+        logger.info(
+            `⏳ User ${author.username} still restricted: ${currentCount}/${awardsRequired}`
+        );
+        return;
+    }
+
+    logger.info(
+        `✅ User ${author.username} satisfied award requirement: ${currentCount}/${awardsRequired}`
+    );
+
+    await deleteRestrictedKey(author, context);
+
+    const notificationKey = `liftedMessageSent:${user.username}:${event.post.id}`;
+
+    logger.debug("Checking if restriction lifted notification already sent", {
+        notificationKey,
+    });
+
+    const notificationSent = await context.redis.exists(notificationKey);
+    if (notificationSent) {
+        logger.info("Notification has already been sent, skipping.", {
+            notificationKey,
+        });
+        return;
+    }
+
+    logger.debug("Marking notification as sent in Redis", {
+        notificationKey,
+    });
+    await context.redis.set(notificationKey, "1");
+
+    const subredditName = event.subreddit?.name ?? "unknown-subreddit";
+
+    logger.debug("Preparing lifted restriction message", {
+        awarder,
+        subredditName,
+    });
+
+    const liftedMsg = formatMessage(
+        (settings[AppSetting.RestrictionLiftedMessage] as string) ??
+            TemplateDefaults.RestrictionLiftedMessage,
+        { awarder, subreddit: subredditName }
+    );
+
+    try {
+        logger.info(`Sending restriction lifted PM to u/${user.username}`, {
+            subject: `Restriction lifted in r/${subredditName}`,
+            preview: liftedMsg.slice(0, 100),
+        });
+
+        await context.reddit.sendPrivateMessage({
+            to: user.username,
+            subject: `Restriction lifted in r/${subredditName}`,
+            text: liftedMsg,
+        });
+
+        logger.info(
+            `✅ Successfully sent restriction lifted PM to u/${user.username}`
+        );
+    } catch (err) {
+        logger.error("❌ Failed to send restriction lifted PM", {
+            username: user.username,
+            subreddit: subredditName,
+            error: err,
         });
     }
 }
@@ -174,49 +327,6 @@ async function awardPointToUserNormalCommand(
 /**
  * Executes the user command workflow.
  */
-/**
- * Updates a user's restricted award count if they are the OP of the post.
- * Returns true if the user has satisfied the awards requirement, false if still restricted.
- */
-export async function updateAuthorRedisIfOP(
-    event: CommentSubmit | CommentUpdate,
-    author: User | undefined,
-    context: TriggerContext
-): Promise<boolean> {
-    if (!event.author || !event.post || !author) return true;
-
-    const isPostAuthor = event.post.authorId === event.author.id;
-    if (!isPostAuthor) return true;
-
-    const restrictionKey = await getRestrictedKey(author);
-    const raw = await context.redis.get(restrictionKey);
-    const currentCount = raw ? Number(raw) || 0 : 0;
-    const oldCount = currentCount;
-    await context.redis.set(restrictionKey, (currentCount + 1).toString());
-
-    const settings = await context.settings.getAll();
-    const awardsRequired =
-        (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) ?? 0;
-
-    logger.debug(
-        `🔢 Updated OP restricted count: ${oldCount} → ${currentCount} / ${awardsRequired}`,
-        { awarder: author.username }
-    );
-
-    if (currentCount < awardsRequired) {
-        logger.info(
-            `⏳ User ${author.username} is still restricted from creating new posts: ${oldCount}/${awardsRequired} points`
-        );
-        return false; // still restricted
-    } else {
-        logger.info(
-            `✅ User ${author.username} has satisfied the awards requirement: ${oldCount}/${awardsRequired} points`
-        );
-        await deleteRestrictedKey(author, context);
-        return true; // eligible
-    }
-}
-
 export async function executeUserCommand(
     event: CommentSubmit | CommentUpdate,
     context: TriggerContext
@@ -237,47 +347,76 @@ export async function executeUserCommand(
     const recipient = parentComment.authorName;
     const settings = await context.settings.getAll();
 
-    // Blocked users
+    let user: User | undefined;
+
+    try {
+        user = await context.reddit.getUserByUsername(awarder);
+    } catch {
+        user = undefined;
+    }
+
+    if (!user) return;
+
+    // 🚫 Blocked users
     const blockedUsers = (
         (settings[AppSetting.UsersWhoCannotAwardPoints] as string) ?? ""
     )
         .split(/\r?\n/)
         .map((w) => w.trim())
         .filter(Boolean);
+
     if (blockedUsers.includes(awarder)) {
         const blockedTemplate =
             (settings[AppSetting.UsersWhoCannotAwardPointsMessage] as string) ??
             TemplateDefaults.UsersWhoCannotAwardPointsMessage;
+
         const blockedMessage = formatMessage(blockedTemplate, {
             name: (settings[AppSetting.PointName] as string) ?? "point",
             awarder,
         });
+
         const reply = await context.reddit.submitComment({
             id: event.comment.id,
             text: blockedMessage,
         });
         await reply.distinguish();
-        logger.warn("❌ Blocked user attempted to award points", { awarder });
         return;
     }
 
-    if (!recipient) {
-        logger.warn("❌ Cannot determine recipient, skipping award", {
-            awarder,
-        });
-        return;
-    }
-
-    let user: User | undefined;
+    // 📘 Always update both user wiki pages on successful award
     try {
-        user = await context.reddit.getUserByUsername(awarder);
-    } catch {}
+        const subredditName = event.subreddit.name;
+        const safeWiki = new SafeWikiClient(context.reddit);
 
-    // 🔢 Update OP restricted count and check eligibility first
-    const eligible = await updateAuthorRedisIfOP(event, user, context);
-    if (!eligible) return; // user still restricted → do not award point
+        const awarderWiki = await safeWiki.getWikiPage(
+            subredditName,
+            `user/${awarder.toLowerCase()}`
+        );
+        const recipientWiki = await safeWiki.getWikiPage(
+            subredditName,
+            `user/${recipient}`
+        );
 
-    // ✅ Check if point already awarded (only now)
+        if (!awarderWiki) await InitialUserWikiOptions(context, awarder);
+        if (!recipientWiki) await InitialUserWikiOptions(context, recipient);
+
+        const givenData = {
+            postTitle: event.post.title,
+            postUrl: event.post.permalink,
+            recipient,
+            commentUrl: event.comment.permalink,
+        };
+
+        await updateUserWiki(context, awarder, recipient, givenData);
+    } catch (err) {
+        logger.error("❌ Failed to update user wiki (Normal award)", {
+            awarder,
+            recipient,
+            err,
+        });
+    }
+
+    // 🛑 Duplicate award check
     const alreadyAwarded = await pointAlreadyAwardedWithNormalCommand(
         event,
         context,
@@ -291,6 +430,6 @@ export async function executeUserCommand(
         return;
     }
 
-    // 🏆 Award point
+    // 🏆 Award point + side effects
     await awardPointToUserNormalCommand(event, context, awarder, recipient);
 }

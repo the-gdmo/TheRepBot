@@ -1,7 +1,23 @@
-import { Context, FormOnSubmitEvent, JSONObject, MenuItemOnPressEvent, SettingsValues, TriggerContext, User } from "@devvit/public-api";
+import {
+    Context,
+    FormOnSubmitEvent,
+    JSONObject,
+    MenuItemOnPressEvent,
+    SettingsValues,
+    TriggerContext,
+    User,
+} from "@devvit/public-api";
 import { logger } from "../../logger.js";
-import { getRestrictedKey, POINTS_STORE_KEY, requiredKeyExists, restrictedKeyExists } from "../post-logic/redisKeys.js";
-import { manualPostRestrictionRemovalForm, manualSetPointsForm } from "../../main.js";
+import {
+    getRestrictedKey,
+    POINTS_STORE_KEY,
+    requiredKeyExists,
+    restrictedKeyExists,
+} from "../post-logic/redisKeys.js";
+import {
+    manualPostRestrictionRemovalForm,
+    manualSetPointsForm,
+} from "../../main.js";
 import { AppSetting, ExistingFlairOverwriteHandling } from "../../settings.js";
 import { getCurrentScore } from "../comment/comment-trigger-context.js";
 
@@ -46,7 +62,7 @@ async function updateAwardeeFlair(
     subredditName: string,
     commentAuthor: string,
     newScore: number,
-    settings: SettingsValues,
+    settings: SettingsValues
 ) {
     const pointSymbol = (settings[AppSetting.PointSymbol] as string) ?? "";
     const flairSetting = ((settings[AppSetting.ExistingFlairHandling] as
@@ -149,7 +165,7 @@ export async function manualSetPointsFormHandler(
         subreddit,
         user.username,
         entry,
-        settings,
+        settings
     );
 
     // Trigger leaderboard update
@@ -187,7 +203,7 @@ export async function handleManualPostRestrictionRemoval(
             type: "string",
             defaultValue: "",
             label: `Confirm you wish to remove ${post.authorName}'s post restriction`,
-            helpText: 'Type "CONFIRM" in all caps to confirm this',
+            helpText: 'Type "confirm" (case insensitive) to confirm this',
             multiSelect: false,
             required: true,
         },
@@ -214,9 +230,12 @@ export async function manualPostRestrictionRemovalHandler(
     const confirmText = (
         event.values.restrictionRemovalConfirmation as string | undefined
     )?.trim();
-    if (confirmText !== "CONFIRM") {
+    if (!confirmText) return;
+
+    const confirm = /^confirm$/i;
+    if (!confirm.test(confirmText)) {
         context.ui.showToast(
-            "⚠️ Action cancelled — you must type CONFIRM in all caps."
+            `⚠️ You must type "confirm" (case insensitive).`
         );
         logger.warn("⚠️ Moderator failed confirmation input.", { confirmText });
         return;

@@ -25,7 +25,9 @@ import {
     TemplateDefaults,
 } from "../../settings.js";
 import {
+    commandUsedInIgnoredContext,
     formatMessage,
+    getIgnoredContextType,
     getTriggers,
     modCommandValue,
 } from "../utils/common-utilities.js";
@@ -35,7 +37,7 @@ export async function handleThanksEvent(
     event: CommentSubmit | CommentUpdate,
     devvitContext: TriggerContext
 ) {
-    if (!event.post || !event.author || !event.comment) {
+    if (!event.post || !event.author || !event.comment || !event.subreddit) {
         logger.warn("❌ Missing required event data", { event });
         return;
     }
@@ -148,6 +150,56 @@ export async function handleThanksEvent(
     if (!triggerUsed) {
         logger.debug("❌ No valid award command found.");
         return;
+    }
+
+    if (commandUsedInIgnoredContext(commentBody, triggerUsed)) {
+        const ignoredText = getIgnoredContextType(commentBody, triggerUsed);
+        if (ignoredText) {
+            const ignoreKey = `ignoreDM:${event.author.name.toLowerCase()}:${ignoredText}:${event.comment.id}`;
+            const alreadyConfirmed = await devvitContext.redis.exists(
+                ignoreKey
+            );
+
+            if (commentBody.includes("CONFIRM")) {
+                await devvitContext.redis.set(ignoreKey, "1");
+                logger.info(`User confirmed they wish to ignore the command version in question`);
+            }
+
+            if (!alreadyConfirmed) {
+                const contextLabel =
+                    ignoredText === "quote"
+                        ? "a quote block (`> this`)"
+                        : ignoredText === "alt"
+                        ? "alt text (`this`)"
+                        : "a spoiler block (`>!this!<`)";
+
+                const dmText = `Hey u/${event.author.name}, I noticed you used the command **${triggerUsed}** inside ${contextLabel}.\n\nIf this was intentional, edit [the comment that triggered this](${event.comment.permalink}) with **CONFIRM** (in all caps) and you will not receive this message again for ${ignoredText} text.\n\n---\n\n^(I am a bot - please contact the mods of r/${event.subreddit.name} with any questions)\n\n---`;
+
+                await devvitContext.reddit.sendPrivateMessage({
+                    to: event.author.name,
+                    subject: `Your ${triggerUsed} command was ignored`,
+                    text: dmText,
+                });
+
+                await devvitContext.redis.set(
+                    `pendingConfirm:${event.author.name.toLowerCase()}`,
+                    ignoredText
+                );
+
+                logger.info("⚠️ Ignored command in special context; DM sent.", {
+                    user: event.author.name,
+                    triggerUsed,
+                    ignoredText,
+                });
+            } else {
+                logger.info(
+                    "ℹ️ Ignored command in special context; user pre-confirmed no DMs.",
+                    { user: event.author.name, triggerUsed, ignoredText }
+                );
+            }
+
+            return; // stop here — do NOT award points
+        }
     }
 
     const selfMsgTemplate =
@@ -268,10 +320,11 @@ export async function handleThanksEvent(
                 await devvitContext.reddit.sendPrivateMessage({
                     to: awarder,
                     text: modAwardFailMsg,
-                    subject: "Unsuccessful Award"
+                    subject: "Unsuccessful Award",
                 });
-            } else if (notify === NotifyOnModAwardFailReplyOptions.ReplyAsComment) {
-
+            } else if (
+                notify === NotifyOnModAwardFailReplyOptions.ReplyAsComment
+            ) {
             }
         }
     }
@@ -315,11 +368,11 @@ export async function notifyPostAuthorWhenTheyBecomeUnrestricted(
     );
 
     if (notify === NotifyOnRestrictionLiftedReplyOptions.ReplyByPM) {
-    await context.reddit.sendPrivateMessage({
-        to: awarder,
-        subject: "Restriction Lifted",
-        text: liftedMsg,
-    });
+        await context.reddit.sendPrivateMessage({
+            to: awarder,
+            subject: "Restriction Lifted",
+            text: liftedMsg,
+        });
     } else if (
         notify === NotifyOnRestrictionLiftedReplyOptions.ReplyAsComment
     ) {

@@ -58,6 +58,9 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you remove the app from your subreddit, it will delete all data and you will have to manually restore it to users. 
 
 ## Version History
+### 16.0.1
+* Make bot notify user if they send a command within alt, quote, or spoiler text
+* Allow user to edit the comment that caused the message with "CONFIRM" in all caps to stop future messages about this usage
 ### 16.0.0
 * Make it so alternate command award can be used without issue
 * Make it so users aren't infinitely put into a restriction key loop

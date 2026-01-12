@@ -327,6 +327,10 @@ export async function awardPointToUserModCommand(
         (settings[AppSetting.NotifyOnModAwardSuccess] as string[])?.[0] ??
         NotifyOnModAwardSuccessReplyOptions.NoReply;
 
+    const leaderboard = `https://old.reddit.com/r/${
+        event.subreddit.name
+    }/wiki/${settings[AppSetting.LeaderboardName] ?? "leaderboard"}`;
+
     if (notifyMode !== NotifyOnModAwardSuccessReplyOptions.NoReply) {
         const successTemplate =
             (settings[AppSetting.ModAwardCommandSuccess] as string) ??
@@ -340,7 +344,7 @@ export async function awardPointToUserModCommand(
             total: newScore.toString(),
             name: pointName,
             symbol: (settings[AppSetting.PointSymbol] as string) ?? "",
-            leaderboard: (settings[AppSetting.LeaderboardName] as string) ?? "",
+            leaderboard,
             awardeePage,
             awarderPage,
         });

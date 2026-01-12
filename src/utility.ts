@@ -7,7 +7,7 @@ import {
 } from "@devvit/public-api";
 import { addWeeks } from "date-fns";
 import { logger } from "./logger.js";
-import { formatMessage } from "./triggers/utils/common-utilities.js";
+import { getIgnoredContextType } from "./thanksPoints.js";
 
 export function replaceAll(
     input: string,
@@ -172,7 +172,7 @@ export async function handleConfirmReply(
     event: CommentUpdate,
     context: TriggerContext
 ) {
-    if (!event.comment || !event.author || !event.subreddit) return;
+    if (!event.comment || !event.author) return;
 
     const messageBody = event.comment.body?.trim().toUpperCase() ?? "";
     if (!messageBody.includes("CONFIRM")) return;
@@ -188,17 +188,14 @@ export async function handleConfirmReply(
     }
 
     // Store that this user has confirmed this type
-    await context.redis.set(`ignoreDM:${username}:${contextType}:${event.comment.id}`, "true");
+    await context.redis.set(`ignoreDM:${username}:${contextType}`, "true");
     await context.redis.del(pendingKey);
 
     // DM the user acknowledging confirmation
     await context.reddit.sendPrivateMessage({
         to: event.author.name,
-        subject: "Confirmation received",
-        text: formatMessage(
-            `Got it — you won't be notified again when you use commands inside ${contextType} text within r/${event.subreddit.name}.`,
-            {}
-        ),
+        subject: "Confirmation received ✅",
+        text: `Got it — you won't be notified again when you use commands inside ${contextType} text.`,
     });
 
     logger.info("✅ User confirmed ignore preference", {

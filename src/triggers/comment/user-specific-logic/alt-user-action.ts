@@ -287,6 +287,9 @@ async function notifyAlternateCommandSuccess(
     const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${awardee}`;
     const awarderPage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${awarder}`;
 
+    const leaderboard = `https://old.reddit.com/r/${
+        event.subreddit.name
+    }/wiki/${settings[AppSetting.LeaderboardName] ?? "leaderboard"}`;
     const message = formatMessage(
         (settings[AppSetting.AlternateCommandSuccessMessage] as string) ??
             TemplateDefaults.AlternateCommandSuccessMessage,
@@ -296,7 +299,7 @@ async function notifyAlternateCommandSuccess(
             name: awarder,
             total: newScore.toString(),
             symbol: (settings[AppSetting.PointSymbol] as string) ?? "",
-            leaderboard: (settings[AppSetting.LeaderboardName] as string) ?? "",
+            leaderboard,
             awardeePage,
             awarderPage,
         }

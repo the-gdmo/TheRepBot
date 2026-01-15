@@ -23,6 +23,7 @@ import {
     NotifyOnModAwardFailReplyOptions,
     NotifyOnRestrictionLiftedReplyOptions,
     NotifyOnSelfAwardReplyOptions,
+    NotifyOnUnflairedPostReplyOptions,
     TemplateDefaults,
 } from "../../settings.js";
 import {
@@ -62,6 +63,91 @@ export async function handleThanksEvent(
     const settings = await devvitContext.settings.getAll();
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
     const awarder = event.author.name;
+
+    const allowUnflairedPosts =
+        (settings[AppSetting.AllowUnflairedPosts] as boolean) ?? true;
+
+    const unflairedMessage =
+        (settings[AppSetting.UnflairedPostMessage] as string) ??
+        TemplateDefaults.UnflairedPostMessage;
+
+    const notifyUnflaired = ((settings[
+        AppSetting.NotifyOnUnflairedPost
+    ] as string[]) ?? [NotifyOnUnflairedPostReplyOptions.NoReply])[0];
+
+    // 🚫 Unflaired posts not allowed
+    if (!allowUnflairedPosts) {
+        // 🚫 Ignore bot’s own comments to prevent loops
+        if (event.author.name === devvitContext.appName) {
+            logger.debug(
+                "🤖 Bot-authored comment detected; skipping disallowed flair response"
+            );
+            return;
+        }
+
+        // 🔑 One response per award attempt (per comment)
+        const responseKey = `unflairedResponse:${event.comment.id}`;
+
+        const alreadyResponded = await devvitContext.redis.exists(responseKey);
+        if (alreadyResponded) {
+            logger.debug("ℹ️ Unflaired post response already sent — skipping", {
+                commentId: event.comment.id,
+            });
+            return;
+        }
+
+        logger.info("🚫 Award blocked — post is unflaired", {
+            awarder,
+            postId: event.post.id,
+            commentId: event.comment.id,
+            notifyUnflaired,
+        });
+
+        try {
+            if (
+                notifyUnflaired === NotifyOnUnflairedPostReplyOptions.ReplyByPM
+            ) {
+                await devvitContext.reddit.sendPrivateMessage({
+                    to: awarder,
+                    subject: `Awards disabled for unflaired posts`,
+                    text: unflairedMessage,
+                });
+
+                logger.info("📬 Sent unflaired-post DM", {
+                    awarder,
+                    commentId: event.comment.id,
+                });
+            } else if (
+                notifyUnflaired ===
+                NotifyOnUnflairedPostReplyOptions.ReplyAsComment
+            ) {
+                const reply = await devvitContext.reddit.submitComment({
+                    id: event.comment.id,
+                    text: unflairedMessage,
+                });
+                await reply.distinguish();
+
+                logger.info("💬 Posted unflaired-post comment reply", {
+                    commentId: event.comment.id,
+                });
+            }
+        } catch (err) {
+            logger.error(
+                "❌ Failed to notify user about unflaired post restriction",
+                {
+                    awarder,
+                    commentId: event.comment.id,
+                    err,
+                },
+                devvitContext
+            );
+        }
+
+        // ✅ Mark response as sent (prevents duplicates)
+        await devvitContext.redis.set(responseKey, "1");
+
+        return; // ⛔ Stop award flow
+    }
 
     const flairTextDisallowedMessage = formatMessage(
         (settings[AppSetting.DisallowedFlairMessage] as string) ??

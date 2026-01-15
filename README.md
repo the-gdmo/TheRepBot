@@ -58,6 +58,8 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you remove the app from your subreddit, it will delete all data and you will have to manually restore it to users. 
 
 ## Version History
+### 16.3.0
+* Reimplement and fix non-flaired post logic to work
 ### 16.2.0
 * Remove non-flaired post settings
 * Make it so that the bot will notify if a post has a disallowed flair and not award points on such posts (unflaired posts cannot be disallowed)

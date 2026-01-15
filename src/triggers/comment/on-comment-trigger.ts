@@ -75,12 +75,30 @@ export async function handleThanksEvent(
         AppSetting.NotifyOnUnflairedPost
     ] as string[]) ?? [NotifyOnUnflairedPostReplyOptions.NoReply])[0];
 
+    if (!event.post.linkFlair) {
+        logger.error(
+            `linkFlair doesn't exist`,
+            { linkFlair: event.post.linkFlair },
+            devvitContext
+        );
+        return;
+    }
+
+    const rawDisallowedFlairs =
+        (settings[AppSetting.DisallowedFlairs] as string | undefined) ?? "";
+
+    const disallowedFlairs = rawDisallowedFlairs
+        .split(/\r?\n/) // newline-only entries
+        .map((flair) => flair.trim())
+        .filter(Boolean);
+    const postFlairText = event.post.linkFlair?.text?.trim();
+
     // 🚫 Unflaired posts not allowed
-    if (!allowUnflairedPosts) {
+    if (!allowUnflairedPosts && postFlairText === "") {
         // 🚫 Ignore bot’s own comments to prevent loops
         if (event.author.name === devvitContext.appName) {
             logger.debug(
-                "🤖 Bot-authored comment detected; skipping disallowed flair response"
+                "🤖 Bot-authored comment detected; skipping unflaired-post response"
             );
             return;
         }
@@ -88,8 +106,7 @@ export async function handleThanksEvent(
         // 🔑 One response per award attempt (per comment)
         const responseKey = `unflairedResponse:${event.comment.id}`;
 
-        const alreadyResponded = await devvitContext.redis.exists(responseKey);
-        if (alreadyResponded) {
+        if (await devvitContext.redis.exists(responseKey)) {
             logger.debug("ℹ️ Unflaired post response already sent — skipping", {
                 commentId: event.comment.id,
             });
@@ -112,11 +129,6 @@ export async function handleThanksEvent(
                     subject: `Awards disabled for unflaired posts`,
                     text: unflairedMessage,
                 });
-
-                logger.info("📬 Sent unflaired-post DM", {
-                    awarder,
-                    commentId: event.comment.id,
-                });
             } else if (
                 notifyUnflaired ===
                 NotifyOnUnflairedPostReplyOptions.ReplyAsComment
@@ -126,27 +138,16 @@ export async function handleThanksEvent(
                     text: unflairedMessage,
                 });
                 await reply.distinguish();
-
-                logger.info("💬 Posted unflaired-post comment reply", {
-                    commentId: event.comment.id,
-                });
             }
         } catch (err) {
             logger.error(
                 "❌ Failed to notify user about unflaired post restriction",
-                {
-                    awarder,
-                    commentId: event.comment.id,
-                    err,
-                },
-                devvitContext
+                { awarder, commentId: event.comment.id, err }
             );
         }
 
-        // ✅ Mark response as sent (prevents duplicates)
         await devvitContext.redis.set(responseKey, "1");
-
-        return; // ⛔ Stop award flow
+        return; // ⛔ Stop award flow ONLY for unflaired posts
     }
 
     const flairTextDisallowedMessage = formatMessage(
@@ -159,20 +160,23 @@ export async function handleThanksEvent(
         AppSetting.NotifyOnDisallowedFlair
     ] as string[]) ?? [NotifyOnDisallowedFlairReplyOptions.NoReply])[0];
 
-    const rawDisallowedFlairs =
-        (settings[AppSetting.DisallowedFlairs] as string | undefined) ?? "";
-
     // ─────────────────────────────────────────────
     // Disallowed flair guard (non-terminating)
     // ─────────────────────────────────────────────
-    if (rawDisallowedFlairs.trim() && event.post.linkFlair?.text) {
-        const postFlairText = event.post.linkFlair.text.trim();
 
-        const disallowedFlairs = rawDisallowedFlairs
-            .split(/\r?\n/) // newline-only entries
-            .map((flair) => flair.trim())
-            .filter(Boolean);
+    if (!event.post.linkFlair) {
+        logger.error(
+            `linkFlair doesn't exist`,
+            { linkFlair: event.post.linkFlair },
+            devvitContext
+        );
+        return;
+    }
 
+    if (
+        disallowedFlairs.length !== 0 &&
+        disallowedFlairs.includes(postFlairText)
+    ) {
         logger.debug("🔍 Disallowed flair check", {
             postFlair: postFlairText,
             disallowedFlairs,
@@ -225,9 +229,9 @@ export async function handleThanksEvent(
                 });
                 await msg.distinguish();
             }
-
             return; // ⛔ block award
         }
+        return;
     }
 
     const recipient = parentComment.authorName;

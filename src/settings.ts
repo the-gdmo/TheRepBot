@@ -30,7 +30,6 @@ export enum AppSetting {
     NotifyOnSelfAward = "notifyOnSelfAward",
     NotifyUsersWhenAPointIsAwarded = "notifyUsersWhenAPointIsAwarded",
     UsersWhoCannotAwardPointsMessage = "usersWhoCannotAwardPointsMessage",
-    ThanksCommandUsesRegex = "thanksCommandUsesRegex",
     ModAwardCommand = "modAwardCommand",
     SuperUsers = "superUsers",
     AutoSuperuserThreshold = "autoSuperuserThreshold",
@@ -52,7 +51,6 @@ export enum AppSetting {
     LeaderboardName = "leaderboardName",
     LeaderboardSize = "leaderboardSize",
     PointSystemHelpPage = "pointSystemHelpPage",
-    PostFlairTextToIgnore = "postFlairTextToIgnore",
     PrioritiseScoreFromFlair = "prioritiseScoreFromFlair",
     PointTriggerWords = "pointTriggerWords",
     SuccessMessage = "successMessage",
@@ -66,8 +64,6 @@ export enum AppSetting {
     AccessControl = "accessControl",
     ModOnlyDisallowedMessage = "modOnlyDisallowedMessage",
     ApprovedOnlyDisallowedMessage = "approvedOnlyDisallowedMessage",
-    AllowUnflairedPosts = "allowUnflairedPosts",
-    UnflairedPostMessage = "unflairedPostMessage",
     OPOnlyDisallowedMessage = "opOnlyDisallowedMessage",
     NotifyOnPointAlreadyAwarded = "notifyOnPointAlreadyAwarded",
     NotifyOnDuplicateAward = "notifyOnDuplicateAward",
@@ -77,7 +73,6 @@ export enum AppSetting {
     NotifyOnApprovedOnlyDisallowed = "notifyOnApprovedOnlyDisallowed",
     NotifyOnOPOnlyDisallowed = "notifyOnOPOnlyDisallowed",
     NotifyOnDisallowedFlair = "notifyOnDisallowedFlair",
-    NotifyOnUnflairedPost = "notifyOnUnflairedPost",
     ModeratorsExempt = "moderatorsExempt",
     MessageToRestrictedUsers = "messageToRestrictedUsers",
     DiscordServerLink = "discordServerLink",
@@ -102,7 +97,6 @@ export enum AppSetting {
 
 export enum TemplateDefaults {
     SubsequentPostRestrictionMessage = "***ATTENTION to OP:*** You must award {{name}}s by replying to the successful comments. Before you can create new posts, you must award **{{requirement}}** {{name}}s to users who respond on [{{title}}]({{permalink}}).",
-    UnflairedPostMessage = "Points cannot be awarded on posts without flair. Please award only on flaired posts.",
     OPOnlyDisallowedMessage = "Only moderators, approved users, and Post Authors (OPs) can award {{name}}s.",
     LeaderboardHelpPageMessage = "[How to award points with RepBot.]({{helpPage}})",
     DisallowedFlairMessage = "Points cannot be awarded on posts with this flair. Please choose another post.",
@@ -178,12 +172,6 @@ export enum NotifyOnOPOnlyDisallowedReplyOptions {
 }
 
 export enum NotifyOnDisallowedFlairReplyOptions {
-    NoReply = "none",
-    ReplyByPM = "replybypm",
-    ReplyAsComment = "replybycomment",
-}
-
-export enum NotifyOnUnflairedPostReplyOptions {
     NoReply = "none",
     ReplyByPM = "replybypm",
     ReplyAsComment = "replybycomment",
@@ -371,21 +359,6 @@ const NotifyOnDisallowedFlairReplyOptionChoices = [
     {
         label: "Reply as comment",
         value: NotifyOnDisallowedFlairReplyOptions.ReplyAsComment,
-    },
-];
-
-const NotifyOnUnflairedPostReplyOptionChoices = [
-    {
-        label: "No Notification",
-        value: NotifyOnUnflairedPostReplyOptions.NoReply,
-    },
-    {
-        label: "Send user a private message",
-        value: NotifyOnUnflairedPostReplyOptions.ReplyByPM,
-    },
-    {
-        label: "Reply as comment",
-        value: NotifyOnUnflairedPostReplyOptions.ReplyAsComment,
     },
 ];
 
@@ -581,7 +554,7 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.AwardsRequiredToCreateNewPosts,
                 label: "Awards required to create new posts",
                 helpText:
-                    "Amount of awarded points required before a user can make a new post. Set to 0 to disable.",
+                    "Amount of awarded points required before a user can make a new post. Set to 0 to disable",
                 defaultValue: 0,
                 onValidate: numberFieldHasValidOption,
             },
@@ -638,13 +611,6 @@ export const appSettings: SettingsFormField[] = [
                 onValidate: noValidTriggerWords,
             },
             {
-                name: AppSetting.ThanksCommandUsesRegex,
-                type: "boolean",
-                label: "Treat user commands as regular expressions",
-                defaultValue: false,
-                onValidate: validateRegexes,
-            },
-            {
                 name: AppSetting.NotifyOnPostAuthorAward,
                 type: "select",
                 label: "Notify on post author award",
@@ -666,7 +632,7 @@ export const appSettings: SettingsFormField[] = [
                 type: "select",
                 label: "Notify on post restriction removal",
                 helpText:
-                    "Choose how the bot should notify users when their posting restriction is fully removed.",
+                    "Choose how the bot should notify users when their posting restriction is fully removed",
                 options: NotifyOnRestrictionLiftedReplyOptionChoices,
                 multiSelect: false,
                 defaultValue: [NotifyOnRestrictionLiftedReplyOptions.NoReply],
@@ -686,7 +652,7 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.PointName,
                 label: "Point Name",
                 helpText:
-                    "Singular form of the name shown in award messages, like 'point', 'kudo', etc. Lowercase is recommended",
+                    "Singular form of the name shown in award messages, like 'point', 'kudo', etc. *All {{name}} placeholders will use the exact case of this (eg PoInT, poINT, point, etc.)*",
                 defaultValue: "point",
             },
             {
@@ -750,19 +716,19 @@ export const appSettings: SettingsFormField[] = [
                 onValidate: paragraphFieldContainsText,
             },
             {
+                type: "paragraph",
+                name: AppSetting.DisallowedFlairs,
+                label: "Disallowed Flairs",
+                helpText:
+                    "Flairs where points cannot be awarded. Case sensitive. Each flair should be on a new line",
+            },
+            {
                 type: "select",
                 name: AppSetting.NotifyOnDisallowedFlair,
                 label: "Notify users when they try to award points on a post with a disallowed flair",
                 options: NotifyOnDisallowedFlairReplyOptionChoices,
                 defaultValue: [NotifyOnDisallowedFlairReplyOptions.NoReply],
                 onValidate: selectFieldHasOptionChosen,
-            },
-            {
-                type: "paragraph",
-                name: AppSetting.DisallowedFlairs,
-                label: "Disallowed Flairs",
-                helpText:
-                    "Flairs where points cannot be awarded. Each flair should be on a new line",
             },
             {
                 type: "paragraph",
@@ -931,7 +897,7 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.NotifyOnModAwardFail,
                 type: "select",
                 label: "Notify on mod award fail",
-                helpText: `Applicable to both "Mod Award Fail Message" and "Message to send user when the "Trusted User/Mod award command" has already been used on the comment."`,
+                helpText: `Applicable to both "Mod Award Fail Message" and "Message to send user when the "Trusted User/Mod award command" has already been used on the comment"`,
                 options: NotifyOnModAwardFailOptionChoices,
                 onValidate: selectFieldHasOptionChosen,
             },
@@ -1150,7 +1116,7 @@ export const appSettings: SettingsFormField[] = [
                 type: "string",
                 label: "Discord Server Link",
                 helpText:
-                    "Optional. Link to your subreddit's discord server. A non-expiring link is recommended.",
+                    "Optional. Link to your subreddit's discord server. A non-expiring link is recommended",
             },
             {
                 name: AppSetting.LeaderboardName,
@@ -1170,36 +1136,7 @@ export const appSettings: SettingsFormField[] = [
                 type: "string",
                 label: "Point System Help Page",
                 helpText:
-                    "Optional. Name of the wiki page for explaining your subreddit's point system (e.g. pointsystem).",
-            },
-            {
-                type: "select",
-                name: AppSetting.AllowUnflairedPosts,
-                label: "Allow points on unflaired posts?",
-                helpText: "Allow awarding on posts without flair?",
-                options: [
-                    { label: "Yes", value: "yes" },
-                    { label: "No", value: "no" },
-                ],
-                defaultValue: ["no"],
-                onValidate: selectFieldHasOptionChosen,
-            },
-            {
-                type: "select",
-                name: AppSetting.NotifyOnUnflairedPost,
-                label: "Notify users when they try to award points on a post without flair if it's not allowed",
-                options: NotifyOnUnflairedPostReplyOptionChoices,
-                defaultValue: [NotifyOnUnflairedPostReplyOptions.NoReply],
-                onValidate: selectFieldHasOptionChosen,
-            },
-            {
-                type: "paragraph",
-                name: AppSetting.UnflairedPostMessage,
-                label: "Unflaired post message",
-                helpText:
-                    "Message shown when a user tries to award points on a post without flair. Placeholders Supported: {{name}}",
-                defaultValue: TemplateDefaults.UnflairedPostMessage,
-                onValidate: paragraphFieldContainsText,
+                    "Optional. Name of the wiki page for explaining your subreddit's point system (e.g. pointsystem)",
             },
         ],
     },
@@ -1234,7 +1171,7 @@ function alternateCommandInvalid(
     event: SettingsFormFieldValidatorEvent<string>
 ) {
     if (typeof event.value !== "string" || !event.value.includes("{{user}}")) {
-        return "The Alternate Award Command must include the {{user}} placeholder (e.g., '!award {{user}}').";
+        return "The Alternate Award Command must include the {{user}} placeholder (e.g., '!award {{user}}')";
     }
 }
 

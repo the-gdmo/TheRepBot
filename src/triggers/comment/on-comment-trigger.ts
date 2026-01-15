@@ -19,6 +19,7 @@ import {
 } from "./user-specific-logic/alt-user-action.js";
 import {
     AppSetting,
+    NotifyOnDisallowedFlairReplyOptions,
     NotifyOnModAwardFailReplyOptions,
     NotifyOnRestrictionLiftedReplyOptions,
     NotifyOnSelfAwardReplyOptions,
@@ -56,8 +57,93 @@ export async function handleThanksEvent(
         });
         return;
     }
+    ``;
 
+    const settings = await devvitContext.settings.getAll();
+    const pointName = (settings[AppSetting.PointName] as string) ?? "point";
     const awarder = event.author.name;
+
+    const flairTextDisallowedMessage = formatMessage(
+        (settings[AppSetting.DisallowedFlairMessage] as string) ??
+            TemplateDefaults.DisallowedFlairMessage,
+        { name: pointName }
+    );
+
+    const notifyFlairIgnored = ((settings[
+        AppSetting.NotifyOnDisallowedFlair
+    ] as string[]) ?? [NotifyOnDisallowedFlairReplyOptions.NoReply])[0];
+
+    const rawDisallowedFlairs =
+        (settings[AppSetting.DisallowedFlairs] as string | undefined) ?? "";
+
+    // ─────────────────────────────────────────────
+    // Disallowed flair guard (non-terminating)
+    // ─────────────────────────────────────────────
+    if (rawDisallowedFlairs.trim() && event.post.linkFlair?.text) {
+        const postFlairText = event.post.linkFlair.text.trim();
+
+        const disallowedFlairs = rawDisallowedFlairs
+            .split(/\r?\n/) // newline-only entries
+            .map((flair) => flair.trim())
+            .filter(Boolean);
+
+        logger.debug("🔍 Disallowed flair check", {
+            postFlair: postFlairText,
+            disallowedFlairs,
+        });
+
+        if (disallowedFlairs.includes(postFlairText)) {
+            // 🚫 Ignore bot’s own comments to prevent loops
+            if (event.author.name === devvitContext.appName) {
+                logger.debug(
+                    "🤖 Bot-authored comment detected; skipping disallowed flair response"
+                );
+                return;
+            }
+
+            const responseKey = `disallowedFlairResponse:${event.comment.id}`;
+
+            if (await devvitContext.redis.exists(responseKey)) {
+                logger.debug(
+                    "♻️ Disallowed flair already handled for this comment",
+                    {
+                        commentId: event.comment.id,
+                    }
+                );
+                return;
+            }
+
+            // Mark handled BEFORE replying
+            await devvitContext.redis.set(responseKey, "1");
+
+            logger.info("🚫 Award blocked due to disallowed flair", {
+                postFlair: postFlairText,
+            });
+
+            if (
+                notifyFlairIgnored ===
+                NotifyOnDisallowedFlairReplyOptions.ReplyByPM
+            ) {
+                await devvitContext.reddit.sendPrivateMessage({
+                    to: awarder,
+                    subject: `${pointName}s cannot be awarded on ${event.post.title}`,
+                    text: flairTextDisallowedMessage,
+                });
+            } else if (
+                notifyFlairIgnored ===
+                NotifyOnDisallowedFlairReplyOptions.ReplyAsComment
+            ) {
+                const msg = await devvitContext.reddit.submitComment({
+                    id: event.comment.id,
+                    text: flairTextDisallowedMessage,
+                });
+                await msg.distinguish();
+            }
+
+            return; // ⛔ block award
+        }
+    }
+
     const recipient = parentComment.authorName;
     if (!recipient) {
         logger.warn("❌ No recipient found", { parentComment });
@@ -69,9 +155,6 @@ export async function handleThanksEvent(
     const isAltUser = context.isAltUser;
     const isOP = awarder === event.post.authorId;
     const userCanAward = context.userCanAward;
-
-    const settings = await devvitContext.settings.getAll();
-    const pointName = (settings[AppSetting.PointName] as string) ?? "point";
 
     // ─────────────────────────────────────────────
     // Prevent system/bot self-awards
@@ -268,10 +351,11 @@ export async function handleThanksEvent(
                 await devvitContext.reddit.sendPrivateMessage({
                     to: awarder,
                     text: modAwardFailMsg,
-                    subject: "Unsuccessful Award"
+                    subject: "Unsuccessful Award",
                 });
-            } else if (notify === NotifyOnModAwardFailReplyOptions.ReplyAsComment) {
-
+            } else if (
+                notify === NotifyOnModAwardFailReplyOptions.ReplyAsComment
+            ) {
             }
         }
     }
@@ -315,11 +399,11 @@ export async function notifyPostAuthorWhenTheyBecomeUnrestricted(
     );
 
     if (notify === NotifyOnRestrictionLiftedReplyOptions.ReplyByPM) {
-    await context.reddit.sendPrivateMessage({
-        to: awarder,
-        subject: "Restriction Lifted",
-        text: liftedMsg,
-    });
+        await context.reddit.sendPrivateMessage({
+            to: awarder,
+            subject: "Restriction Lifted",
+            text: liftedMsg,
+        });
     } else if (
         notify === NotifyOnRestrictionLiftedReplyOptions.ReplyAsComment
     ) {

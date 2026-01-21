@@ -58,6 +58,8 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you remove the app from your subreddit, it will delete all data and you will have to manually restore it to users. 
 
 ## Version History
+### 16.5.0
+* Make it so bot won't respond on non-command comments on posts with disallowed flair
 ### 16.4.0
 * Remove bot logic where non-command comments would be treated as commands
 ### 16.3.0

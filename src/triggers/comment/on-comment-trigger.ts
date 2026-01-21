@@ -58,11 +58,15 @@ export async function handleThanksEvent(
         });
         return;
     }
-    ``;
 
     const settings = await devvitContext.settings.getAll();
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
     const awarder = event.author.name;
+    const commentBody = event.comment.body.toLowerCase();
+    const triggers = await getTriggers(devvitContext);
+    const triggerUsed = triggers.find((t) =>
+        commentBody.includes(t.toLowerCase())
+    );
 
     const allowUnflairedPosts =
         (settings[AppSetting.AllowUnflairedPosts] as boolean) ?? true;
@@ -182,56 +186,57 @@ export async function handleThanksEvent(
             disallowedFlairs,
         });
 
-        if (disallowedFlairs.includes(postFlairText)) {
-            // 🚫 Ignore bot’s own comments to prevent loops
-            if (event.author.name === devvitContext.appName) {
-                logger.debug(
-                    "🤖 Bot-authored comment detected; skipping disallowed flair response"
-                );
-                return;
-            }
-
-            const responseKey = `disallowedFlairResponse:${event.comment.id}`;
-
-            if (await devvitContext.redis.exists(responseKey)) {
-                logger.debug(
-                    "♻️ Disallowed flair already handled for this comment",
-                    {
-                        commentId: event.comment.id,
-                    }
-                );
-                return;
-            }
-
-            // Mark handled BEFORE replying
-            await devvitContext.redis.set(responseKey, "1");
-
-            logger.info("🚫 Award blocked due to disallowed flair", {
-                postFlair: postFlairText,
-            });
-
-            if (
-                notifyFlairIgnored ===
-                NotifyOnDisallowedFlairReplyOptions.ReplyByPM
-            ) {
-                await devvitContext.reddit.sendPrivateMessage({
-                    to: awarder,
-                    subject: `${pointName}s cannot be awarded on ${event.post.title}`,
-                    text: flairTextDisallowedMessage,
-                });
-            } else if (
-                notifyFlairIgnored ===
-                NotifyOnDisallowedFlairReplyOptions.ReplyAsComment
-            ) {
-                const msg = await devvitContext.reddit.submitComment({
-                    id: event.comment.id,
-                    text: flairTextDisallowedMessage,
-                });
-                await msg.distinguish();
-            }
-            return; // ⛔ block award
+        if (!triggerUsed || !commentBody.includes(triggerUsed)) {
+            logger.info(`Comment in disallowed flair, but not a command`);
+            return;
         }
-        return;
+
+        if (event.author.name === devvitContext.appName) {
+            // 🚫 Ignore bot’s own comments to prevent loops
+            logger.debug(
+                "🤖 Bot-authored comment detected; skipping disallowed flair response"
+            );
+            return;
+        }
+
+        const responseKey = `disallowedFlairResponse:${event.comment.id}`;
+
+        if (await devvitContext.redis.exists(responseKey)) {
+            logger.debug(
+                "♻️ Disallowed flair already handled for this comment",
+                {
+                    commentId: event.comment.id,
+                }
+            );
+            return;
+        }
+
+        // Mark handled BEFORE replying
+        await devvitContext.redis.set(responseKey, "1");
+
+        logger.info("🚫 Award blocked due to disallowed flair", {
+            postFlair: postFlairText,
+        });
+
+        if (
+            notifyFlairIgnored === NotifyOnDisallowedFlairReplyOptions.ReplyByPM
+        ) {
+            await devvitContext.reddit.sendPrivateMessage({
+                to: awarder,
+                subject: `${pointName}s cannot be awarded on ${event.post.title}`,
+                text: flairTextDisallowedMessage,
+            });
+        } else if (
+            notifyFlairIgnored ===
+            NotifyOnDisallowedFlairReplyOptions.ReplyAsComment
+        ) {
+            const msg = await devvitContext.reddit.submitComment({
+                id: event.comment.id,
+                text: flairTextDisallowedMessage,
+            });
+            await msg.distinguish();
+        }
+        return; // ⛔ block award
     }
 
     const recipient = parentComment.authorName;
@@ -310,13 +315,6 @@ export async function handleThanksEvent(
     const containsMod = await commentContainsModCommand(event, devvitContext);
     const containsUser = await commentContainsUserCommand(event, devvitContext);
     const containsAlt = await commentContainsAltCommand(event, devvitContext);
-
-    // Detect exact trigger typed
-    const commentBody = event.comment.body.toLowerCase();
-    const triggers = await getTriggers(devvitContext);
-    const triggerUsed = triggers.find((t) =>
-        commentBody.includes(t.toLowerCase())
-    );
 
     if (!triggerUsed) {
         logger.debug("❌ No valid award command found.");

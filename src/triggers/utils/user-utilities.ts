@@ -101,7 +101,7 @@ export async function handleAutoSuperuserPromotion(
 
     if (notifyMode === AutoSuperuserReplyOptions.NoReply) return;
 
-    const message = formatMessage(
+    const superUserNotification = formatMessage(
         (settings[AppSetting.NotifyOnAutoSuperuserTemplate] as string) ??
             TemplateDefaults.NotifyOnSuperuserTemplate,
         {
@@ -118,14 +118,14 @@ export async function handleAutoSuperuserPromotion(
             await context.reddit.sendPrivateMessage({
                 to: username,
                 subject: "You are now a trusted user",
-                text: message,
+                text: superUserNotification,
             });
         } else {
-            const reply = await context.reddit.submitComment({
+            const superUserNotificationMessage = await context.reddit.submitComment({
                 id: commentId,
-                text: message,
+                text: superUserNotification,
             });
-            await reply.distinguish();
+            await superUserNotificationMessage.distinguish();
         }
 
         logger.info("⭐ Auto-superuser notification sent", {

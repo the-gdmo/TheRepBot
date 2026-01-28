@@ -145,11 +145,11 @@ async function handleSelfAwardModCommand(
             name: pointName,
         });
         if (notifySelf === NotifyOnSelfAwardReplyOptions.ReplyAsComment) {
-            const newComment = await context.reddit.submitComment({
+            const selfAwardMessage = await context.reddit.submitComment({
                 id: event.comment.id,
                 text: selfText,
             });
-            await newComment.distinguish();
+            await selfAwardMessage.distinguish();
         } else if (notifySelf === NotifyOnSelfAwardReplyOptions.ReplyByPM) {
             await context.reddit.sendPrivateMessage({
                 to: awarder,
@@ -157,12 +157,6 @@ async function handleSelfAwardModCommand(
                 text: selfText,
             });
         }
-        const reply = await context.reddit.submitComment({
-            id: event.comment.id,
-            text: selfText,
-        });
-        await reply.distinguish();
-
         logger.debug("❌ User tried to award themselves.");
         return;
     }
@@ -201,11 +195,11 @@ export async function handleDuplicateModAward(
     ])[0];
 
     if (notify === NotifyOnModAwardFailReplyOptions.ReplyAsComment) {
-        const reply = await context.reddit.submitComment({
+        const modAwardDupeMessage = await context.reddit.submitComment({
             id: event.comment!.id,
             text: msg,
         });
-        await reply.distinguish();
+        await modAwardDupeMessage.distinguish();
     } else if (notify === NotifyOnModAwardFailReplyOptions.ReplyByPM) {
         await context.reddit.sendPrivateMessage({
             to: awarder,
@@ -246,11 +240,11 @@ export async function handleUnauthorizedModCommand(
     ])[0];
 
     if (notify === NotifyOnModAwardFailReplyOptions.ReplyAsComment) {
-        const reply = await context.reddit.submitComment({
+        const modAwardFailMessage = await context.reddit.submitComment({
             id: event.comment!.id,
             text: failMsg,
         });
-        await reply.distinguish();
+        await modAwardFailMessage.distinguish();
     } else if (notify === NotifyOnModAwardFailReplyOptions.ReplyByPM) {
         await context.reddit.sendPrivateMessage({
             to: awarder,
@@ -350,11 +344,11 @@ export async function awardPointToUserModCommand(
         });
 
         if (notifyMode === NotifyOnModAwardSuccessReplyOptions.ReplyAsComment) {
-            const reply = await context.reddit.submitComment({
+            const modAwardSuccessMessage = await context.reddit.submitComment({
                 id: event.comment.id,
                 text: message,
             });
-            await reply.distinguish();
+            await modAwardSuccessMessage.distinguish();
         } else if (
             notifyMode === NotifyOnModAwardSuccessReplyOptions.ReplyByPM
         ) {

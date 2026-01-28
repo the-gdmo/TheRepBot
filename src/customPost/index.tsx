@@ -152,16 +152,16 @@ export async function createCustomPostFormHandler(
             `It is updated periodically, but you can also refresh it manually by clicking the refresh button at the top of the leaderboard.`,
         {}
     );
-    const comment = await context.reddit.submitComment({
+    const leaderboardPostComment = await context.reddit.submitComment({
         id: post.id,
         text: botMessage,
     });
 
     // Sticky the bot comment
-    await comment.distinguish(true);
+    await leaderboardPostComment.distinguish(true);
 
     if (event.values.lockBotComment) {
-        await comment.lock();
+        await leaderboardPostComment.lock();
     }
 
     context.ui.showToast({

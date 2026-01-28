@@ -98,9 +98,12 @@ export enum AppSetting {
     RestrictionLiftedMessage = "restrictionLiftedMessage",
     NotifyOnRestrictionLifted = "notifyOnRestrictionLifted",
     InvalidUsernameMessage = "invalidUsernameMessage",
+    AlternateUsersOnlyDisallowedMessage = "AlternateUsersOnlyDisallowedMessage",
+    NotifyOnAltUserDisallowed = "NotifyOnAltUserDisallowed",
 }
 
 export enum TemplateDefaults {
+    AlternateUsersOnlyDisallowedMessage = "Only alternate users are allowed to award points (ie users who can successfully award points using `<pointsCommand) u/<userMention>`.",
     SubsequentPostRestrictionMessage = "***ATTENTION to OP:*** You must award {{name}}s by replying to the successful comments. Before you can create new posts, you must award **{{requirement}}** {{name}}s to users who respond on [{{title}}]({{permalink}}).",
     UnflairedPostMessage = "Points cannot be awarded on posts without flair. Please award only on flaired posts.",
     OPOnlyDisallowedMessage = "Only moderators, approved users, and Post Authors (OPs) can award {{name}}s.",
@@ -109,7 +112,6 @@ export enum TemplateDefaults {
     UsersWhoCannotAwardPointsMessage = "You do not have permission to award {{name}}s.",
     ModOnlyDisallowedMessage = "Only moderators are allowed to award points.",
     ApprovedOnlyDisallowedMessage = "Only moderators and approved users can award points.",
-    DuplicateAwardMessage = "This comment has already been awarded a {{name}}.",
     SelfAwardMessage = "You can't award yourself a {{name}}.",
     BotAwardMessage = "You can't award u/{{awardee}} {{name}}s.",
     NotifyOnSelfAwardTemplate = "Hello {{awarder}}, you cannot award a {{name}} to yourself.",
@@ -142,6 +144,12 @@ export enum NotifyOnPointAlreadyAwardedReplyOptions {
 }
 
 export enum NotifyOnModApproveReplyOptions {
+    NoReply = "none",
+    ReplyByPM = "replybypm",
+    ReplyAsComment = "replybycomment",
+}
+
+export enum NotifyOnAltUserDisallowedReplyOptions {
     NoReply = "none",
     ReplyByPM = "replybypm",
     ReplyAsComment = "replybycomment",
@@ -314,6 +322,21 @@ const NotifyOnModApproveReplyOptionChoices = [
     },
 ];
 
+const NotifyOnAltUserDisallowedReplyOptionChoices = [
+    {
+        label: "No Notification",
+        value: NotifyOnAltUserDisallowedReplyOptions.NoReply,
+    },
+    {
+        label: "Send user a private message",
+        value: NotifyOnAltUserDisallowedReplyOptions.ReplyByPM,
+    },
+    {
+        label: "Reply as comment",
+        value: NotifyOnAltUserDisallowedReplyOptions.ReplyAsComment,
+    },
+];
+
 const NotifyOnModOnlyDisallowedReplyOptionChoices = [
     {
         label: "No Notification",
@@ -444,6 +467,7 @@ const NotifyOnSuccessReplyOptionChoices = [
 ];
 
 export enum AccessControlOptions {
+    AltUsersOnly = "alt-users-only",
     ModOnly = "moderators-only",
     ModsAndSuperusers = "moderators-and-superusers",
     ModsSuperusersAndPostAuthor = "moderators-superusers-and-op",
@@ -451,6 +475,10 @@ export enum AccessControlOptions {
 }
 
 const AccessControlOptionChoices = [
+    {
+        label: "Alternate Users Only",
+        value: AccessControlOptions.AltUsersOnly,
+    },
     {
         label: "Moderators Only",
         value: AccessControlOptions.ModOnly,
@@ -718,6 +746,24 @@ export const appSettings: SettingsFormField[] = [
                 label: "Point Symbol",
                 helpText:
                     "Optional emoji or character to show alongside point totals. Leave empty for no symbol",
+            },
+            {
+                type: "select",
+                name: AppSetting.NotifyOnAltUserDisallowed,
+                label: "Notify users when only alt-users can award points",
+                options: NotifyOnAltUserDisallowedReplyOptionChoices,
+                defaultValue: [NotifyOnAltUserDisallowedReplyOptions.NoReply],
+                onValidate: selectFieldHasOptionChosen,
+            },
+            {
+                type: "paragraph",
+                name: AppSetting.AlternateUsersOnlyDisallowedMessage,
+                label: "Alternate User Disallowed Message",
+                helpText:
+                    "Message shown when a user tries to award a point but only alternate users can award points",
+                defaultValue:
+                    TemplateDefaults.AlternateUsersOnlyDisallowedMessage,
+                onValidate: paragraphFieldContainsText,
             },
             {
                 type: "select",
@@ -1012,14 +1058,6 @@ export const appSettings: SettingsFormField[] = [
         type: "group",
         label: "Notification Settings",
         fields: [
-            {
-                type: "select",
-                name: AppSetting.NotifyOnPointAlreadyAwarded,
-                label: "Notify users when they try to award a comment they already awarded",
-                options: NotifyOnPointAlreadyAwardedReplyOptionChoices,
-                defaultValue: [NotifyOnPointAlreadyAwardedReplyOptions.NoReply],
-                onValidate: selectFieldHasOptionChosen,
-            },
             {
                 type: "select",
                 name: AppSetting.NotifyOnSelfAward,

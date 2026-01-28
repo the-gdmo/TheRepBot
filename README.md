@@ -58,6 +58,9 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you remove the app from your subreddit, it will delete all data and you will have to manually restore it to users. 
 
 ## Version History
+### 16.6.0
+* Make it so bot will lift restriction and send restriction lifted message correctly
+* Make it so bot will notify users correctly when they try to award points to a commentor, but don't have permission to
 ### 16.5.0
 * Make it so bot won't respond on non-command comments on posts with disallowed flair
 ### 16.4.0

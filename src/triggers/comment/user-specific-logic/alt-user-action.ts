@@ -312,11 +312,11 @@ async function notifyAlternateCommandSuccess(
             text: message,
         });
     } else {
-        const reply = await context.reddit.submitComment({
+        const alternateCommandSuccessMessage = await context.reddit.submitComment({
             id: event.comment!.id,
             text: message,
         });
-        await reply.distinguish();
+        await alternateCommandSuccessMessage.distinguish();
     }
 }
 
@@ -364,6 +364,6 @@ async function notifyMissingAltUsername(
  * ───────────────────────────────────────────────────────────── */
 
 async function reply(context: TriggerContext, commentId: string, text: string) {
-    const r = await context.reddit.submitComment({ id: commentId, text });
-    await r.distinguish();
+    const reply = await context.reddit.submitComment({ id: commentId, text });
+    await reply.distinguish();
 }

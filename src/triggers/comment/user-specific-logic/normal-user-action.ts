@@ -121,11 +121,11 @@ async function awardPointToUserNormalCommand(
             }),
         ]);
     } else if (notifySuccess === NotifyOnSuccessReplyOptions.ReplyAsComment) {
-        const reply = await context.reddit.submitComment({
+        const commandSuccessMessage = await context.reddit.submitComment({
             id: event.comment.id,
             text: successMessage,
         });
-        await reply.distinguish();
+        await commandSuccessMessage.distinguish();
     }
 
     // 🎨 Update flair
@@ -375,11 +375,11 @@ export async function executeUserCommand(
             awarder,
         });
 
-        const reply = await context.reddit.submitComment({
+        const userIsBlockedFromAwardingPointsMessage = await context.reddit.submitComment({
             id: event.comment.id,
             text: blockedMessage,
         });
-        await reply.distinguish();
+        await userIsBlockedFromAwardingPointsMessage.distinguish();
         return;
     }
 

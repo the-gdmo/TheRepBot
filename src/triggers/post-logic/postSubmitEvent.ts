@@ -109,12 +109,12 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         if (discordLink) msg = msg.replace(/{{discord}}/g, discordLink);
 
         // Post restriction comment
-        const comment = await context.reddit.submitComment({
+        const subsequentPostRestrictionMessage = await context.reddit.submitComment({
             id: event.post.id,
             text: msg,
         });
 
-        await comment.distinguish(true);
+        await subsequentPostRestrictionMessage.distinguish(true);
         await context.reddit.remove(event.post.id, false);
 
         logger.info("🚫 Removed post from restricted user", {
@@ -147,12 +147,12 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         text = text.replace(/{{discord}}/g, discordLink);
     }
 
-    const comment = await context.reddit.submitComment({
+    const initialPostRestrictionMessage = await context.reddit.submitComment({
         id: event.post.id,
         text,
     });
 
-    await comment.distinguish(true);
+    await initialPostRestrictionMessage.distinguish(true);
 
     // Save the valid post info
     await context.redis.set(lastValidPostKey, event.post.permalink);

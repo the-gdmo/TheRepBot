@@ -58,6 +58,8 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you remove the app from your subreddit, it will delete all data and you will have to manually restore it to users. 
 
 ## Version History
+### 17.0.1
+* Make the award checking on posts accurately portray if the user isn't restricted with the bot (improper checking before)
 ### 17.0.0
 * Add an option to check awards required to be unrestricted via burger menu within posts (will appear as a toast on the bottom of your screen)
 * Award checking can be done any post regardless of who created the post

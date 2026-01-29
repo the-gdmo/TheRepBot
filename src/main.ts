@@ -31,6 +31,7 @@ import {
 import {
     getAwardsRequiredKey,
     getRestrictedKey,
+    restrictedKeyExists,
 } from "./triggers/post-logic/redisKeys.js";
 import { logger } from "./logger.js";
 
@@ -147,7 +148,7 @@ Devvit.addMenuItem({
             );
 
             // 🔓 Not restricted
-            if (!awardsRequiredKeyExists) {
+            if (!await restrictedKeyExists(context, user.username)) {
                 context.ui.showToast({
                     text: "You are not restricted",
                 });

@@ -58,6 +58,9 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you remove the app from your subreddit, it will delete all data and you will have to manually restore it to users. 
 
 ## Version History
+### 17.0.0
+* Add an option to check awards required to be unrestricted via burger menu within posts (will appear as a toast on the bottom of your screen)
+* Award checking can be done any post regardless of who created the post
 ### 16.6.0
 * Make it so bot will lift restriction and send restriction lifted message correctly
 * Make it so bot will notify users correctly when they try to award points to a commentor, but don't have permission to

@@ -45,8 +45,8 @@ export async function handleThanksEvent(
     // ─────────────────────────────────────────────
     // Initialize context
     // ─────────────────────────────────────────────
-    const context = new CommentTriggerContext();
-    await context.init(event, devvitContext);
+    const commentTriggerContext = new CommentTriggerContext();
+    await commentTriggerContext.init(event, devvitContext);
 
     const parentComment: Comment | undefined = await getParentComment(
         event,
@@ -90,107 +90,26 @@ export async function handleThanksEvent(
         return;
     }
 
-    const isMod = context.isMod;
-    const isSuperUser = context.isSuperUser;
-    const isAltUser = context.isAltUser;
-    const isOP = awarder === event.post.authorId;
-    const userCanAward = context.userCanAward;
+    const isMod = commentTriggerContext.isMod;
+    const isSuperUser = commentTriggerContext.isSuperUser;
+    const isAltUser = commentTriggerContext.isAltUser;
+    const userCanAward = commentTriggerContext.userCanAward;
 
     // ─────────────────────────────────────────────
     // Prevent system/bot self-awards
     // ─────────────────────────────────────────────
-    if (
-        ["automoderator", devvitContext.appName.toLowerCase()].includes(
-            awarder.toLowerCase()
-        )
-    ) {
-        logger.debug("❌ System user attempted a command");
-        return;
-    }
-
-    if (
-        awarder === devvitContext.appName ||
-        awarder.toLowerCase() === "automoderator"
-    ) {
-        const botMsg = formatMessage(
-            (settings[AppSetting.BotAwardMessage] as string) ??
-                TemplateDefaults.BotAwardMessage,
-            { name: pointName, awardee: recipient }
-        );
-        const botAwardMessage = await devvitContext.reddit.submitComment({
-            id: event.comment.id,
-            text: botMsg,
-        });
-        await botAwardMessage.distinguish();
-        logger.debug(`❌ ${recipient} cannot be awarded points`);
-        return;
-    }
+    await awarderIsBot(event, devvitContext, awarder, settings);
 
     // ─────────────────────────────────────────────
     // Access control enforcement
     // ─────────────────────────────────────────────
-    const accessControl = ((settings[AppSetting.AccessControl] as string[]) ?? [
-        "everyone",
-    ])[0];
-
-    const hasPermission =
-        accessControl === "everyone" ||
-        (accessControl === "moderators-only" && isMod) ||
-        (accessControl === "moderators-and-superusers" &&
-            (isMod || isSuperUser)) ||
-        (accessControl === "moderators-superusers-and-op" &&
-            (isMod || isSuperUser || isOP)) ||
-        (accessControl === "alt-users-only" && isAltUser);
-    if (!hasPermission) {
-        let msgKey: AppSetting;
-        let notifyKey: AppSetting;
-
-        switch (accessControl) {
-            case "alt-users-only":
-                msgKey = AppSetting.AlternateUsersOnlyDisallowedMessage;
-                notifyKey = AppSetting.NotifyOnAltUserDisallowed;
-                break;
-
-            case "moderators-only":
-                msgKey = AppSetting.ModOnlyDisallowedMessage;
-                notifyKey = AppSetting.NotifyOnModOnlyDisallowed;
-                break;
-
-            case "moderators-and-superusers":
-                msgKey = AppSetting.ApprovedOnlyDisallowedMessage;
-                notifyKey = AppSetting.NotifyOnApprovedOnlyDisallowed;
-                break;
-
-            case "moderators-superusers-and-op":
-                msgKey = AppSetting.OPOnlyDisallowedMessage;
-                notifyKey = AppSetting.NotifyOnOPOnlyDisallowed;
-                break;
-
-            default:
-                logger.warn("⚠️ Unknown accessControl value", {
-                    accessControl,
-                });
-                return;
-        }
-
-        const denyMsg = formatMessage(
-            (settings[msgKey] as string) ??
-                TemplateDefaults.ModOnlyDisallowedMessage,
-            { awarder, name: pointName }
-        );
-
-        const notifyMode = ((settings[notifyKey] as string[]) ?? ["none"])[0];
-
-        await replyToUser(
-            devvitContext,
-            notifyMode,
-            awarder,
-            denyMsg,
-            event.comment.id
-        );
-
-        return;
-    }
+    await checkPermissionOfUser(
+        event,
+        awarder,
+        commentTriggerContext,
+        devvitContext,
+        settings
+    );
 
     // ─────────────────────────────────────────────
     // Detect which command type exists
@@ -207,41 +126,7 @@ export async function handleThanksEvent(
         settings
     );
 
-    if (
-        ["automoderator", devvitContext.appName.toLowerCase()].includes(
-            awarder.toLowerCase()
-        )
-    ) {
-        logger.debug("❌ System user attempted a command");
-        return;
-    }
-
-    if (
-        ["automoderator", devvitContext.appName.toLowerCase()].includes(
-            recipient.toLowerCase()
-        )
-    ) {
-        // Prevent bot account or Automod granting points
-        const botAwardMessage = formatMessage(
-            (settings[AppSetting.BotAwardMessage] as string) ??
-                TemplateDefaults.BotAwardMessage,
-            { name: pointName, awardee: recipient }
-        );
-
-        const awardGivenToBotMessage = await devvitContext.reddit.submitComment(
-            {
-                id: event.comment.id,
-                text: botAwardMessage,
-            }
-        );
-        await awardGivenToBotMessage.distinguish();
-        logger.debug("❌ Bot cannot award itself points");
-        return;
-    }
-    const restrictedFlagExists = await restrictedKeyExists(
-        devvitContext,
-        awarder
-    );
+    await recipientIsBot(event, devvitContext, awarder, recipient, settings);
 
     // ─────────────────────────────────────────────
     // Normal user command logic
@@ -249,13 +134,6 @@ export async function handleThanksEvent(
     if (containsUser && !containsMod && !containsAlt) {
         if (userCanAward) {
             await executeUserCommand(event, devvitContext);
-            if (!restrictedFlagExists) {
-                await notifyPostAuthorWhenTheyBecomeUnrestricted(
-                    event,
-                    devvitContext,
-                    awarder
-                );
-            }
         } else {
             // Blocked user already handled inside executeUserCommand
             logger.debug("❌ User blocked from awarding points", { awarder });
@@ -269,13 +147,6 @@ export async function handleThanksEvent(
     if (containsMod && !containsUser && !containsAlt) {
         if (isMod || isSuperUser) {
             await executeModCommand(event, devvitContext);
-            if (!restrictedFlagExists) {
-                await notifyPostAuthorWhenTheyBecomeUnrestricted(
-                    event,
-                    devvitContext,
-                    awarder
-                );
-            }
             return;
         } else {
             const command = await modCommandValue(devvitContext);
@@ -337,42 +208,6 @@ export async function handleThanksEvent(
         awarder,
         commentId: event.comment.id,
     });
-}
-
-export async function notifyPostAuthorWhenTheyBecomeUnrestricted(
-    event: CommentSubmit | CommentUpdate,
-    context: TriggerContext,
-    awarder: string
-) {
-    if (!event.comment) return;
-    const settings = await context.settings.getAll();
-
-    const notify = ((settings[
-        AppSetting.NotifyOnRestrictionLifted
-    ] as string[]) ?? ["none"])[0];
-
-    const liftedMsg = formatMessage(
-        (settings[AppSetting.RestrictionLiftedMessage] as string) ??
-            TemplateDefaults.RestrictionLiftedMessage,
-        {}
-    );
-
-    if (notify === NotifyOnRestrictionLiftedReplyOptions.ReplyByPM) {
-        await context.reddit.sendPrivateMessage({
-            to: awarder,
-            subject: "Restriction Lifted",
-            text: liftedMsg,
-        });
-    } else if (
-        notify === NotifyOnRestrictionLiftedReplyOptions.ReplyAsComment
-    ) {
-        const restrictionLiftedMessage = await context.reddit.submitComment({
-            id: event.comment.id,
-            text: liftedMsg,
-        });
-
-        await restrictionLiftedMessage.distinguish();
-    }
 }
 
 export async function unflairedPostLogic(
@@ -680,5 +515,174 @@ export async function replyToUser(
             notifyMode,
             err,
         });
+    }
+}
+
+export async function checkPermissionOfUser(
+    event: CommentSubmit | CommentUpdate,
+    awarder: string,
+    commentTriggerContext: CommentTriggerContext,
+    devvitContext: TriggerContext,
+    settings: SettingsValues
+) {
+    if (!event.post || !event.comment) return;
+    const pointName = (settings[AppSetting.PointName] as string) ?? "point";
+
+    const isMod = commentTriggerContext.isMod;
+    const isSuperUser = commentTriggerContext.isSuperUser;
+    const isAltUser = commentTriggerContext.isAltUser;
+    const isOP = awarder === event.post.authorId;
+    const accessControl = ((settings[AppSetting.AccessControl] as string[]) ?? [
+        "everyone",
+    ])[0];
+
+    const hasPermission =
+        accessControl === "everyone" ||
+        (accessControl === "moderators-only" && isMod) ||
+        (accessControl === "moderators-and-superusers" &&
+            (isMod || isSuperUser)) ||
+        (accessControl === "moderators-superusers-and-op" &&
+            (isMod || isSuperUser || isOP)) ||
+        (accessControl === "alt-users-only" && isAltUser);
+    if (!hasPermission) {
+        let msgKey: AppSetting;
+        let notifyKey: AppSetting;
+
+        switch (accessControl) {
+            case "alt-users-only":
+                msgKey = AppSetting.AlternateUsersOnlyDisallowedMessage;
+                notifyKey = AppSetting.NotifyOnAltUserDisallowed;
+                break;
+
+            case "moderators-only":
+                msgKey = AppSetting.ModOnlyDisallowedMessage;
+                notifyKey = AppSetting.NotifyOnModOnlyDisallowed;
+                break;
+
+            case "moderators-and-superusers":
+                msgKey = AppSetting.ApprovedOnlyDisallowedMessage;
+                notifyKey = AppSetting.NotifyOnApprovedOnlyDisallowed;
+                break;
+
+            case "moderators-superusers-and-op":
+                msgKey = AppSetting.OPOnlyDisallowedMessage;
+                notifyKey = AppSetting.NotifyOnOPOnlyDisallowed;
+                break;
+
+            default:
+                logger.warn("⚠️ Unknown accessControl value", {
+                    accessControl,
+                });
+                return;
+        }
+
+        const denyMsg = formatMessage(
+            (settings[msgKey] as string) ??
+                TemplateDefaults.ModOnlyDisallowedMessage,
+            { awarder, name: pointName }
+        );
+
+        const notifyMode = ((settings[notifyKey] as string[]) ?? ["none"])[0];
+
+        await replyToUser(
+            devvitContext,
+            notifyMode,
+            awarder,
+            denyMsg,
+            event.comment.id
+        );
+
+        return;
+    }
+}
+
+export async function awarderIsBot(
+    event: CommentSubmit | CommentUpdate,
+    devvitContext: TriggerContext,
+    awarder: string,
+    settings: SettingsValues
+) {
+    if (!event.comment) return;
+    if (
+        ["automoderator", devvitContext.appName.toLowerCase()].includes(
+            awarder.toLowerCase()
+        )
+    ) {
+        logger.debug("❌ System user attempted a command");
+        return;
+    }
+
+    const parentComment: Comment | undefined = await getParentComment(
+        event,
+        devvitContext
+    );
+    if (!parentComment) {
+        logger.warn("❌ Parent comment not found", {
+            commentId: event.comment.id,
+        });
+        return;
+    }
+
+    const recipient = parentComment.authorName;
+    const pointName = (settings[AppSetting.PointName] as string) ?? "point";
+
+    if (
+        awarder === devvitContext.appName ||
+        awarder.toLowerCase() === "automoderator"
+    ) {
+        const botMsg = formatMessage(
+            (settings[AppSetting.BotAwardMessage] as string) ??
+                TemplateDefaults.BotAwardMessage,
+            { name: pointName, awardee: recipient }
+        );
+        const botAwardMessage = await devvitContext.reddit.submitComment({
+            id: event.comment.id,
+            text: botMsg,
+        });
+        await botAwardMessage.distinguish();
+        logger.debug(`❌ ${recipient} cannot be awarded points`);
+        return;
+    }
+}
+
+export async function recipientIsBot(
+    event: CommentSubmit | CommentUpdate,
+    devvitContext: TriggerContext,
+    awarder: string,
+    recipient: string,
+    settings: SettingsValues
+) {
+    if (!event.comment) return;
+    const pointName = (settings[AppSetting.PointName] as string) ?? "point";
+    if (
+        ["automoderator", devvitContext.appName.toLowerCase()].includes(
+            awarder.toLowerCase()
+        )
+    ) {
+        logger.debug("❌ System user attempted a command");
+        return;
+    }
+
+    if (
+        ["automoderator", devvitContext.appName.toLowerCase()].includes(
+            recipient.toLowerCase()
+        )
+    ) {
+        // Prevent bot account or Automod granting points
+        const botAwardMessage = formatMessage(
+            (settings[AppSetting.BotAwardMessage] as string) ??
+                TemplateDefaults.BotAwardMessage,
+            { name: pointName, awardee: recipient }
+        );
+
+        const awardGivenToBotMessage = await devvitContext.reddit.submitComment(
+            {
+                id: event.comment.id,
+                text: botAwardMessage,
+            }
+        );
+        await awardGivenToBotMessage.distinguish();
+        logger.debug("❌ Bot cannot award itself points");
+        return;
     }
 }

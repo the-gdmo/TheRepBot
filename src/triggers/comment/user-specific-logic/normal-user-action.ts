@@ -224,19 +224,14 @@ export async function updateAuthorRedis(
         );
 
         try {
-            logger.info(`Sending restriction lifted PM to u/${user.username}`, {
-                subject: `Restriction lifted in r/${subredditName}`,
+            logger.info(`Sending restriction lifted Toast to u/${user.username}`, {
                 preview: liftedMsg.slice(0, 1000),
             });
 
-            await context.reddit.sendPrivateMessage({
-                to: user.username,
-                subject: `Restriction lifted in r/${subredditName}`,
-                text: liftedMsg,
-            });
+            await 
 
             logger.info(
-                `✅ Successfully sent restriction lifted PM to u/${user.username}`
+                `✅ Successfully sent restriction lifted Toast to u/${user.username}`
             );
         } catch (err) {
             logger.error("❌ Failed to send restriction lifted PM", {

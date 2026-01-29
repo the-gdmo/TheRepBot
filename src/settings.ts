@@ -639,6 +639,26 @@ export const appSettings: SettingsFormField[] = [
                 defaultValue: TemplateDefaults.SubsequentPostRestrictionMessage,
                 onValidate: paragraphFieldContainsText,
             },
+            {
+                name: AppSetting.NotifyOnRestrictionLifted,
+                type: "select",
+                label: "Notify on post restriction removal",
+                helpText:
+                    "Choose how the bot should notify users when their posting restriction is fully removed.",
+                options: NotifyOnRestrictionLiftedReplyOptionChoices,
+                multiSelect: false,
+                defaultValue: [NotifyOnRestrictionLiftedReplyOptions.NoReply],
+                onValidate: selectFieldHasOptionChosen,
+            },
+            {
+                name: AppSetting.RestrictionLiftedMessage,
+                type: "paragraph",
+                label: "Message to send the user when their restriction is removed",
+                helpText:
+                    "Required even if not used. Placeholders Supported: {{awarder}}, {{subreddit}}, {{requirement}}, {{name}}, {{helpPage}}, {{discord}}",
+                defaultValue: TemplateDefaults.RestrictionLiftedMessage,
+                onValidate: paragraphFieldContainsText,
+            },
         ],
     },
     {
@@ -710,26 +730,6 @@ export const appSettings: SettingsFormField[] = [
                 type: "paragraph",
                 label: "Message to send when someone tries to award the Post Author (OP)",
                 defaultValue: TemplateDefaults.PostAuthorAwardMessage,
-                onValidate: paragraphFieldContainsText,
-            },
-            {
-                name: AppSetting.NotifyOnRestrictionLifted,
-                type: "select",
-                label: "Notify on post restriction removal",
-                helpText:
-                    "Choose how the bot should notify users when their posting restriction is fully removed.",
-                options: NotifyOnRestrictionLiftedReplyOptionChoices,
-                multiSelect: false,
-                defaultValue: [NotifyOnRestrictionLiftedReplyOptions.NoReply],
-                onValidate: selectFieldHasOptionChosen,
-            },
-            {
-                name: AppSetting.RestrictionLiftedMessage,
-                type: "paragraph",
-                label: "Message to send the user when their restriction is removed",
-                helpText:
-                    "Required even if not used. Placeholders Supported: {{awarder}}, {{subreddit}}, {{requirement}}, {{name}}, {{helpPage}}, {{discord}}",
-                defaultValue: TemplateDefaults.RestrictionLiftedMessage,
                 onValidate: paragraphFieldContainsText,
             },
             {

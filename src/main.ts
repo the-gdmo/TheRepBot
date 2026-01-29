@@ -1,5 +1,9 @@
 import { Devvit, FormField } from "@devvit/public-api";
-import { appSettings, validateRegexJobHandler } from "./settings.js";
+import {
+    AppSetting,
+    appSettings,
+    validateRegexJobHandler,
+} from "./settings.js";
 import { onAppFirstInstall, onAppInstallOrUpgrade } from "./installEvents.js";
 import { updateLeaderboard } from "./leaderboard.js";
 import { cleanupDeletedAccounts } from "./cleanupTasks.js";
@@ -24,6 +28,11 @@ import {
     manualPostRestrictionRemovalHandler,
     manualSetPointsFormHandler,
 } from "./triggers/utils/mod-utilities.js";
+import {
+    getAwardsRequiredKey,
+    getRestrictedKey,
+} from "./triggers/post-logic/redisKeys.js";
+import { logger } from "./logger.js";
 
 Devvit.addSettings(appSettings);
 
@@ -94,6 +103,65 @@ Devvit.addMenuItem({
     forUserType: "moderator",
     location: "post",
     onPress: handleManualPostRestrictionRemoval,
+});
+
+Devvit.addMenuItem({
+    label: "Check Posting Restriction",
+    location: "post",
+    onPress: async (event, context) => {
+        if (event.location === "post" && event.targetId) {
+            const post = await context.reddit.getPostById(event.targetId);
+
+            if (!post?.authorName) {
+                context.ui.showToast({
+                    text: "Unable to determine post author.",
+                });
+                return;
+            }
+
+            const user = await context.reddit.getUserByUsername(
+                post.authorName
+            );
+
+            if (!user) return;
+
+            const settings = await context.settings.getAll();
+
+            const awardsRequired =
+                (settings[
+                    AppSetting.AwardsRequiredToCreateNewPosts
+                ] as number) ?? 0;
+
+            // 🚫 No restriction system enabled
+            if (awardsRequired <= 0) {
+                context.ui.showToast({
+                    text: "Awarding is not required to post",
+                });
+                return;
+            }
+
+            const awardsRequiredKey = await getAwardsRequiredKey(user);
+            const raw = await context.redis.get(awardsRequiredKey);
+            const awardsRequiredKeyExists = await context.redis.exists(
+                awardsRequiredKey
+            );
+
+            // 🔓 Not restricted
+            if (!awardsRequiredKeyExists) {
+                context.ui.showToast({
+                    text: "You are not restricted",
+                });
+                return;
+            }
+
+            const currentCount = Number(raw) || 0;
+
+            // 🔒 Restricted
+            context.ui.showToast({
+                text: `${currentCount}/${awardsRequired} awards given`,
+            });
+        }
+    },
 });
 
 Devvit.addMenuItem({

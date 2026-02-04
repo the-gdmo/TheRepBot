@@ -31,7 +31,6 @@ import {
     getTriggers,
     modCommandValue,
 } from "../utils/common-utilities.js";
-import { restrictedKeyExists } from "../post-logic/redisKeys.js";
 
 export async function handleThanksEvent(
     event: CommentSubmit | CommentUpdate,
@@ -190,7 +189,7 @@ export async function handleThanksEvent(
     // Alt command logic (with user or mod command)
     // ─────────────────────────────────────────────
     if (containsAlt && (containsUser || containsMod) && !isAltUser) {
-        logger.error(``);
+        logger.error(`User tried to execute alt command and is not an alt user`);
         return;
     }
     if (containsAlt && (containsUser || containsMod)) {

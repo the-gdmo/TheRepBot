@@ -7,7 +7,6 @@ import {
 } from "@devvit/public-api";
 import { addWeeks } from "date-fns";
 import { logger } from "./logger.js";
-import { getIgnoredContextType } from "./thanksPoints.js";
 
 export function replaceAll(
     input: string,

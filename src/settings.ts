@@ -20,6 +20,7 @@ export enum LeaderboardMode {
 }
 
 export enum AppSetting {
+    EnablePostOfTheMonth = "enablePostOfTheMonth",
     NotifyOnPostAuthorAward = "notifyOnPostAuthorAward",
     PostAuthorAwardMessage = "postAuthorAwardMessage",
     AlternatePointCommandUsers = "alternatePointCommandUsers",
@@ -98,8 +99,11 @@ export enum AppSetting {
     RestrictionLiftedMessage = "restrictionLiftedMessage",
     NotifyOnRestrictionLifted = "notifyOnRestrictionLifted",
     InvalidUsernameMessage = "invalidUsernameMessage",
-    AlternateUsersOnlyDisallowedMessage = "AlternateUsersOnlyDisallowedMessage",
-    NotifyOnAltUserDisallowed = "NotifyOnAltUserDisallowed",
+    AlternateUsersOnlyDisallowedMessage = "alternateUsersOnlyDisallowedMessage",
+    NotifyOnAltUserDisallowed = "notifyOnAltUserDisallowed",
+    PostOfTheMonthFlairText = "postOfTheMonthFlairText",
+    PostOfTheMonthFlairTemplate = "postOfTheMonthFlairTemplate",
+    PostOfTheMonthFlairCSSClass = "postOfTheMonthFlairCSSClass",
 }
 
 export enum TemplateDefaults {
@@ -658,6 +662,36 @@ export const appSettings: SettingsFormField[] = [
                     "Required even if not used. Placeholders Supported: {{awarder}}, {{subreddit}}, {{requirement}}, {{name}}, {{helpPage}}, {{discord}}",
                 defaultValue: TemplateDefaults.RestrictionLiftedMessage,
                 onValidate: paragraphFieldContainsText,
+            },
+        ],
+    },
+    {
+        type: "group",
+        label: "Post Of The Month Settings",
+        fields: [
+            {
+                type: "boolean",
+                name: AppSetting.EnablePostOfTheMonth,
+                label: "Enable Post Of The Month?",
+                defaultValue: false,
+            },
+            {
+                type: "string",
+                name: AppSetting.PostOfTheMonthFlairText,
+                label: "Flair text to use for the Post Of The Month",
+                helpText: "Optional. Must contain text for flair setting to work if Post Of The Month is enabled",
+            },
+            {
+                type: "string",
+                name: AppSetting.PostOfTheMonthFlairTemplate,
+                label: "Flair template ID to use for the Post Of The Month",
+                helpText: "Optional. Please choose either a CSS class or flair template, not both",
+            },
+            {
+                type: "string",
+                name: AppSetting.PostOfTheMonthFlairCSSClass,
+                label: "CSS Class to use for the Post Of The Month",
+                helpText: "Optional. Please choose either a CSS class or flair template, not both",
             },
         ],
     },
@@ -1318,6 +1352,19 @@ export function numberFieldHasValidOption(
 }
 
 function paragraphFieldContainsText(
+    event: SettingsFormFieldValidatorEvent<string>,
+    context: TriggerContext
+): string | void | Promise<string | void> {
+    if (typeof event.value !== "string") {
+        return "Value must be a string.";
+    }
+
+    if (event.value.length === 0) {
+        return "Field cannot be empty (even if this is an irrelevant setting).";
+    }
+}
+
+function stringFieldContainsText(
     event: SettingsFormFieldValidatorEvent<string>,
     context: TriggerContext
 ): string | void | Promise<string | void> {

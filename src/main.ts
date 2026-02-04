@@ -15,6 +15,7 @@ import {
 } from "./customPost/index.js";
 import {
     ADHOC_CLEANUP_JOB,
+    ADHOC_POST_OF_THE_MONTH_JOB,
     CLEANUP_JOB,
     UPDATE_LEADERBOARD_JOB,
     VALIDATE_REGEX_JOB,
@@ -34,6 +35,7 @@ import {
     restrictedKeyExists,
 } from "./triggers/post-logic/redisKeys.js";
 import { logger } from "./logger.js";
+import { addPostOfTheMonthFlair } from "./postOfTheMonth.js";
 
 Devvit.addSettings(appSettings);
 
@@ -70,6 +72,11 @@ Devvit.addSchedulerJob({
 Devvit.addSchedulerJob({
     name: CLEANUP_JOB,
     onRun: cleanupDeletedAccounts,
+});
+
+Devvit.addSchedulerJob({
+    name: ADHOC_POST_OF_THE_MONTH_JOB,
+    onRun: addPostOfTheMonthFlair,
 });
 
 Devvit.addSchedulerJob({

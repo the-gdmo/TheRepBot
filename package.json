@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "test": "vitest --run",
-    "test:unit": "vitest --run"
+    "test:unit": "vitest --run",
+    "update": "npx devvit update app"
   },
   "dependencies": {
     "@devvit/cli": "^0.12.10",

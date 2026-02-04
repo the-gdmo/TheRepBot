@@ -142,9 +142,9 @@ ${list
 ${list
     .map(
         (e) =>
-            `| ${formatDate(e.date)} | [${escapeTitle(
-                e.postTitle
-            )}](${e.postUrl}) | [Link](${e.commentUrl}) | /u/${e.recipient}`
+            `| ${formatDate(e.date)} | [${escapeTitle(e.postTitle)}](${
+                e.postUrl
+            }) | [Link](${e.commentUrl}) | /u/${e.recipient}`
     )
     .join("\n")}
 `.trim();
@@ -211,12 +211,11 @@ export async function buildInitialUserWiki(
     username: string
 ) {
     logger.info("📄 Building initial user wiki page…", { username });
+    
+    const settings = await context.settings.getAll();
+    const pointName = (settings[AppSetting.PointName] as string) ?? "point";
 
-    let pointName = "point";
     try {
-        const settings = await context.settings.getAll();
-        pointName = (settings[AppSetting.PointName] as string) ?? "point";
-
         logger.debug(`🧩 Loaded ${pointName} for initial wiki`, {
             username,
             pointName,

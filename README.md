@@ -58,6 +58,11 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you remove the app from your subreddit, it will delete all data and you will have to manually restore it to users. 
 
 ## Version History
+### 18.0.0
+* Make it so mods can set a post flair for the top post of the month (registers the first of every month 00:00 UTC and only registers posts from the last 30 days)
+* Post flair can use an optional CSS Class or template ID (template ID is prioritized)
+* Text is required in the "Flair text to use for the Post Of The Month" setting if Post Of The Month is enabled or it won't set post flair
+* CSS Class and template ID will pull the color of the flair being used **ONLY**, not the text of the flair
 ### 17.0.2
 * Update to the most recent Reddit API version for various modules
 ### 17.0.1

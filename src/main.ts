@@ -26,6 +26,7 @@ import { onPostSubmit } from "./triggers/post-logic/postSubmitEvent.js";
 import {
     handleManualPointSetting,
     handleManualPostRestrictionRemoval,
+    handlePostRestrictionCheck,
     manualPostRestrictionRemovalHandler,
     manualSetPointsFormHandler,
 } from "./triggers/utils/mod-utilities.js";
@@ -116,60 +117,7 @@ Devvit.addMenuItem({
 Devvit.addMenuItem({
     label: "Check Posting Restriction",
     location: "post",
-    onPress: async (event, context) => {
-        if (event.location === "post" && event.targetId) {
-            const post = await context.reddit.getPostById(event.targetId);
-
-            if (!post?.authorName) {
-                context.ui.showToast({
-                    text: "Unable to determine post author.",
-                });
-                return;
-            }
-
-            const user = await context.reddit.getUserByUsername(
-                post.authorName
-            );
-
-            if (!user) return;
-
-            const settings = await context.settings.getAll();
-
-            const awardsRequired =
-                (settings[
-                    AppSetting.AwardsRequiredToCreateNewPosts
-                ] as number) ?? 0;
-
-            // 🚫 No restriction system enabled
-            if (awardsRequired <= 0) {
-                context.ui.showToast({
-                    text: "Awarding is not required to post",
-                });
-                return;
-            }
-
-            const awardsRequiredKey = await getAwardsRequiredKey(user);
-            const raw = await context.redis.get(awardsRequiredKey);
-            const awardsRequiredKeyExists = await context.redis.exists(
-                awardsRequiredKey
-            );
-
-            // 🔓 Not restricted
-            if (!await restrictedKeyExists(context, user.username)) {
-                context.ui.showToast({
-                    text: "You are not restricted",
-                });
-                return;
-            }
-
-            const currentCount = Number(raw) || 0;
-
-            // 🔒 Restricted
-            context.ui.showToast({
-                text: `${currentCount}/${awardsRequired} awards given`,
-            });
-        }
-    },
+    onPress: handlePostRestrictionCheck,
 });
 
 Devvit.addMenuItem({

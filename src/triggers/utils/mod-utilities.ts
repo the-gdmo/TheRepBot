@@ -9,6 +9,7 @@ import {
 } from "@devvit/public-api";
 import { logger } from "../../logger.js";
 import {
+    getAwardsRequiredKey,
     getRestrictedKey,
     POINTS_STORE_KEY,
     requiredKeyExists,
@@ -20,6 +21,98 @@ import {
 } from "../../main.js";
 import { AppSetting, ExistingFlairOverwriteHandling } from "../../settings.js";
 import { getCurrentScore } from "../comment/comment-trigger-context.js";
+
+export async function handlePostRestrictionCheck(
+    event: MenuItemOnPressEvent,
+    context: Context
+) {
+    if (event.location === "post" && event.targetId) {
+        const post = await context.reddit.getPostById(event.targetId);
+
+        if (!post?.authorName) {
+            context.ui.showToast({
+                text: "Unable to determine post author.",
+            });
+            return;
+        }
+
+        const user = await context.reddit.getUserByUsername(post.authorName);
+
+        if (!user) return;
+
+        const settings = await context.settings.getAll();
+
+        const awardsRequired =
+            (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) ??
+            0;
+
+        // 🚫 No restriction system enabled
+        if (awardsRequired <= 0) {
+            context.ui.showToast({
+                text: "Awarding is not required to post",
+            });
+            return;
+        }
+
+        const awardsRequiredKey = await getAwardsRequiredKey(user);
+        const raw = await context.redis.get(awardsRequiredKey);
+        const restrictedFlagExists = await restrictedKeyExists(
+            context,
+            user.username
+        );
+
+        const subreddit = await context.reddit.getCurrentSubreddit();
+        const subredditName = subreddit.name;
+        const username = await context.reddit.getCurrentUser();
+        if (!username) return;
+
+        logger.info(`Testing Vals:`, {
+            username: username.username,
+        });
+
+        if (!username) {
+            logger.warn("❌ No username found on menu event");
+            return;
+        }
+
+        const modsExempt =
+            (settings[AppSetting.ModeratorsExempt] as boolean) ?? true;
+
+        const filteredModeratorList = await context.reddit
+            .getModerators({ subredditName, username: username.username })
+            .all();
+
+        const isMod = filteredModeratorList.length > 0;
+
+        logger.info("filteredModList/isMod:", {
+            filteredModeratorList,
+            modListLength: filteredModeratorList.length,
+            isMod,
+        });
+
+        if (modsExempt && isMod) {
+            context.ui.showToast({
+                text: "Mods are exempt from restriction",
+            });
+            return;
+        }
+
+        // 🔓 Not restricted
+        if (!restrictedFlagExists) {
+            context.ui.showToast({
+                text: "You are not restricted",
+            });
+            return;
+        }
+
+        const currentCount = Number(raw) || 0;
+
+        // 🔒 Restricted
+        context.ui.showToast({
+            text: `${currentCount}/${awardsRequired} awards given`,
+        });
+    }
+}
 
 export async function handleManualPointSetting(
     event: MenuItemOnPressEvent,
@@ -234,9 +327,7 @@ export async function manualPostRestrictionRemovalHandler(
 
     const confirm = /^confirm$/i;
     if (!confirm.test(confirmText)) {
-        context.ui.showToast(
-            `⚠️ You must type "confirm" (case insensitive).`
-        );
+        context.ui.showToast(`⚠️ You must type "confirm" (case insensitive).`);
         logger.warn("⚠️ Moderator failed confirmation input.", { confirmText });
         return;
     }

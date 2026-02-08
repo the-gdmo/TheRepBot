@@ -22,6 +22,109 @@ import {
 import { AppSetting, ExistingFlairOverwriteHandling } from "../../settings.js";
 import { getCurrentScore } from "../comment/comment-trigger-context.js";
 
+export async function handleUserRestrictionCheck(
+    event: MenuItemOnPressEvent,
+    context: Context
+) {
+    let contentType: "post" | "comment" | undefined;
+    let targetId: string | undefined;
+    let targetAuthor: string | undefined;
+
+    // ─────────────────────────────────────────────
+    // Resolve content type + author
+    // ─────────────────────────────────────────────
+    if (event.location === "post" && event.targetId) {
+        contentType = "post";
+        targetId = event.targetId;
+
+        const post = await context.reddit.getPostById(targetId);
+        targetAuthor = post?.authorName;
+    }
+
+    if (event.location === "comment" && event.targetId) {
+        contentType = "comment";
+        targetId = event.targetId;
+
+        const comment = await context.reddit.getCommentById(targetId);
+        targetAuthor = comment?.authorName;
+    }
+
+    if (!contentType || !targetId || !targetAuthor) {
+        context.ui.showToast({
+            text: "Unable to determine target content or author.",
+        });
+        return;
+    }
+
+    // ─────────────────────────────────────────────
+    // Fetch user being checked
+    // ─────────────────────────────────────────────
+    const user = await context.reddit.getUserByUsername(targetAuthor);
+    if (!user) return;
+
+    const settings = await context.settings.getAll();
+
+    const awardsRequired =
+        (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) ?? 0;
+
+    // 🚫 No restriction system enabled
+    if (awardsRequired <= 0) {
+        context.ui.showToast({
+            text: "Awarding is not required to post",
+        });
+        return;
+    }
+
+    const awardsRequiredKey = await getAwardsRequiredKey(user);
+    const raw = await context.redis.get(awardsRequiredKey);
+
+    const restrictedFlagExists = await restrictedKeyExists(
+        context,
+        targetAuthor
+    );
+
+    // ─────────────────────────────────────────────
+    // Moderator exemption check
+    // ─────────────────────────────────────────────
+    const subreddit = await context.reddit.getCurrentSubreddit();
+    const subredditName = subreddit.name;
+
+    const modsExempt =
+        (settings[AppSetting.ModeratorsExempt] as boolean) ?? true;
+
+    const filteredModeratorList = await context.reddit
+        .getModerators({
+            subredditName,
+            username: targetAuthor,
+        })
+        .all();
+
+    const isMod = filteredModeratorList.length > 0;
+
+    if (modsExempt && isMod) {
+        context.ui.showToast({
+            text: "Mods are exempt from restriction",
+        });
+        return;
+    }
+
+    // ─────────────────────────────────────────────
+    // Restriction result
+    // ─────────────────────────────────────────────
+    if (!restrictedFlagExists) {
+        context.ui.showToast({
+            text: `${targetAuthor} is not restricted`,
+        });
+        return;
+    }
+
+    const currentCount = Number(raw) || 0;
+
+    context.ui.showToast({
+        text: `${currentCount}/${awardsRequired} awards given by ${targetAuthor}`,
+    });
+}
+
 export async function handlePostRestrictionCheck(
     event: MenuItemOnPressEvent,
     context: Context

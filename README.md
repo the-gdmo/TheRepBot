@@ -58,6 +58,9 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you remove the app from your subreddit, it will delete all data and you will have to manually restore it to users. 
 
 ## Version History
+### 18.1.0
+* Add `Check User Restriction` option for mods to see if a user is restricted or not via a toast
+* `Check User Restriction` will say that mods are exempt if mods are exempt from awarding requirement
 ### 18.0.1
 * Make it so `Check Posting Restriction` toast will tell mods they are exempt if they are exempt from awarding requirement
 ### 18.0.0

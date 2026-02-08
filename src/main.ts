@@ -27,6 +27,7 @@ import {
     handleManualPointSetting,
     handleManualPostRestrictionRemoval,
     handlePostRestrictionCheck,
+    handleUserRestrictionCheck,
     manualPostRestrictionRemovalHandler,
     manualSetPointsFormHandler,
 } from "./triggers/utils/mod-utilities.js";
@@ -118,6 +119,20 @@ Devvit.addMenuItem({
     label: "Check Posting Restriction",
     location: "post",
     onPress: handlePostRestrictionCheck,
+});
+
+Devvit.addMenuItem({
+    label: "Check User Restriction",
+    location: "comment",
+    forUserType: "moderator",
+    onPress: handleUserRestrictionCheck,
+});
+
+Devvit.addMenuItem({
+    label: "Check User Restriction",
+    location: "post",
+    forUserType: "moderator",
+    onPress: handleUserRestrictionCheck,
 });
 
 Devvit.addMenuItem({

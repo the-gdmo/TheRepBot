@@ -1,4 +1,9 @@
-import { Devvit, FormField } from "@devvit/public-api";
+import {
+    Context,
+    Devvit,
+    FormField,
+    MenuItemOnPressEvent,
+} from "@devvit/public-api";
 import {
     AppSetting,
     appSettings,
@@ -136,6 +141,13 @@ Devvit.addMenuItem({
 });
 
 Devvit.addMenuItem({
+    label: "[RepBot] - Pin Comment",
+    location: "comment",
+    forUserType: "moderator",
+    onPress: handleCommentPin,
+});
+
+Devvit.addMenuItem({
     label: "Set TheRepBot score manually",
     forUserType: "moderator",
     location: "comment",
@@ -148,6 +160,69 @@ export const customPostFormKey = Devvit.createForm(
     customPostForm,
     createCustomPostFormHandler
 );
+
+export async function handleCommentPin(
+    event: MenuItemOnPressEvent,
+    context: Context
+): Promise<void> {
+    if (event.location !== "comment" || !event.targetId) {
+        context.ui.showToast({
+            text: "Invalid comment target.",
+        });
+        return;
+    }
+
+    try {
+        const comment = await context.reddit.getCommentById(event.targetId);
+        if (!comment) {
+            context.ui.showToast({
+                text: "Comment not found.",
+            });
+            return;
+        }
+
+        const appUser = await context.reddit.getAppUser();
+
+        if (comment.authorName !== appUser.username) {
+            context.ui.showToast({
+                text: "Only comments created by u/therepbot can be pinned.",
+            });
+            logger.warn("❌ Attempted to pin non-bot comment", {
+                commentAuthor: comment.authorName,
+                botUsername: appUser.username,
+            });
+            return;
+        }
+
+        // 🔒 Must be a top-level comment (parent is the post)
+        if (!comment.parentId?.startsWith("t3_")) {
+            context.ui.showToast({
+                text: "Only top-level comments can be pinned.",
+            });
+            logger.error(`❌ Attempted to pin comment that isn't top-level`);
+            return;
+        }
+
+        await comment.distinguish(true);
+
+        context.ui.showToast({
+            text: "Comment pinned successfully",
+        });
+
+        logger.info("📌 Comment pinned", {
+            commentId: comment.id,
+        });
+    } catch (err) {
+        logger.error("❌ Failed to pin comment", {
+            commentId: event.targetId,
+            error: String(err),
+        });
+
+        context.ui.showToast({
+            text: "Failed to pin comment.",
+        });
+    }
+}
 
 Devvit.configure({
     redditAPI: true,

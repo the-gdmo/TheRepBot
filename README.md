@@ -58,6 +58,8 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you remove the app from your subreddit, it will delete all data and you will have to manually restore it to users. 
 
 ## Version History
+### 18.1.2
+* Make the repinning option notify the moderator if the comment they are trying to pin is already pinned
 ### 18.1.1
 * Make it so that comments by u/therepbot can be repinned if they are unpinned for whatever reason
 * This option will appear in the moderator actions of comments and will only work on top-level comments (ie must be in response to the post and not a comment)

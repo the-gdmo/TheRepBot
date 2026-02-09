@@ -203,6 +203,13 @@ export async function handleCommentPin(
             return;
         }
 
+        if (comment.isStickied()) {
+context.ui.showToast({
+                text: "This comment is already pinned.",
+            });
+            logger.error(`❌ Attempted to pin comment that is already stickied`);
+            return;
+        }
         await comment.distinguish(true);
 
         context.ui.showToast({

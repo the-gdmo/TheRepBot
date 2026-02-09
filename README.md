@@ -58,6 +58,8 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you remove the app from your subreddit, it will delete all data and you will have to manually restore it to users. 
 
 ## Version History
+### 18.1.3
+* Update to devvit 0.12.12
 ### 18.1.2
 * Make the repinning option notify the moderator if the comment they are trying to pin is already pinned
 ### 18.1.1

@@ -70,7 +70,6 @@ export enum AppSetting {
     AllowUnflairedPosts = "allowUnflairedPosts",
     UnflairedPostMessage = "unflairedPostMessage",
     OPOnlyDisallowedMessage = "opOnlyDisallowedMessage",
-    NotifyOnPointAlreadyAwarded = "notifyOnPointAlreadyAwarded",
     NotifyOnDuplicateAward = "notifyOnDuplicateAward",
     NotifyOnBotAward = "notifyOnBotAward",
     NotifyOnApprove = "notifyOnApprove",
@@ -87,7 +86,7 @@ export enum AppSetting {
     NotifyOnAlternateCommandFail = "notifyOnAlternateCommandFail",
     NotifyOnAlternateCommandSuccess = "notifyOnAlternateCommandSuccessMessage",
     NotifyOnPointAlreadyAwardedToUser = "notifyOnPointAlreadyAwardedToUser",
-    PointAlreadyAwardedToUserMessage = "notifyOnPointAlreadyAwardedToUserMessage",
+    PointAlreadyAwardedToUserMessage = "pointAlreadyAwardedToUserMessage",
     SubsequentPostRestrictionMessage = "subsequentPostRestrictionMessage",
     ModAwardCommandSuccess = "modAwardCommandSuccess",
     ModAwardCommandFail = "modAwardCommandFail",
@@ -104,6 +103,7 @@ export enum AppSetting {
     PostOfTheMonthFlairText = "postOfTheMonthFlairText",
     PostOfTheMonthFlairTemplate = "postOfTheMonthFlairTemplate",
     PostOfTheMonthFlairCSSClass = "postOfTheMonthFlairCSSClass",
+    PointAlreadyAwardedToUserViaAltCommandMessage = "pointAlreadyAwardedToUserViaAltCommandMessage",
 }
 
 export enum TemplateDefaults {
@@ -120,7 +120,7 @@ export enum TemplateDefaults {
     BotAwardMessage = "You can't award u/{{awardee}} {{name}}s.",
     NotifyOnSelfAwardTemplate = "Hello {{awarder}}, you cannot award a {{name}} to yourself.",
     NotifyOnSuccessTemplate = "+1 {{name}} awarded to u/{{awardee}} by u/{{awarder}}. Total: {{total}}{{symbol}}. {{awardee}}'s user page is located [here]({{awardeePage}}). Leaderboard is located [here]({{leaderboard}}).",
-    NotifyOnSuperuserTemplate = 'Hello {{awardee}},\n\nNow that you have reached {{threshold}} points you can now award points yourself, even if normal users do not have permission to. Please use the command "{{command}}" if you\'d like to do this.',
+    NotifyOnSuperuserTemplate = "Hello {{awardee}},\n\nNow that you have reached {{threshold}} points you can now award points yourself, even if normal users do not have permission to. Please use the command `{{command}}` if you'd like to do this.",
     MessageToRestrictedUsers = "***ATTENTION to OP: You must award {{name}}s by replying to the successful comments. Valid command(s) are **{{commands}}**. Failure to do so may result in a ban.***\n\n***Commenters MUST put the location in spoiler tags.***\n\n*To hide text, write it like this `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({{markdown_guide}})*.",
     AlternateCommandSuccessMessage = "+1 {{name}} awarded to u/{{awardee}} [{{total}}{{symbol}}]. {{awardee}}'s user page is located [here]({{awardeePage}}). Leaderboard is located [here]({{leaderboard}}).",
     AlternateCommandFailMessage = "You do not have permission to use **{{altCommand}}** on specific users.",
@@ -133,15 +133,10 @@ export enum TemplateDefaults {
     NoUsernameMentionMessage = "You must mention a user (eg u/{{awardee}}) to award specific users.",
     RestrictionLiftedMessage = "Your posting restriction has been removed. You now have permission to make a post again in r/{{subreddit}}!",
     PostAuthorAwardMessage = "OPs cannot be awarded points.",
+    PointAlreadyAwardedToUserViaAltCommandMessage = "{{awardee}} has already received a {{name}} for this post.",
 }
 
 export enum AutoSuperuserReplyOptions {
-    NoReply = "none",
-    ReplyByPM = "replybypm",
-    ReplyAsComment = "replybycomment",
-}
-
-export enum NotifyOnPointAlreadyAwardedReplyOptions {
     NoReply = "none",
     ReplyByPM = "replybypm",
     ReplyAsComment = "replybycomment",
@@ -242,21 +237,6 @@ export enum NotifyOnBotAwardReplyOptions {
     ReplyByPM = "replybypm",
     ReplyAsComment = "replybycomment",
 }
-
-const NotifyOnPointAlreadyAwardedReplyOptionChoices = [
-    {
-        label: "No Notification",
-        value: NotifyOnPointAlreadyAwardedReplyOptions.NoReply,
-    },
-    {
-        label: "Send user a private message",
-        value: NotifyOnPointAlreadyAwardedReplyOptions.ReplyByPM,
-    },
-    {
-        label: "Reply as comment",
-        value: NotifyOnPointAlreadyAwardedReplyOptions.ReplyAsComment,
-    },
-];
 
 export const NotifyOnPostAuthorAwardReplyOptionChoices = [
     {
@@ -679,19 +659,22 @@ export const appSettings: SettingsFormField[] = [
                 type: "string",
                 name: AppSetting.PostOfTheMonthFlairText,
                 label: "Flair text to use for the Post Of The Month",
-                helpText: "Optional. Must contain text for flair setting to work if Post Of The Month is enabled",
+                helpText:
+                    "Optional. Must contain text for flair setting to work if Post Of The Month is enabled",
             },
             {
                 type: "string",
                 name: AppSetting.PostOfTheMonthFlairTemplate,
                 label: "Flair template ID to use for the Post Of The Month",
-                helpText: "Optional. Please choose either a CSS class or flair template, not both",
+                helpText:
+                    "Optional. Please choose either a CSS class or flair template, not both",
             },
             {
                 type: "string",
                 name: AppSetting.PostOfTheMonthFlairCSSClass,
                 label: "CSS Class to use for the Post Of The Month",
-                helpText: "Optional. Please choose either a CSS class or flair template, not both",
+                helpText:
+                    "Optional. Please choose either a CSS class or flair template, not both",
             },
         ],
     },
@@ -720,6 +703,13 @@ export const appSettings: SettingsFormField[] = [
                 onValidate: noValidTriggerWords,
             },
             {
+                name: AppSetting.ThanksCommandUsesRegex,
+                type: "boolean",
+                label: "Treat user commands as regular expressions",
+                defaultValue: false,
+                onValidate: validateRegexes,
+            },
+            {
                 type: "boolean",
                 name: AppSetting.AllowUnflairedPosts,
                 label: "Allow awarding points on unflaired posts?",
@@ -742,12 +732,25 @@ export const appSettings: SettingsFormField[] = [
                 defaultValue: TemplateDefaults.UnflairedPostMessage,
                 onValidate: paragraphFieldContainsText,
             },
+            //todo
             {
-                name: AppSetting.ThanksCommandUsesRegex,
-                type: "boolean",
-                label: "Treat user commands as regular expressions",
-                defaultValue: false,
-                onValidate: validateRegexes,
+                name: AppSetting.NotifyOnPointAlreadyAwardedToUser,
+                type: "select",
+                label: "Notify on point already awarded to user",
+                helpText:
+                    "How to notify the user when they try to use the normal command on a user who has already received a point for that comment",
+                options: NotifyOnPointAlreadyAwardedToUserOptionChoices,
+                defaultValue: [PointAwardedReplyOptions.NoReply],
+                onValidate: selectFieldHasOptionChosen,
+            },
+            {
+                name: AppSetting.PointAlreadyAwardedToUserMessage,
+                type: "paragraph",
+                label: "Message to send users when they use the Normal Award Command, but the comment author has already received a point for the comment",
+                helpText:
+                    "Placeholders Supported: {{awarder}}, {{awardee}}, {{name}}",
+                defaultValue: TemplateDefaults.PointAlreadyAwardedToUserMessage,
+                onValidate: paragraphFieldContainsText,
             },
             {
                 name: AppSetting.NotifyOnPostAuthorAward,
@@ -946,24 +949,6 @@ export const appSettings: SettingsFormField[] = [
                 onValidate: paragraphFieldContainsText,
             },
             {
-                name: AppSetting.NotifyOnPointAlreadyAwardedToUser,
-                type: "select",
-                label: "Notify on point already awarded to user",
-                helpText:
-                    "How to notify the user when they try to use the alternate command on a user who has already received a point for that post",
-                options: NotifyOnPointAlreadyAwardedToUserOptionChoices,
-                defaultValue: [PointAwardedReplyOptions.NoReply],
-                onValidate: selectFieldHasOptionChosen,
-            },
-            {
-                name: AppSetting.PointAlreadyAwardedToUserMessage,
-                type: "paragraph",
-                label: "Message to send users when they use the Alternate Award Command, but the mentioned user has already received a point on the post",
-                helpText: "Placeholders Supported: {{awardee}}, {{name}}",
-                defaultValue: TemplateDefaults.PointAlreadyAwardedToUserMessage,
-                onValidate: paragraphFieldContainsText,
-            },
-            {
                 name: AppSetting.AlternatePointCommandUsers,
                 type: "paragraph",
                 label: "Alternate Award Command users",
@@ -994,22 +979,21 @@ export const appSettings: SettingsFormField[] = [
             {
                 name: AppSetting.NotifyOnAlternateCommandFail,
                 type: "select",
-                label: "Notify on alternate command fail",
+                label: "Notify on point already awarded to user",
                 helpText:
-                    "How to notify users when they use the alternate command and are not allowed to",
-                options: NotifyOnAlternateCommandFailReplyOptionChoices,
-                defaultValue: [
-                    NotifyOnAlternateCommandFailReplyOptions.ReplyByPM,
-                ],
+                    "How to notify the user when they try to use the alternate command on a user who has already received a point for that post",
+                options: NotifyOnPointAlreadyAwardedToUserOptionChoices,
+                defaultValue: [PointAwardedReplyOptions.NoReply],
                 onValidate: selectFieldHasOptionChosen,
             },
             {
-                name: AppSetting.AlternateCommandFailMessage,
+                name: AppSetting.PointAlreadyAwardedToUserViaAltCommandMessage,
                 type: "paragraph",
-                label: "Alternate Command Fail Message",
+                label: "Message to send users when they use the Alternate Award Command, but the mentioned user has already received a point on the post",
                 helpText:
-                    "Message to send users when they use the Alternate Award Command and are not allowed to. Placeholders Supported: {{altCommand}}, {{subreddit}}",
-                defaultValue: TemplateDefaults.AlternateCommandFailMessage,
+                    "Placeholders Supported: {{awarder}}, {{awardee}}, {{name}}",
+                defaultValue:
+                    TemplateDefaults.PointAlreadyAwardedToUserViaAltCommandMessage,
                 onValidate: paragraphFieldContainsText,
             },
             {

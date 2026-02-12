@@ -33,7 +33,6 @@ import {
     updateUserWiki,
 } from "../../../leaderboard.js";
 import { SafeWikiClient } from "../../../utility.js";
-import { updateAuthorRedis } from "./normal-user-action.js";
 
 export async function commentContainsModCommand(
     event: CommentSubmit | CommentUpdate,
@@ -83,12 +82,12 @@ export async function handleIgnoredContextIfNeeded(
             ? "alt text (``text``)"
             : "a spoiler block (`>!text!<`)";
 
-    const dmText = `Hey u/${event.author.name}, I noticed you used the command **${trigger}** inside ${contextLabel}.
+            
+    const initialTriggerInContextLabelNotification = `Hey u/${event.author.name}, I noticed you used the command **${trigger}** inside ${contextLabel}.\n\n`
+    const confirmInfo = `Edit [this comment](${event.comment.permalink}) with **CONFIRM** to suppress this warning in the future.\n\n`
+    const botInfo = `---\n\n^(I am a bot — contact the mods of ${event.subreddit.name})`;
 
-Reply with **CONFIRM** on [this comment](${event.comment.permalink}) to suppress this warning in the future.
-
----
-^(I am a bot — contact the mods of ${event.subreddit.name})`;
+    const dmText = initialTriggerInContextLabelNotification + confirmInfo + botInfo;
 
     await context.reddit.sendPrivateMessage({
         to: event.author.name,
@@ -310,8 +309,6 @@ export async function awardPointToUserModCommand(
     await handleAutoSuperuserPromotion(
         event,
         context,
-        event.comment.id,
-        awardee,
         newScore,
         modCommand
     );
@@ -406,10 +403,6 @@ export async function awardPointToUserModCommand(
             awardee,
             err,
         });
-    }
-
-    if (await restrictedKeyExists(context, awarder)) {
-        await updateAuthorRedis(event, user, context);
     }
 }
 

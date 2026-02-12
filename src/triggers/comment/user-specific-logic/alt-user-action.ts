@@ -17,6 +17,7 @@ import {
     AppSetting,
     AutoSuperuserReplyOptions,
     ExistingFlairOverwriteHandling,
+    NotifyOnAlternateCommandFailReplyOptions,
     TemplateDefaults,
 } from "../../../settings.js";
 import { getParentComment } from "../comment-trigger-context.js";
@@ -75,34 +76,31 @@ export async function handleAltUserAction(
 export async function commentContainsAltCommand(
     event: CommentSubmit | CommentUpdate,
     context: TriggerContext
-): Promise<boolean> {
+): Promise<boolean | undefined> {
     if (!event.comment) return false;
 
-    const body = event.comment.body ?? "";
+    try {
+        const body = event.comment.body ?? "";
 
-    // Fetch commands
-    const modCommand = await modCommandValue(context); // e.g., "!mod"
-    const userCommands = await userCommandValues(context); // e.g., ["!snipe", "!thanks"]
-
-    // Build regex for mod command: "!mod u/username"
-    const modRegex = new RegExp(
-        `${escapeForRegex(modCommand)}\\s+u/[a-z0-9_-]{3,21}`,
-        "i"
-    );
-
-    // Build regex for all user commands: "!snipe u/username"
-    const userRegexes = userCommands.map(
-        (cmd) => new RegExp(`${escapeForRegex(cmd)}\\s+u/[a-z0-9_-]{3,21}`, "i")
-    );
-
-    const isModAlt = modRegex.test(body);
-    const isUserAlt = userRegexes.some((regex) => regex.test(body));
-
-    const result = isModAlt || isUserAlt;
-
-    logger.debug("🧩 Alt command check", { body, isModAlt, isUserAlt, result });
-
-    return result;
+        // Fetch commands
+        const triggers = await getTriggers(context); // e.g., "!mod"
+        for (const trigger of triggers) {
+            const regex = new RegExp(`${trigger}\su\/([a-z0-9_-]+)`, "i");
+            if (regex.test(body)) {
+                logger.debug("🧩 Alt command check", {
+                    body,
+                    containsCommand: regex.test(body),
+                });
+                return true;
+            }
+            logger.info(`Comment doesn't contain alt command`);
+            return false;
+        }
+    } catch (err) {
+        logger.error(`How did we get here?`, {}, context);
+        return;
+    }
+    return;
 }
 
 async function detectAltTrigger(
@@ -110,13 +108,25 @@ async function detectAltTrigger(
     commentBody: string
 ): Promise<string | null> {
     const triggers = await getTriggers(context);
-    return triggers.find((t) => commentBody.includes(t)) ?? null;
+    let altTrigger: string | null;
+    for (const trigger of triggers) {
+        const regex = new RegExp(`${trigger}\su\/([a-z0-9_-]{3,21})`, "i");
+        if (regex.test(commentBody)) {
+            logger.info(`Trigger used`, { trigger });
+            return trigger;
+        }
+    }
+    logger.error(`No trigger found`);
+    return null;
 }
 
 function extractAltUsername(body: string, trigger: string): string | null {
     const match = body.match(
-        new RegExp(`${escapeForRegex(trigger)}\\s+u/([a-z0-9_-]{3,21})`, "i")
+        new RegExp(`${escapeForRegex(trigger)}\su/([a-z0-9_-]{3,21})`, "i")
     );
+    logger.info(`Extracted username`, {
+        match: match?.[1] ?? null,
+    });
     return match?.[1] ?? null;
 }
 
@@ -223,14 +233,7 @@ async function executeAltAward(
     );
 
     // Auto-superuser promotion
-    await handleAutoSuperuserPromotion(
-        event,
-        context,
-        event.comment!.id,
-        awardee,
-        newScore,
-        triggerUsed
-    );
+    await handleAutoSuperuserPromotion(event, context, newScore, triggerUsed);
 
     // ALT success notification
     await notifyAlternateCommandSuccess(
@@ -312,10 +315,11 @@ async function notifyAlternateCommandSuccess(
             text: message,
         });
     } else {
-        const alternateCommandSuccessMessage = await context.reddit.submitComment({
-            id: event.comment!.id,
-            text: message,
-        });
+        const alternateCommandSuccessMessage =
+            await context.reddit.submitComment({
+                id: event.comment!.id,
+                text: message,
+            });
         await alternateCommandSuccessMessage.distinguish();
     }
 }
@@ -326,19 +330,41 @@ async function notifyAltPermissionFailure(
     awarder: string,
     command: string
 ) {
-    if (!event.subreddit) return;
+    if (!event.subreddit || !event.comment) return;
     const settings = await context.settings.getAll();
+    const pointName = (settings[AppSetting.PointName] as string) ?? "point";
 
-    const message = formatMessage(
+    const notifyMode = (
+        settings[AppSetting.NotifyOnAlternateCommandFail] as string[]
+    )?.[0];
+
+    const failTemplate = formatMessage(
         (settings[AppSetting.AlternateCommandFailMessage] as string) ??
             TemplateDefaults.AlternateCommandFailMessage,
         {
             altCommand: command,
             subreddit: event.subreddit.name,
+            name: pointName,
         }
     );
 
-    await reply(context, event.comment!.id, message);
+    if (
+        notifyMode === NotifyOnAlternateCommandFailReplyOptions.ReplyAsComment
+    ) {
+        const failMessage = await context.reddit.submitComment({
+            id: event.comment.id,
+            text: failTemplate,
+        });
+        await failMessage.distinguish();
+    } else if (
+        notifyMode === NotifyOnAlternateCommandFailReplyOptions.ReplyByPM
+    ) {
+        await context.reddit.sendPrivateMessage({
+            to: awarder,
+            subject: `You do not have permission to award ${pointName}s in r/${event.subreddit.name}`,
+            text: failTemplate,
+        });
+    }
 }
 
 async function notifyMissingAltUsername(

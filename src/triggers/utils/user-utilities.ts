@@ -1,7 +1,11 @@
 import { SettingsValues, TriggerContext, User } from "@devvit/public-api";
-import { AppSetting, AutoSuperuserReplyOptions, TemplateDefaults } from "../../settings.js";
+import {
+    AppSetting,
+    AutoSuperuserReplyOptions,
+    TemplateDefaults,
+} from "../../settings.js";
 import { POINTS_STORE_KEY } from "../post-logic/redisKeys.js";
-import { formatMessage } from "./common-utilities.js";
+import { formatMessage, modCommandValue } from "./common-utilities.js";
 import { getParentComment } from "../comment/comment-trigger-context.js";
 import { CommentSubmit, CommentUpdate } from "@devvit/protos";
 import { logger } from "../../logger.js";
@@ -79,21 +83,29 @@ export async function getUserIsSuperuser(
 export async function handleAutoSuperuserPromotion(
     event: CommentSubmit | CommentUpdate,
     context: TriggerContext,
-    commentId: string,
-    username: string,
     newScore: number,
     commandUsed: string
 ) {
     const parentComment = await getParentComment(event, context);
-    if (!event.author || !parentComment) return;
+    if (!event.author || !parentComment || !event.subreddit) return;
     const settings = await context.settings.getAll();
-    const pointName = settings[AppSetting.PointName] as string ?? "point";
+    const pointName = (settings[AppSetting.PointName] as string) ?? "point";
     const awarder = event.author.name;
     const awardee = parentComment.authorName;
     const threshold =
         (settings[AppSetting.AutoSuperuserThreshold] as number) ?? 0;
 
     if (threshold <= 0 || newScore < threshold) return;
+
+    if (await context.redis.exists(`superUserHandled:${awardee}`)) {
+        logger.info(`User has already been notified they are a superuser`, {
+            awardee,
+            threshold,
+        });
+        return;
+    }
+
+    await context.redis.set(`superUserHandled:${awardee}`, "1");
 
     const notifyMode =
         (settings[AppSetting.NotifyOnAutoSuperuser] as string[])?.[0] ??
@@ -109,32 +121,32 @@ export async function handleAutoSuperuserPromotion(
             awarder,
             name: pointName,
             threshold: threshold.toString(),
-            command: commandUsed,
+            command: await modCommandValue(context),
         }
     );
 
     try {
-        if (notifyMode === AutoSuperuserReplyOptions.ReplyByPM) {
-            await context.reddit.sendPrivateMessage({
-                to: username,
-                subject: "You are now a trusted user",
-                text: superUserNotification,
-            });
-        } else {
-            const superUserNotificationMessage = await context.reddit.submitComment({
-                id: commentId,
-                text: superUserNotification,
-            });
-            await superUserNotificationMessage.distinguish();
-        }
+        // if (notifyMode === AutoSuperuserReplyOptions.ReplyByPM) {
+        await context.reddit.sendPrivateMessage({
+            to: awardee,
+            subject: `You are now a trusted user in r/${event.subreddit.name}`,
+            text: superUserNotification,
+        });
+        // } else if (notifyMode === AutoSuperuserReplyOptions.ReplyAsComment) {
+        //     const superUserNotificationMessage = await context.reddit.submitComment({
+        //         id: commentId,
+        //         text: superUserNotification,
+        //     });
+        //     await superUserNotificationMessage.distinguish();
+        // }
 
         logger.info("⭐ Auto-superuser notification sent", {
-            username,
+            awardee,
             newScore,
         });
     } catch (err) {
         logger.error("❌ Failed auto-superuser notification", {
-            username,
+            awardee,
             err,
         });
     }

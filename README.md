@@ -58,6 +58,10 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you remove the app from your subreddit, it will delete all data and you will have to manually restore it to users. 
 
 ## Version History
+### 19.0.0
+* Fix awarding logic so only one point can be given to a comment (previously would allow infinite awards)
+* Fix awarding logic for mod commands to work as intended
+* NOTE: ALTERNATE COMMANDS WILL NOT WORK. I AM NOT FIXING THEM AT THIS TIME.
 ### 18.1.3
 * Update to devvit 0.12.12
 ### 18.1.2

@@ -6,6 +6,7 @@ import {
 } from "../../utils/common-utilities.js";
 import {
     AppSetting,
+    NotifyOnPointAlreadyAwardedToUserReplyOptions,
     NotifyOnRestrictionLiftedReplyOptions,
     NotifyOnSuccessReplyOptions,
     TemplateDefaults,
@@ -24,6 +25,7 @@ import {
     updateUserWiki,
 } from "../../../leaderboard.js";
 import { SafeWikiClient } from "../../../utility.js";
+import { handleAutoSuperuserPromotion } from "../../utils/user-utilities.js";
 
 /**
  * Checks if a comment contains any user command keywords.
@@ -224,13 +226,14 @@ export async function updateAuthorRedis(
         );
 
         try {
-            logger.info(`Sending restriction lifted Toast to u/${user.username}`, {
-                preview: liftedMsg.slice(0, 1000),
-            });
-
-            await 
-
             logger.info(
+                `Sending restriction lifted Toast to u/${user.username}`,
+                {
+                    preview: liftedMsg.slice(0, 1000),
+                }
+            );
+
+            await logger.info(
                 `✅ Successfully sent restriction lifted Toast to u/${user.username}`
             );
         } catch (err) {
@@ -341,7 +344,7 @@ export async function executeUserCommand(
     const awarder = event.author.name;
     const recipient = parentComment.authorName;
     const settings = await context.settings.getAll();
-
+    const pointName = (settings[AppSetting.PointName] as string) ?? "point";
     let user: User | undefined;
 
     try {
@@ -370,13 +373,57 @@ export async function executeUserCommand(
             awarder,
         });
 
-        const userIsBlockedFromAwardingPointsMessage = await context.reddit.submitComment({
-            id: event.comment.id,
-            text: blockedMessage,
-        });
+        const userIsBlockedFromAwardingPointsMessage =
+            await context.reddit.submitComment({
+                id: event.comment.id,
+                text: blockedMessage,
+            });
         await userIsBlockedFromAwardingPointsMessage.distinguish();
         return;
     }
+
+    // 🛑 Duplicate award check
+    const key = `userAwardGiven:${parentComment.id}`;
+    const alreadyAwarded = await context.redis.exists(key);
+    if (alreadyAwarded) {
+        const alreadyAwardedTemplate = formatMessage(
+            (settings[AppSetting.PointAlreadyAwardedToUserMessage] as string) ??
+                TemplateDefaults.PointAlreadyAwardedToUserMessage,
+            { awarder, awardee: recipient, name: pointName }
+        );
+
+        const notifyMode = (
+            settings[AppSetting.NotifyOnPointAlreadyAwardedToUser] as string[]
+        )?.[0];
+
+        if (
+            notifyMode ===
+            NotifyOnPointAlreadyAwardedToUserReplyOptions.ReplyAsComment
+        ) {
+            const alreadyAwardedMessage = await context.reddit.submitComment({
+                id: event.comment.id,
+                text: alreadyAwardedTemplate,
+            });
+            await alreadyAwardedMessage.distinguish();
+        } else if (
+            notifyMode ===
+            NotifyOnPointAlreadyAwardedToUserReplyOptions.ReplyByPM
+        ) {
+            await context.reddit.sendPrivateMessage({
+                to: awarder,
+                subject: `[This comment](${parentComment.permalink}) has already received a ${pointName}`,
+                text: alreadyAwardedTemplate,
+            });
+        }
+
+        logger.info("⚠️ Point already awarded for this command", {
+            awarder,
+            recipient,
+        });
+        return;
+    }
+    logger.info(`Point not awarded yet for this command`);
+    await context.redis.set(key, "1");
 
     // 📘 Always update both user wiki pages on successful award
     try {
@@ -411,20 +458,11 @@ export async function executeUserCommand(
         });
     }
 
-    // 🛑 Duplicate award check
-    const alreadyAwarded = await pointAlreadyAwardedWithNormalCommand(
-        event,
-        context,
-        recipient
-    );
-    if (alreadyAwarded) {
-        logger.info("⚠️ Point already awarded for this command", {
-            awarder,
-            recipient,
-        });
-        return;
-    }
-
     // 🏆 Award point + side effects
     await awardPointToUserNormalCommand(event, context, awarder, recipient);
+
+    // Auto Superuser logic
+    const commandUsed = settings[AppSetting.PointTriggerWords] as string ?? "!award\n.award";
+    const currentScore = await context.redis.zScore(POINTS_STORE_KEY, recipient) as number ?? 0;
+    await handleAutoSuperuserPromotion(event, context, currentScore, commandUsed);
 }

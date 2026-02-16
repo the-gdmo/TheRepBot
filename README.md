@@ -58,6 +58,8 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you remove the app from your subreddit, it will delete all data and you will have to manually restore it to users. 
 
 ## Version History
+### 19.1.1
+* Improve phrasing on dms from the bot in regards to spoiler/alt/quote text messages
 ### 19.1.0
 * Make it so users will be dmed if they use spoiler, alt, or quote text
 * Inform users of how to stop future dms on this matter and who to contact if they have questions

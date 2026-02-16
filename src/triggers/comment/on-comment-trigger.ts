@@ -715,7 +715,7 @@ export async function handleIgnoredContextIfNeeded(
             : "a spoiler block (`>!text!<`)";
 
     const initialTriggerInContextLabelNotification = `Hey u/${event.author.name}, I noticed you used the command **${trigger}** inside ${contextLabel}.\n\n`;
-    const confirmInfo = `Edit [this comment](${event.comment.permalink}) with **CONFIRM** to suppress this warning in the future.\n\n`;
+    const confirmInfo = `Edit [this comment](${event.comment.permalink}) with **CONFIRM** if you intended to use the command this way and don't wish to be warned about this in the future.\n\n`;
     const botInfo = `---\n\n^(I am a bot — contact the mods of [r/${event.subreddit.name}](https://reddit.com/r/${event.subreddit.name}) with any questions or [r/TheRepBot](https://www.reddit.com/message/compose?to=r/TheRepBot) to talk directly with [my developer](https://reddit.com/u/ryry50583583))`;
 
     const dmText =

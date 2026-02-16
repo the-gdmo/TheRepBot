@@ -104,6 +104,7 @@ export enum AppSetting {
     PostOfTheMonthFlairTemplate = "postOfTheMonthFlairTemplate",
     PostOfTheMonthFlairCSSClass = "postOfTheMonthFlairCSSClass",
     PointAlreadyAwardedToUserViaAltCommandMessage = "pointAlreadyAwardedToUserViaAltCommandMessage",
+    NotifyOnBlockedUser = "notifyOnBlockedUser",
 }
 
 export enum TemplateDefaults {
@@ -113,7 +114,7 @@ export enum TemplateDefaults {
     OPOnlyDisallowedMessage = "Only moderators, approved users, and Post Authors (OPs) can award {{name}}s.",
     LeaderboardHelpPageMessage = "[How to award points with RepBot.]({{helpPage}})",
     DisallowedFlairMessage = "Points cannot be awarded on posts with this flair. Please choose another post.",
-    UsersWhoCannotAwardPointsMessage = "You do not have permission to award {{name}}s.",
+    UsersWhoCannotAwardPointsMessage = "Hello u/{{awarder}}, you do not have permission to award {{name}}s in r/{{subreddit}}.",
     ModOnlyDisallowedMessage = "Only moderators are allowed to award points.",
     ApprovedOnlyDisallowedMessage = "Only moderators and approved users can award points.",
     SelfAwardMessage = "You can't award yourself a {{name}}.",
@@ -226,6 +227,12 @@ export enum NotifyOnSelfAwardReplyOptions {
     ReplyAsComment = "replybycomment",
 }
 
+export enum NotifyOnBlockedUserReplyOptions {
+    NoReply = "none",
+    ReplyByPM = "replybypm",
+    ReplyAsComment = "replybycomment",
+}
+
 export enum NotifyUsersWhoCannotAwardPointsReplyOptions {
     NoReply = "none",
     ReplyByPM = "replybypm",
@@ -237,6 +244,21 @@ export enum NotifyOnBotAwardReplyOptions {
     ReplyByPM = "replybypm",
     ReplyAsComment = "replybycomment",
 }
+
+export const NotifyOnBlockedUserReplyOptionChoices = [
+{
+        label: "No Notification",
+        value: NotifyOnBlockedUserReplyOptions.NoReply,
+    },
+    {
+        label: "Send user a private message",
+        value: NotifyOnBlockedUserReplyOptions.ReplyByPM,
+    },
+    {
+        label: "Reply as comment",
+        value: NotifyOnBlockedUserReplyOptions.ReplyAsComment,
+    },
+];
 
 export const NotifyOnPostAuthorAwardReplyOptionChoices = [
     {
@@ -1126,6 +1148,14 @@ export const appSettings: SettingsFormField[] = [
                 label: "Users Who Cannot Award Points",
                 helpText:
                     "List of usernames who cannot award points, even if they are mods or approved users. Each username should be on a new line",
+            },
+            {
+                type: "select",
+                name: AppSetting.NotifyOnBlockedUser,
+                label: "How to notify users when they are blocked from awarding points",
+                options: NotifyOnAltUserDisallowedReplyOptionChoices,
+                defaultValue: [NotifyOnBlockedUserReplyOptions.NoReply],
+                onValidate: selectFieldHasOptionChosen,
             },
             {
                 type: "paragraph",

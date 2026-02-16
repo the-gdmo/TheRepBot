@@ -179,7 +179,7 @@ export function getIgnoredContextType(
 ): "quote" | "alt" | "spoiler" | undefined {
     const quoteBlock = `> .*${command}.*`;
     const altText = `\`.*${command}.*\``;
-    const spoilerText = `>!.*${command}.*!<`;
+    const spoilerText = `>!${command}.*!<`;
 
     const patterns: { type: "quote" | "alt" | "spoiler"; regex: RegExp }[] = [
         { type: "quote", regex: new RegExp(`${quoteBlock}`, "i") },

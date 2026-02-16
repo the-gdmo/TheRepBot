@@ -59,56 +59,6 @@ export async function commentContainsModCommand(
     return isModCommand;
 }
 
-export async function handleIgnoredContextIfNeeded(
-    event: CommentSubmit | CommentUpdate,
-    context: TriggerContext,
-    trigger: string
-): Promise<boolean> {
-    if (!event.comment || !event.author || !event.subreddit) return false;
-
-    const body = (event.comment.body ?? "").toLowerCase();
-    const ignoredType = getIgnoredContextType(body, trigger);
-    if (!ignoredType) return false;
-
-    const ignoreKey = `ignoreDM:${event.author.name.toLowerCase()}:${ignoredType}`;
-    const confirmed = await context.redis.exists(ignoreKey);
-
-    if (confirmed) return true;
-
-    const contextLabel =
-        ignoredType === "quote"
-            ? "a quote block (`> text`)"
-            : ignoredType === "alt"
-            ? "alt text (``text``)"
-            : "a spoiler block (`>!text!<`)";
-
-            
-    const initialTriggerInContextLabelNotification = `Hey u/${event.author.name}, I noticed you used the command **${trigger}** inside ${contextLabel}.\n\n`
-    const confirmInfo = `Edit [this comment](${event.comment.permalink}) with **CONFIRM** to suppress this warning in the future.\n\n`
-    const botInfo = `---\n\n^(I am a bot — contact the mods of ${event.subreddit.name})`;
-
-    const dmText = initialTriggerInContextLabelNotification + confirmInfo + botInfo;
-
-    await context.reddit.sendPrivateMessage({
-        to: event.author.name,
-        subject: `Your ${trigger} command was ignored`,
-        text: dmText,
-    });
-
-    await context.redis.set(
-        `pendingConfirm:${event.author.name.toLowerCase()}`,
-        ignoredType
-    );
-
-    logger.info("⚠️ Mod command ignored due to context", {
-        user: event.author.name,
-        trigger,
-        ignoredType,
-    });
-
-    return true;
-}
-
 export async function isSelfAwardModCommand(
     event: CommentSubmit | CommentUpdate,
     context: TriggerContext
@@ -306,12 +256,7 @@ export async function awardPointToUserModCommand(
 
     // ⭐ Auto-superuser logic
     const modCommand = (settings[AppSetting.ModAwardCommand] as string) ?? "";
-    await handleAutoSuperuserPromotion(
-        event,
-        context,
-        newScore,
-        modCommand
-    );
+    await handleAutoSuperuserPromotion(event, context, newScore, modCommand);
 
     // 📣 Notify on success
     const notifyMode =
@@ -428,7 +373,7 @@ export async function executeModCommand(
     for (const trigger of triggers) {
         if (!new RegExp(escapeForRegex(trigger), "i").test(body)) continue;
 
-        if (await handleIgnoredContextIfNeeded(event, context, trigger)) return;
+        // if (await handleModIgnoredContextIfNeeded(event, context, trigger)) return;
 
         await handleUnauthorizedModCommand(event, context, trigger);
 

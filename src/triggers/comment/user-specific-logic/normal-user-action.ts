@@ -1,13 +1,17 @@
 import { TriggerContext, User } from "@devvit/public-api";
 import {
     formatMessage,
+    getIgnoredContextType,
+    getTriggers,
     updateAwardeeFlair,
     userCommandValues,
 } from "../../utils/common-utilities.js";
 import {
     AppSetting,
+    NotifyOnBlockedUserReplyOptions,
     NotifyOnPointAlreadyAwardedToUserReplyOptions,
     NotifyOnRestrictionLiftedReplyOptions,
+    NotifyOnSelfAwardReplyOptions,
     NotifyOnSuccessReplyOptions,
     TemplateDefaults,
 } from "../../../settings.js";
@@ -341,6 +345,7 @@ export async function executeUserCommand(
         return;
     }
 
+    const commentBody = event.comment.body;
     const awarder = event.author.name;
     const recipient = parentComment.authorName;
     const settings = await context.settings.getAll();
@@ -355,6 +360,21 @@ export async function executeUserCommand(
 
     if (!user) return;
 
+    const triggers = await getTriggers(context);
+
+    const triggerUsed = triggers.find((t) =>
+        commentBody.includes(t.toLowerCase())
+    );
+    if (!triggerUsed) return;
+
+    // if (await handleIgnoredContextIfNeeded(event, context, triggerUsed)) {
+    //     logger.info("🚫 Command ignored due to ignored context", {
+    //         awarder,
+    //         triggerUsed,
+    //     });
+    //     return;
+    // }
+
     // 🚫 Blocked users
     const blockedUsers = (
         (settings[AppSetting.UsersWhoCannotAwardPoints] as string) ?? ""
@@ -367,18 +387,70 @@ export async function executeUserCommand(
         const blockedTemplate =
             (settings[AppSetting.UsersWhoCannotAwardPointsMessage] as string) ??
             TemplateDefaults.UsersWhoCannotAwardPointsMessage;
+        const notifyBlockedUserMode = (
+            settings[AppSetting.NotifyOnBlockedUser] as string[]
+        )?.[0];
 
         const blockedMessage = formatMessage(blockedTemplate, {
             name: (settings[AppSetting.PointName] as string) ?? "point",
             awarder,
+            subreddit: event.subreddit.name,
         });
 
-        const userIsBlockedFromAwardingPointsMessage =
-            await context.reddit.submitComment({
-                id: event.comment.id,
+        if (
+            notifyBlockedUserMode ===
+            NotifyOnBlockedUserReplyOptions.ReplyAsComment
+        ) {
+            const userIsBlockedFromAwardingPointsMessage =
+                await context.reddit.submitComment({
+                    id: event.comment.id,
+                    text: blockedMessage,
+                });
+            await userIsBlockedFromAwardingPointsMessage.distinguish();
+        } else if (
+            notifyBlockedUserMode === NotifyOnBlockedUserReplyOptions.ReplyByPM
+        ) {
+            await context.reddit.sendPrivateMessage({
+                to: awarder,
                 text: blockedMessage,
+                subject: `You do not have permission to award ${pointName}s in r/${event.subreddit.name}`,
             });
-        await userIsBlockedFromAwardingPointsMessage.distinguish();
+        }
+
+        return;
+    }
+
+    // 🛑 Self award check
+    if (awarder === recipient) {
+        const selfAwardTemplate = formatMessage(
+            (settings[AppSetting.SelfAwardMessage] as string) ??
+                TemplateDefaults.SelfAwardMessage,
+            { awarder, name: pointName }
+        );
+        const notifyNormalSelfAwardMode = (
+            settings[AppSetting.NotifyOnSelfAward] as string[]
+        )?.[0];
+
+        if (
+            notifyNormalSelfAwardMode ===
+            NotifyOnSelfAwardReplyOptions.ReplyAsComment
+        ) {
+            const selfAwardComment = await context.reddit.submitComment({
+                id: event.comment.id,
+                text: selfAwardTemplate,
+            });
+            selfAwardComment.distinguish();
+        } else if (
+            notifyNormalSelfAwardMode ===
+            NotifyOnSelfAwardReplyOptions.ReplyByPM
+        ) {
+            await context.reddit.sendPrivateMessage({
+                to: awarder,
+                text: selfAwardTemplate,
+                subject: `You tried to award yourself a ${pointName}`,
+            });
+        }
+
         return;
     }
 
@@ -462,7 +534,15 @@ export async function executeUserCommand(
     await awardPointToUserNormalCommand(event, context, awarder, recipient);
 
     // Auto Superuser logic
-    const commandUsed = settings[AppSetting.PointTriggerWords] as string ?? "!award\n.award";
-    const currentScore = await context.redis.zScore(POINTS_STORE_KEY, recipient) as number ?? 0;
-    await handleAutoSuperuserPromotion(event, context, currentScore, commandUsed);
+    const commandUsed =
+        (settings[AppSetting.PointTriggerWords] as string) ?? "!award\n.award";
+    const currentScore =
+        ((await context.redis.zScore(POINTS_STORE_KEY, recipient)) as number) ??
+        0;
+    await handleAutoSuperuserPromotion(
+        event,
+        context,
+        currentScore,
+        commandUsed
+    );
 }

@@ -21,13 +21,13 @@ import {
     AppSetting,
     NotifyOnDisallowedFlairReplyOptions,
     NotifyOnModAwardFailReplyOptions,
-    NotifyOnRestrictionLiftedReplyOptions,
     NotifyOnSelfAwardReplyOptions,
     NotifyOnUnflairedPostReplyOptions,
     TemplateDefaults,
 } from "../../settings.js";
 import {
     formatMessage,
+    getIgnoredContextType,
     getTriggers,
     modCommandValue,
 } from "../utils/common-utilities.js";
@@ -71,6 +71,9 @@ export async function handleThanksEvent(
         logger.debug("❌ No valid award command found.");
         return;
     }
+
+    if (await handleIgnoredContextIfNeeded(event, devvitContext, triggerUsed))
+        return;
 
     await unflairedPostLogic(event, devvitContext, awarder, settings);
 
@@ -189,7 +192,9 @@ export async function handleThanksEvent(
     // Alt command logic (with user or mod command)
     // ─────────────────────────────────────────────
     if (containsAlt && (containsUser || containsMod) && !isAltUser) {
-        logger.error(`User tried to execute alt command and is not an alt user`);
+        logger.error(
+            `User tried to execute alt command and is not an alt user`
+        );
         return;
     }
     if (containsAlt && (containsUser || containsMod)) {
@@ -684,4 +689,54 @@ export async function recipientIsBot(
         logger.debug("❌ Bot cannot award itself points");
         return;
     }
+}
+
+export async function handleIgnoredContextIfNeeded(
+    event: CommentSubmit | CommentUpdate,
+    context: TriggerContext,
+    trigger: string
+): Promise<boolean> {
+    if (!event.comment || !event.author || !event.subreddit) return false;
+
+    const body = (event.comment.body ?? "").toLowerCase();
+    const ignoredType = getIgnoredContextType(body, trigger);
+    if (!ignoredType) return false;
+
+    const ignoreKey = `normalCommandIgnoreDM:${event.author.name.toLowerCase()}:${ignoredType}`;
+    const confirmed = await context.redis.exists(ignoreKey);
+
+    if (confirmed) return true;
+
+    const contextLabel =
+        ignoredType === "quote"
+            ? "a quote block (`> text`)"
+            : ignoredType === "alt"
+            ? "`alt text` (text surrounded by backticks (`))"
+            : "a spoiler block (`>!text!<`)";
+
+    const initialTriggerInContextLabelNotification = `Hey u/${event.author.name}, I noticed you used the command **${trigger}** inside ${contextLabel}.\n\n`;
+    const confirmInfo = `Edit [this comment](${event.comment.permalink}) with **CONFIRM** to suppress this warning in the future.\n\n`;
+    const botInfo = `---\n\n^(I am a bot — contact the mods of [r/${event.subreddit.name}](https://reddit.com/r/${event.subreddit.name}) with any questions or [r/TheRepBot](https://www.reddit.com/message/compose?to=r/TheRepBot) to talk directly with [my developer](https://reddit.com/u/ryry50583583))`;
+
+    const dmText =
+        initialTriggerInContextLabelNotification + confirmInfo + botInfo;
+
+    await context.reddit.sendPrivateMessage({
+        to: event.author.name,
+        subject: `Your ${trigger} command was ignored`,
+        text: dmText,
+    });
+
+    await context.redis.set(
+        `pendingConfirm:${event.author.name.toLowerCase()}`,
+        ignoredType
+    );
+
+    logger.info("⚠️ Normal command ignored due to context", {
+        user: event.author.name,
+        trigger,
+        ignoredType,
+    });
+
+    return true;
 }

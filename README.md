@@ -58,6 +58,8 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you remove the app from your subreddit, it will delete all data and you will have to manually restore it to users. 
 
 ## Version History
+### 19.2.0
+* Fix dming logic (previous would infinitely loop even if you confirmed your intent)
 ### 19.1.1
 * Improve phrasing on dms from the bot in regards to spoiler/alt/quote text messages
 ### 19.1.0

@@ -176,10 +176,10 @@ export function commandUsedInIgnoredContext(
 export function getIgnoredContextType(
     commentBody: string,
     command: string
-): "quote" | "alt" | "spoiler" | undefined {
+): "quote" | "alt" | "spoiler" | "code_block" | undefined {
     const quoteBlock = `> .*${command}.*`;
     const altText = `\`.*${command}.*\``;
-    const spoilerText = `>!${command}.*!<`;
+    const spoilerText = `>!.*${command}.*!<`;
 
     const patterns: { type: "quote" | "alt" | "spoiler"; regex: RegExp }[] = [
         { type: "quote", regex: new RegExp(`${quoteBlock}`, "i") },
@@ -215,11 +215,13 @@ export async function checkIgnoredContext(
                 if (!alreadyConfirmed) {
                     const contextLabel =
                         ignoredText === "quote"
-                            ? "a quote block (`> this`)"
+                            ? "a quote block (`> text`)"
                             : ignoredText === "alt"
-                            ? "alt text (``this``)"
+                            ? "alt text (`text`)"
                             : ignoredText === "spoiler"
-                            ? "a spoiler block (`>!this!<`)"
+                            ? "a spoiler block (`>!text!<`)"
+                            : ignoredText === "code_block"
+                            ? "a code block (```text```)"
                             : undefined;
 
                     const dmText = `Hey u/${event.author.name}, I noticed you used the command **${trigger}** inside ${contextLabel}.

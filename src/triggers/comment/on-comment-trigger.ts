@@ -72,8 +72,26 @@ export async function handleThanksEvent(
         return;
     }
 
-    if (await handleIgnoredContextIfNeeded(event, devvitContext, triggerUsed))
-        return;
+    const ignoredType = getIgnoredContextType(event.comment.body, triggerUsed);
+
+    const IgnoredContextNeedsHandling = await ignoredContextNeedsHandling(
+        event,
+        devvitContext,
+        triggerUsed
+    );
+    if (ignoredType) {
+        logger.info(`ignoredType exists in comment`, { ignoredType });
+        if (IgnoredContextNeedsHandling) {
+            logger.info(`Running handleIgnoredContext()`, {
+                IgnoredContextNeedsHandling,
+            });
+            await handleIgnoredContext(event, devvitContext, triggerUsed);
+            return;
+        } else {
+            logger.info(`Ignored context doesn't need handling`);
+            return;
+        }
+    }
 
     await unflairedPostLogic(event, devvitContext, awarder, settings);
 
@@ -335,9 +353,8 @@ export async function flairTextNotAllowedLogic(
 
     if (!event.post.linkFlair || !postFlairText) {
         logger.error(
-            `linkFlair doesn't exist`,
-            { linkFlair: event.post.linkFlair },
-            context
+            `User attempted to award points on unflaired posts, but it's not allowed`,
+            { linkFlair: event.post.linkFlair }
         );
         return;
     }
@@ -691,21 +708,21 @@ export async function recipientIsBot(
     }
 }
 
-export async function handleIgnoredContextIfNeeded(
+export async function handleIgnoredContext(
     event: CommentSubmit | CommentUpdate,
     context: TriggerContext,
     trigger: string
-): Promise<boolean> {
-    if (!event.comment || !event.author || !event.subreddit) return false;
+): Promise<void> {
+    if (!event.comment || !event.author || !event.subreddit) return;
 
     const body = (event.comment.body ?? "").toLowerCase();
     const ignoredType = getIgnoredContextType(body, trigger);
-    if (!ignoredType) return false;
+    if (!ignoredType) return;
 
     const ignoreKey = `normalCommandIgnoreDM:${event.author.name.toLowerCase()}:${ignoredType}`;
-    const confirmed = await context.redis.exists(ignoreKey);
+    const alreadyConfirmed = await context.redis.exists(ignoreKey);
 
-    if (confirmed) return true;
+    if (alreadyConfirmed) return;
 
     const contextLabel =
         ignoredType === "quote"
@@ -738,5 +755,24 @@ export async function handleIgnoredContextIfNeeded(
         ignoredType,
     });
 
-    return true;
+    return;
+}
+
+export async function ignoredContextNeedsHandling(
+    event: CommentSubmit | CommentUpdate,
+    context: TriggerContext,
+    trigger: string
+): Promise<boolean> {
+    if (!event.comment || !event.author || !event.subreddit) return false;
+
+    const body = (event.comment.body ?? "").toLowerCase();
+    const ignoredType = getIgnoredContextType(body, trigger);
+    if (!ignoredType) return false;
+
+    const ignoreKey = `normalCommandIgnoreDM:${event.author.name.toLowerCase()}:${ignoredType}`;
+    const alreadyConfirmed = await context.redis.exists(ignoreKey);
+
+    if (alreadyConfirmed) return true;
+    
+    return false;
 }

@@ -1,0 +1,16 @@
+{
+    "name": "therepbot",
+    "blocks": {
+        "entry": "src/main.ts",
+        "triggers": [
+            "onPostSubmit",
+            "onCommentCreate",
+            "onCommentUpdate",
+            "onAppInstall",
+            "onAppUpgrade"
+        ]
+    },
+    "media": {
+        "dir": "assets/"
+    }
+}

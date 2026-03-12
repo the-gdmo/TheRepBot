@@ -36,6 +36,11 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         return;
     }
 
+    if (author.username === (await context.reddit.getAppUser()).username) {
+        logger.info("🤖 Post submitted by RepBot, skipping post restriction");
+        return;
+    }
+
     // ─────────────────────────────────────────────────────────
     // Moderator exemption
     // ─────────────────────────────────────────────────────────
@@ -109,10 +114,11 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         if (discordLink) msg = msg.replace(/{{discord}}/g, discordLink);
 
         // Post restriction comment
-        const subsequentPostRestrictionMessage = await context.reddit.submitComment({
-            id: event.post.id,
-            text: msg,
-        });
+        const subsequentPostRestrictionMessage =
+            await context.reddit.submitComment({
+                id: event.post.id,
+                text: msg,
+            });
 
         await subsequentPostRestrictionMessage.distinguish(true);
         await context.reddit.remove(event.post.id, false);

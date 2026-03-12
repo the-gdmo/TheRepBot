@@ -13,6 +13,7 @@ import { customPostFormKey } from "../main.js";
 import { previewPost } from "./preview.js";
 import { AppSetting } from "../settings.js";
 import pluralize from "pluralize";
+import { logger } from "../logger.js";
 
 function capitalize(word: string): string {
     return word.charAt(0).toUpperCase() + word.slice(1);
@@ -109,15 +110,6 @@ export async function createCustomPostFormHandler(
 ) {
     const redisKey = "customPostData";
 
-    if (event.values.removeExisting) {
-        const customPostData = await context.redis.get(redisKey);
-        if (customPostData) {
-            const data = JSON.parse(customPostData) as CustomPostData;
-            const post = await context.reddit.getPostById(data.postId);
-            await post.remove();
-        }
-    }
-
     let postTitle = event.values.postTitle as string | undefined;
     postTitle ??= "TheRepBot High Scores";
 
@@ -135,6 +127,24 @@ export async function createCustomPostFormHandler(
         postId: post.id,
         numberOfUsers: (event.values.numberOfUsers as number | undefined) ?? 20,
     };
+
+    if (newData.numberOfUsers > 20) {
+        context.ui.showToast({
+            text: "Users to include must be 20 or less",
+            appearance: "neutral",
+        });
+        return;
+    }
+
+    if (event.values.removeExisting) {
+        const customPostData = await context.redis.get(redisKey);
+        if (customPostData) {
+            const data = JSON.parse(customPostData) as CustomPostData;
+            const post = await context.reddit.getPostById(data.postId);
+            await post.remove();
+        }
+        logger.info("🗑️ Removed existing leaderboard post");
+    }
 
     await context.redis.set(redisKey, JSON.stringify(newData));
 

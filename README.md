@@ -53,8 +53,6 @@ If the application is removed from a subreddit, all data is deleted although the
 
 ## About
 
-This app is being refactored. New code will be posted at https://github.com/the-gdmo/TheRepBot_v2.
-
 This app is open source and licensed under the BSD 3-Clause License. You can find the source code on GitHub [here](https://github.com/the-gdmo/TheRepBot).
 
 NOTE: If you remove the app from your subreddit, it will delete all data and you will have to manually restore it to users. 

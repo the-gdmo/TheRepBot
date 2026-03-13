@@ -4,7 +4,7 @@
         "entry": "src/main.tsx",
         "triggers": [
             "onPostSubmit",
-            "onCommentCreate",
+            "onCommentSubmit",
             "onCommentUpdate",
             "onAppInstall",
             "onAppUpgrade"

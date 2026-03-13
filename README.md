@@ -61,7 +61,7 @@ NOTE: If you remove the app from your subreddit, it will delete all data and you
 
 ## Version History
 ### 23.0.0
-* Make all commenting logic work (both create and update)
+* Fix trigger calls so that new comments will be registered by thanks event
 ### 22.1.0
 * Make it so mods can only make the leaderboard post if the users displayed is 20 or less
 * Make sure that RepBot can't be restricted by new leaderboard posts regardless of whether or not mods are exempt from awarding

@@ -40,6 +40,7 @@ import { addPostOfTheMonthFlair } from "./postOfTheMonth.js";
 
 Devvit.addSettings(appSettings);
 
+// Figure out why this doesn't work because of having "events" instead of "event"
 Devvit.addTrigger({
     events: ["CommentSubmit", "CommentUpdate"],
     onEvent: handleThanksEvent,

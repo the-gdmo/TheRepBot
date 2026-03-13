@@ -12,7 +12,6 @@ import { onAppFirstInstall, onAppInstallOrUpgrade } from "./installEvents.js";
 import { updateLeaderboard } from "./leaderboard.js";
 import { cleanupDeletedAccounts } from "./cleanupTasks.js";
 import {
-    leaderboardCustomPost,
     createCustomPostMenuHandler,
     customPostForm,
     createCustomPostFormHandler,
@@ -148,8 +147,6 @@ Devvit.addMenuItem({
     location: "comment",
     onPress: handleManualPointSetting,
 });
-
-Devvit.addCustomPostType(leaderboardCustomPost);
 
 export const customPostFormKey = Devvit.createForm(
     customPostForm,

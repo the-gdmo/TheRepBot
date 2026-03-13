@@ -12,5 +12,14 @@
     },
     "media": {
         "dir": "assets/"
+    },
+    "post": {
+        "dir": "src/customPost/",
+        "entrypoints": {
+            "default": {
+                "entry": "index.tsx",
+                "height": "tall"
+            }
+        }
     }
 }

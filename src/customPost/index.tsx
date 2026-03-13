@@ -14,6 +14,7 @@ import { previewPost } from "./preview.js";
 import { AppSetting } from "../settings.js";
 import pluralize from "pluralize";
 import { logger } from "../logger.js";
+import { reddit } from '@devvit/web/server';
 
 function capitalize(word: string): string {
     return word.charAt(0).toUpperCase() + word.slice(1);
@@ -117,10 +118,9 @@ export async function createCustomPostFormHandler(
         context.subredditName ??
         (await context.reddit.getCurrentSubredditName());
 
-    const post = await context.reddit.submitPost({
+    const post = await reddit.submitCustomPost({
         subredditName,
         title: postTitle,
-        preview: previewPost,
     });
 
     const newData: CustomPostData = {

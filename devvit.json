@@ -1,7 +1,22 @@
 {
+    "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
     "name": "therepbot",
+    "post": {
+        "dir": "dist/client",
+        "entrypoints": {
+            "default": {
+                "inline": true,
+                "entry": "leaderboard.html",
+                "height": "tall"
+            }
+        }
+    },
+    "server": {
+        "dir": "dist/server",
+        "entry": "index.cjs"
+    },
     "blocks": {
-        "entry": "src/main.tsx",
+        "entry": "src/blocks/main.ts",
         "triggers": [
             "onPostSubmit",
             "onCommentSubmit",
@@ -11,15 +26,20 @@
         ]
     },
     "media": {
-        "dir": "assets/"
+        "dir": "assets"
     },
-    "post": {
-        "dir": "src/customPost/",
-        "entrypoints": {
-            "default": {
-                "entry": "index.tsx",
-                "height": "tall"
+    "menu": {
+        "items": [
+            {
+                "label": "Submit Leaderboard Post",
+                "description": "TheRepBot",
+                "forUserType": "moderator",
+                "location": "subreddit",
+                "endpoint": "/internal/menu/create-post"
             }
-        }
+        ]
+    },
+    "forms": {
+        "post-create-form": "/internal/form/create-post"
     }
 }

@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "../dist/types/blocks",
+    "tsBuildInfoFile": "../dist/types/blocks/tsconfig.tsbuildinfo",
+    "customConditions": [],
+    "types": ["node"],
+    "exactOptionalPropertyTypes": false,
+    "rootDir": "../src/blocks",
+    "esModuleInterop": true
+  },
+  "include": ["../src/blocks/**/*"],
+  "exclude": [],
+  "references": [
+    {
+      "path": "./tsconfig.shared.json"
+    }
+  ]
+}

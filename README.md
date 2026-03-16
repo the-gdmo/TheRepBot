@@ -58,8 +58,10 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you remove the app from your subreddit, it will delete all data and you will have to manually restore it to users. 
 
 ## Version History
+### 24.0.0
+* Massive refactoring of code and custom post to work with Devvit Web with help from u/Beach-Brews
 ### 23.0.0
-* Fix trigger calls so that new comments will be registered by thanks event
+* Fix trigger calls so that new comments will be registered by thanks event (doesn't work correctly USE 24.0.0 or later)
 ### 22.1.0
 * Make it so mods can only make the leaderboard post if the users displayed is 20 or less
 * Make sure that RepBot can't be restricted by new leaderboard posts regardless of whether or not mods are exempt from awarding

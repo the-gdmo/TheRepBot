@@ -24,12 +24,13 @@ I recommend testing settings out on a test subreddit before deploying to a real 
 * `{{requirement}}`: The amount of points required before a posting restriction is lifted.
 * `{{name}}`: The name of points. Specified in 'Point Name'.
 * `{{permalink}}`: Link to the most recent valid post by the poster.
+* `{{title}}`: The title of the most recent valid post by the poster.
 * `{{symbol}}`: The symbol associated with your subreddit installation. Specified in 'Point Symbol'.
 * `{{awardee}}`: The user being awarded. Will not contain 'u/'.
+* `{{awarder}}`: The user giving the award. Will not contain 'u/'.
 * `{{total}}`: The total amount of points a user has.
 * `{{helpPage}}`: Link to a page explaining how to use the bot. Uses the Old Reddit version of this page.
 * `{{leaderboard}}`: Link to a page of the subreddit's leaderboard. Uses the Old Reddit version of this page.
-* `{{awarder}}`: The user giving the award. Will not contain 'u/'.
 * `{{threshold}}`: Threshold to become a superuser. Specified in 'Auto Superuser Threshold'.
 * `{{command}}`: Notifies the user who has reached the threshold of a special command they can use. Specified in 'Superuser/Mod award command'.
 * `{{commands}}`: Lists all valid non-superuser/non-mod command(s) (comma-separated list (if more than 1)). Specified in 'Trigger Words'. 
@@ -37,9 +38,8 @@ I recommend testing settings out on a test subreddit before deploying to a real 
 * `{{user}}`: The username of the person being awarded. Used in 'Alternate Award Command'.
 * `{{altCommand}}`: Alternate command to directly award users. Used in 'Alternate Command Success/Fail Message'.
 * `{{subreddit}}`: Get the name of the subreddit. Will not contain 'r/'.
-* `{{awardeePage}}`: Link to a user's individual page. Logs all points received and given that are not alternate commands.
-* `{{awarderPage}}`: Link to a user's individual page. Logs all points received and given that are not alternate commands.
-* `{{title}}`: The title of the most recent valid post by the poster.
+* `{{awardeePage}}`: Link to a recipient's individual page. Logs all points received and given that are not alternate commands.
+* `{{awarderPage}}`: Link to an awarder's individual page. Logs all points received and given that are not alternate commands.
 
 ## Data Stored
 

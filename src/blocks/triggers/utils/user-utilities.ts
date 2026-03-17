@@ -138,7 +138,6 @@ export async function handleAutoSuperuserPromotion(
         //         text: superUserNotification,
         //     });
         //     await superUserNotificationMessage.distinguish();
-        //     await superUserNotificationMessage.lock();
         // }
 
         logger.info("⭐ Auto-superuser notification sent", {

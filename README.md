@@ -58,6 +58,8 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you remove the app from your subreddit, it will delete all data and you will have to manually restore it to users. 
 
 ## Version History
+### 24.0.1
+* Remove comment reply locking from all comment types (ie comment awarding the point, comment receiving the award, and the bot response)
 ### 24.0.0
 * Massive refactoring of code and custom post to work with Devvit Web with help from u/Beach-Brews
 ### 23.0.0

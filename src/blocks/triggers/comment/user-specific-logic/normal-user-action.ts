@@ -116,7 +116,6 @@ async function awardPointToUserNormalCommand(
             text: successMessage,
         });
         await commandSuccessMessage.distinguish();
-        await commandSuccessMessage.lock();
     }
 
     // 🎨 Update flair
@@ -392,7 +391,6 @@ export async function executeUserCommand(
                     text: blockedMessage,
                 });
             await userIsBlockedFromAwardingPointsMessage.distinguish();
-            await userIsBlockedFromAwardingPointsMessage.lock();
         } else if (
             notifyBlockedUserMode === NotifyOnBlockedUserReplyOptions.ReplyByPM
         ) {
@@ -426,7 +424,6 @@ export async function executeUserCommand(
                 text: selfAwardTemplate,
             });
             await selfAwardComment.distinguish();
-            await selfAwardComment.lock();
         } else if (
             notifyNormalSelfAwardMode ===
             NotifyOnSelfAwardReplyOptions.ReplyByPM
@@ -464,7 +461,6 @@ export async function executeUserCommand(
                 text: alreadyAwardedTemplate,
             });
             await alreadyAwardedMessage.distinguish();
-            await alreadyAwardedMessage.lock();
         } else if (
             notifyMode ===
             NotifyOnPointAlreadyAwardedToUserReplyOptions.ReplyByPM

@@ -99,7 +99,6 @@ async function handleSelfAwardModCommand(
                 text: selfText,
             });
             await selfAwardMessage.distinguish();
-            await selfAwardMessage.lock();
         } else if (notifySelf === NotifyOnSelfAwardReplyOptions.ReplyByPM) {
             await context.reddit.sendPrivateMessage({
                 to: awarder,
@@ -150,7 +149,6 @@ export async function handleDuplicateModAward(
             text: msg,
         });
         await modAwardDupeMessage.distinguish();
-        await modAwardDupeMessage.lock();
     } else if (notify === NotifyOnModAwardFailReplyOptions.ReplyByPM) {
         await context.reddit.sendPrivateMessage({
             to: awarder,
@@ -196,7 +194,6 @@ export async function handleUnauthorizedModCommand(
             text: failMsg,
         });
         await modAwardFailMessage.distinguish();
-        await modAwardFailMessage.lock();
     } else if (notify === NotifyOnModAwardFailReplyOptions.ReplyByPM) {
         await context.reddit.sendPrivateMessage({
             to: awarder,
@@ -323,7 +320,6 @@ export async function awardPointToUserModCommand(
                 text: modSuccessMessage,
             });
             await modAwardSuccessMessage.distinguish();
-            await modAwardSuccessMessage.lock();
         } else if (
             modNotifyMode === NotifyOnModAwardSuccessReplyOptions.ReplyByPM
         ) {
@@ -353,7 +349,6 @@ export async function awardPointToUserModCommand(
                     text: trustedUserMessage,
                 });
             await trustedUserSuccessComment.distinguish();
-            await trustedUserSuccessComment.lock();
         } else if (
             modNotifyMode === NotifyOnModAwardSuccessReplyOptions.ReplyByPM
         ) {

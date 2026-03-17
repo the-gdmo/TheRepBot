@@ -150,15 +150,9 @@ export async function handleThanksEvent(
     // ─────────────────────────────────────────────
     // Normal user command logic
     // ─────────────────────────────────────────────
-    const eventComment = await devvitContext.reddit.getCommentById(
-        event.comment.id
-    );
-
     if (containsUser && !containsMod && !containsAlt) {
         if (userCanAward) {
             await executeUserCommand(event, devvitContext);
-            await eventComment.lock();
-            await parentComment.lock();
             logger.info(
                 "🔒 Event/Parent Commment locked due to settings (normal award)"
             );
@@ -176,8 +170,6 @@ export async function handleThanksEvent(
     if (containsMod && !containsUser && !containsAlt) {
         if (isMod || isSuperUser) {
             await executeModCommand(event, devvitContext);
-            await eventComment.lock();
-            await parentComment.lock();
             logger.info(
                 "🔒 Event/Parent Commment locked due to settings (mod award)"
             );
@@ -216,7 +208,6 @@ export async function handleThanksEvent(
                     });
 
                 await modAwardFailComment.distinguish();
-                await modAwardFailComment.lock();
             }
         }
     }
@@ -321,7 +312,6 @@ export async function unflairedPostLogic(
                     }
                 );
                 await unflairedPostMessage.distinguish();
-                await unflairedPostMessage.lock();
             }
         } catch (err) {
             logger.error(
@@ -434,7 +424,6 @@ export async function flairTextNotAllowedLogic(
                 text: flairTextDisallowedMessage,
             });
             await disallowedFlairMessage.distinguish();
-            await disallowedFlairMessage.lock();
         }
         return; // ⛔ block award
     }
@@ -466,7 +455,6 @@ export async function selfAwardAttemptLogic(
                 text: selfText,
             });
             await selfAwardMessage.distinguish();
-            await selfAwardMessage.lock();
         } else if (notifySelf === NotifyOnSelfAwardReplyOptions.ReplyByPM) {
             await context.reddit.sendPrivateMessage({
                 to: awarder,
@@ -527,7 +515,6 @@ export async function replyToUser(
                 text: message,
             });
             await reply.distinguish();
-            await reply.lock();
 
             logger.info("💬 replyToUser: posted comment reply", {
                 commentId,
@@ -673,7 +660,6 @@ export async function awarderIsBot(
             text: botMsg,
         });
         await botAwardMessage.distinguish();
-        await botAwardMessage.lock();
         logger.debug(`❌ ${recipient} cannot be awarded points`);
         return;
     }
@@ -716,7 +702,6 @@ export async function recipientIsBot(
             }
         );
         await awardGivenToBotMessage.distinguish();
-        await awardGivenToBotMessage.lock();
         logger.debug("❌ Bot cannot award itself points");
         return;
     }

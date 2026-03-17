@@ -315,7 +315,6 @@ async function notifyAlternateCommandSuccess(
                 text: message,
             });
         await alternateCommandSuccessMessage.distinguish();
-        await alternateCommandSuccessMessage.lock();
     }
 }
 
@@ -351,7 +350,6 @@ async function notifyAltPermissionFailure(
             text: failTemplate,
         });
         await failMessage.distinguish();
-        await failMessage.lock();
     } else if (
         notifyMode === NotifyOnAlternateCommandFailReplyOptions.ReplyByPM
     ) {
@@ -388,5 +386,4 @@ async function notifyMissingAltUsername(
 async function reply(context: TriggerContext, commentId: string, text: string) {
     const reply = await context.reddit.submitComment({ id: commentId, text });
     await reply.distinguish();
-    await reply.lock();
 }

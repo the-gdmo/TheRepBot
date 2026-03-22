@@ -50,69 +50,83 @@ export const Leaderboard = () => {
     const visibleEntries = entries.slice(start, start + perPage);
 
     return (
-        <div className="w-full h-full flex flex-col">
-            <div className="w-full flex justify-center items-center gap-4 p-2 border-2">
-                <img alt="podium" width={48} height={48} src="podium.png" />
-                <div className="text-lg font-bold">Top scoring users</div>
-                {helpUrl ? (
-                    <button onClick={() => navigateTo(helpUrl)}>Help</button>
-                ) : (
+        <div className="bg-gray-900 text-gray-100 p-4 rounded-xl shadow-lg">
+            <div className="w-full h-full flex flex-col">
+                <div className="w-full flex justify-center items-center gap-4 p-2 border-2">
                     <img alt="podium" width={48} height={48} src="podium.png" />
-                )}
-            </div>
-
-            <div className="flex justify-center items-center gap-4 p-2">
-                <button onClick={() => setData(undefined)}>Refresh Leaderboard</button>
-
-                {/* users per page selector */}
-                <select
-                    value={perPage}
-                    onChange={(e) => {
-                        const value = Number(e.target.value);
-                        setPerPage(value);
-                        setPage(1);
-                    }}
-                >
-                    <option value={5}>5 Users Per Page</option>
-                    <option value={10}>10 Users Per Page</option>
-                    <option value={25}>25 Users Per Page</option>
-                    <option value={50}>50 Users Per Page</option>
-                </select>
-            </div>
-
-            <div className="flex flex-col p-2 gap-2 w-full">
-                <div className="w-full flex flex-col gap-2">
-                    {visibleEntries.map((entry, i) => (
-                        <LeaderboardRow
-                            key={i}
-                            pointName={capitalize(
-                                pluralize(pointName || "point", entry.score),
-                            )}
-                            username={entry.username}
-                            score={entry.score}
+                    <div className="text-lg font-bold">Top scoring users</div>
+                    {helpUrl ? (
+                        <button onClick={() => navigateTo(helpUrl)}>
+                            Help
+                        </button>
+                    ) : (
+                        <img
+                            alt="podium"
+                            width={48}
+                            height={48}
+                            src="podium.png"
                         />
-                    ))}
+                    )}
                 </div>
 
-                {/* pagination */}
-                <div className="flex justify-center items-center gap-4 pt-4">
-                    <button
-                        disabled={page === 1}
-                        onClick={() => setPage((p) => p - 1)}
-                    >
-                        Prev
+                <div className="flex justify-center items-center gap-4 p-2">
+                    <button onClick={() => setData(undefined)}>
+                        Refresh Leaderboard
                     </button>
 
-                    <span>
-                        Page {page} / {maxPage}
-                    </span>
-
-                    <button
-                        disabled={page === maxPage}
-                        onClick={() => setPage((p) => p + 1)}
+                    {/* users per page selector */}
+                    <select
+                        value={perPage}
+                        onChange={(e) => {
+                            const value = Number(e.target.value);
+                            setPerPage(value);
+                            setPage(1);
+                        }}
                     >
-                        Next
-                    </button>
+                        <option value={5}>5 Users Per Page</option>
+                        <option value={10}>10 Users Per Page</option>
+                        <option value={25}>25 Users Per Page</option>
+                        <option value={50}>50 Users Per Page</option>
+                    </select>
+                </div>
+
+                <div className="flex flex-col p-2 gap-2 w-full">
+                    <div className="w-full flex flex-col gap-2">
+                        {visibleEntries.map((entry, i) => (
+                            <LeaderboardRow
+                                key={i}
+                                pointName={capitalize(
+                                    pluralize(
+                                        pointName || "point",
+                                        entry.score,
+                                    ),
+                                )}
+                                username={entry.username}
+                                score={entry.score}
+                            />
+                        ))}
+                    </div>
+
+                    {/* pagination */}
+                    <div className="flex justify-center items-center gap-4 pt-4">
+                        <button
+                            disabled={page === 1}
+                            onClick={() => setPage((p) => p - 1)}
+                        >
+                            Prev
+                        </button>
+
+                        <span>
+                            Page {page} / {maxPage}
+                        </span>
+
+                        <button
+                            disabled={page === maxPage}
+                            onClick={() => setPage((p) => p + 1)}
+                        >
+                            Next
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

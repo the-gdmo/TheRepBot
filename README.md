@@ -58,6 +58,10 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you remove the app from your subreddit, it will delete all data and you will have to manually restore it to users. 
 
 ## Version History
+### 24.2.0
+* Make help button on leaderboard link to point system explanation page (if one is specified in "Point System Help Page")
+* Make help button not appear if there is no point system explanation page defined
+* Add comment notifying mods that they need to create a new leaderboard post if they add a point system explanation page or remove the explanation page
 ### 24.1.1
 * Update to latest devvit version (3/23/26)
 ### 24.1.0

@@ -1,12 +1,13 @@
 import { Hono } from 'hono';
-import { redis, settings } from '@devvit/web/server';
+import { context, redis, settings } from '@devvit/web/server';
 import type {LeaderboardData, ApiResponse, LeaderboardEntry} from '../../shared/api';
 
 export const api = new Hono();
 
 api.get('/getLeaderboard', async (c) => {
     try {
-        const helpUrl = await settings.get<string>('pointSystemHelpPage');
+        const helpPage = await settings.get<string>('pointSystemHelpPage');
+        const helpUrl = helpPage ? `https://reddit.com/r/${context.subredditName}/wiki/${helpPage}` : undefined;
         const pointName = await settings.get<string>('pointName');
         const items = await redis.zRange(
             'thanksPointsStore',

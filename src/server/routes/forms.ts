@@ -65,6 +65,14 @@ forms.post("/create-post", async (c) => {
         await post.sticky();
     }
 
+    const botComment = await reddit.submitComment({
+        id: post.id,
+        text: `${formatMessage(`Attention Mods,\n\nIf you add a help page to the bot settings, you must create a new leaderboard post or the help page link will not appear within the leaderboard.\n\nIf you remove the help page, the same is true - you must create a new leaderboard post for the help page link to be removed from the existing leaderboard.`, {})}`,
+    });
+
+    botComment.distinguish(true);
+    botComment.lock();
+
     return c.json<UiResponse>(
         {
             showToast: {
@@ -76,3 +84,27 @@ forms.post("/create-post", async (c) => {
         200,
     );
 });
+
+function formatMessage(
+    template: string,
+    placeholders: Record<string, string>
+): string {
+    let result = template;
+    for (const [key, value] of Object.entries(placeholders)) {
+        const regex = new RegExp(`{{${key}}}`, "g");
+        result = result.replace(regex, value);
+    }
+
+    const footer = `\n\n---\n\n^(I am a bot - please contact [my creator](https://reddit.com/message/compose?to=/r/TheRepBot) with any questions)`;
+    if (
+        !result
+            .trim()
+            .endsWith(
+                `\n\n---\n\n^(I am a bot - please contact [my creator](https://reddit.com/message/compose?to=/r/TheRepBot) with any questions)`
+            )
+    ) {
+        result = result.trim() + footer;
+    }
+
+    return result;
+}

@@ -83,10 +83,12 @@ export const Leaderboard = () => {
                             setPage(1);
                         }}
                     >
-                        <option value={5}>5 Users Per Page</option>
-                        <option value={10}>10 Users Per Page</option>
-                        <option value={25}>25 Users Per Page</option>
-                        <option value={50}>50 Users Per Page</option>
+                        <option value={1}>1 Per Page</option>
+                        <option value={2}>2 Per Page</option>
+                        <option value={3}>3 Per Page</option>
+                        <option value={4}>4 Per Page</option>
+                        <option value={5}>5 Per Page</option>
+                        <option value={6}>6 Per Page</option>
                     </select>
                 </div>
 

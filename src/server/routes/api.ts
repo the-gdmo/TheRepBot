@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { context, redis, settings } from '@devvit/web/server';
 import type {LeaderboardData, ApiResponse, LeaderboardEntry} from '../../shared/api';
+import { getLeaderboardSize } from './menu';
 
 export const api = new Hono();
 
@@ -12,7 +13,7 @@ api.get('/getLeaderboard', async (c) => {
         const items = await redis.zRange(
             'thanksPointsStore',
             0,
-            10, // TODO: Pagination
+            await getLeaderboardSize() - 1,
             { by: "rank", reverse: true }
         );
         const leaderboardEntries: LeaderboardEntry[] = items.map(e => {

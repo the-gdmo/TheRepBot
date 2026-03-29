@@ -5,7 +5,9 @@ import {
     ADHOC_POST_OF_THE_MONTH_JOB,
     CLEANUP_JOB,
     CLEANUP_JOB_CRON,
+    MODINFO_CRON,
     POST_OF_THE_MONTH_CRON,
+    UPDATE_MODINFO_JOB,
 } from "./constants";
 
 export async function onAppFirstInstall(
@@ -31,6 +33,10 @@ export async function onAppInstallOrUpgrade(
     await context.scheduler.runJob({
         name: CLEANUP_JOB,
         cron: CLEANUP_JOB_CRON,
+    });
+    await context.scheduler.runJob({
+        name: UPDATE_MODINFO_JOB,
+        cron: MODINFO_CRON,
     });
 
     await populateCleanupLogAndScheduleCleanup(context);

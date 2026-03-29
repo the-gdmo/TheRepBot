@@ -40,7 +40,7 @@ export async function updateUserWiki(
         postTitle: string;
         postUrl: string;
         commentUrl: string;
-    }
+    },
 ) {
     awarder = awarder.toLowerCase();
     recipient = recipient.toLowerCase();
@@ -98,12 +98,12 @@ export async function updateUserWiki(
 
     const awarderGiven = await loadHistory(`userHistory:given:${awarder}`);
     const awarderReceived = await loadHistory(
-        `userHistory:received:${awarder}`
+        `userHistory:received:${awarder}`,
     );
 
     const recipientGiven = await loadHistory(`userHistory:given:${recipient}`);
     const recipientReceived = await loadHistory(
-        `userHistory:received:${recipient}`
+        `userHistory:received:${recipient}`,
     );
 
     //
@@ -123,7 +123,7 @@ ${list
         (e) =>
             `| ${formatDate(e.date)} | [${escapeTitle(e.postTitle)}](${
                 e.postUrl
-            })`
+            })`,
     )
     .join("\n")}
 `.trim();
@@ -140,7 +140,7 @@ ${list
         (e) =>
             `| ${formatDate(e.date)} | [${escapeTitle(e.postTitle)}](${
                 e.postUrl
-            }) | [Link](${e.commentUrl}) | /u/${e.recipient}`
+            }) | [Link](${e.commentUrl}) | /u/${e.recipient}`,
     )
     .join("\n")}
 `.trim();
@@ -161,7 +161,7 @@ ${list
     async function writePage(
         user: string,
         receivedTable: string,
-        givenTable: string
+        givenTable: string,
     ) {
         const content = `
 # ${capPoint} History for u/${user}
@@ -204,7 +204,7 @@ ${givenTable}
 
 export async function buildInitialUserWiki(
     context: TriggerContext,
-    username: string
+    username: string,
 ) {
     logger.info("📄 Building initial user wiki page…", { username });
 
@@ -259,7 +259,7 @@ u/${username} has given 0 ${plural}
 
 export async function InitialUserWikiOptions(
     context: TriggerContext,
-    username: string
+    username: string,
 ) {
     logger.info("📂 InitialUserWikiOptions invoked", { username });
 
@@ -344,7 +344,7 @@ export async function InitialUserWikiOptions(
 
 export async function updateLeaderboard(
     event: ScheduledJobEvent<JSONObject | undefined>,
-    context: JobContext
+    context: JobContext,
 ) {
     const settings = await context.settings.getAll();
 
@@ -377,12 +377,12 @@ export async function updateLeaderboard(
         POINTS_STORE_KEY,
         0,
         leaderboardSize - 1,
-        { by: "rank", reverse: true }
+        { by: "rank", reverse: true },
     );
 
     // ──────────────── Build markdown ────────────────
     let wikiContents = `# ${capitalize(
-        pointName
+        pointName,
     )}board for ${subredditName}\n\n`;
     if (helpPage) {
         wikiContents += `[How to award ${pointName}s on /r/${subredditName}](https://old.reddit.com/r/${subredditName}/wiki/${helpPage})\n\n`;
@@ -395,10 +395,10 @@ export async function updateLeaderboard(
             .map(
                 (entry) =>
                     `[${markdownEscape(
-                        entry.member
+                        entry.member,
                     )}](https://www.reddit.com/r/${subredditName}/wiki/user/${
                         entry.member
-                    })|${entry.score}`
+                    })|${entry.score}`,
             )
             .join("\n");
     } else {
@@ -407,10 +407,10 @@ export async function updateLeaderboard(
 
     wikiContents += `\n\nThe leaderboard shows the top ${leaderboardSize} ${pluralize(
         "user",
-        leaderboardSize
+        leaderboardSize,
     )} who ${pluralize(
         "has",
-        leaderboardSize
+        leaderboardSize,
     )} been awarded at least one ${pointName}`;
 
     const installDateTimestamp = await context.redis.get("InstallDate");
@@ -425,7 +425,7 @@ export async function updateLeaderboard(
     try {
         wikiPage = await context.reddit.getWikiPage(
             subredditName,
-            wikiPageName
+            wikiPageName,
         );
     } catch {
         //
@@ -461,5 +461,70 @@ export async function updateLeaderboard(
             listed: true,
             permLevel: correctPermissionLevel,
         });
+    }
+}
+
+function modInfoTemplate(subredditName: string): string {
+    return (
+        `# TheRepBot Mod Info for r/${subredditName}\n\n` +
+        `***This page is automatically managed by TheRepBot. Any edits will be overwritten.***\n\n` +
+        `---\n\n` +
+        `## Leaderboard Configuration\n\n` +
+        `* If no help page is set, the leaderboard post will not include a link to a help page.\n\n` +
+        `* If you want to change the name of the help page, you must update the "Point System Help Page" setting.\n\n` +
+        `* **Note:** If you change the leaderboard name in settings, the wiki page link will be updated in the leaderboard post but the old page's contents` +
+        ` will not be pulled and you will have to edit the new one manually.\n\n`
+    );
+}
+
+export async function modLeaderboardInfoJob(
+    event: ScheduledJobEvent<JSONObject | undefined>,
+    context: JobContext,
+) {
+    const subreddit = await context.reddit.getCurrentSubreddit();
+    const subredditName = subreddit.name;
+
+    const pageName = "therepbot/modinfo";
+
+    const template = modInfoTemplate(subredditName);
+
+    let wikiPage: WikiPage | undefined;
+
+    // ──────────────── Fetch wiki ────────────────
+    try {
+        wikiPage = await context.reddit.getWikiPage(subredditName, pageName);
+    } catch {
+        // Page does not exist
+    }
+
+    const wikiOptions = {
+        subredditName,
+        page: pageName,
+        content: template,
+        reason: event.data?.reason as string | undefined,
+    };
+
+    // ──────────────── Create or update ────────────────
+    if (!wikiPage) return;
+    if (wikiPage) {
+        if (wikiPage.content !== template) {
+            await context.reddit.updateWikiPage(wikiOptions);
+            console.log("📝 ModInfo: Template updated.");
+        } else {
+            console.log("✅ ModInfo: Template already up to date.");
+        }
+    } else {
+        await context.reddit.createWikiPage(wikiOptions);
+        console.log("📄 ModInfo: Template created.");
+    }
+    const wikiPageSettings = await wikiPage.getSettings();
+    if (wikiPageSettings.permLevel !== WikiPagePermissionLevel.MODS_ONLY) {
+        await wikiPage.updateSettings({
+            listed: true,
+            permLevel: WikiPagePermissionLevel.MODS_ONLY,
+        });
+        console.log("🔒 ModInfo: Permissions updated to mods-only.");
+    } else {
+        console.log("✅ ModInfo: Permissions already set to mods-only.");
     }
 }

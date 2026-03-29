@@ -19,7 +19,7 @@ export const forms = new Hono();
 
 const REDIS_KEY = "customPostData";
 const NUMBER_OF_USERS_KEY = "leaderboard:numberOfUsers";
-const MAX_USERS = 1_000_000_000_000_000;
+const MAX_USERS = 500;
 const DEFAULT_USERS = 20;
 
 forms.post("/create-post", async (c) => {
@@ -35,17 +35,16 @@ forms.post("/create-post", async (c) => {
         if (numberOfUsers > MAX_USERS) {
             return c.json<UiResponse>({
                 showToast: {
-                    text: "User count must be less than or equal to 1,000,000,000,000,000",
+                    text: `User count must be <= ${MAX_USERS}`,
                     appearance: "neutral",
                 },
             });
         }
 
         if (numberOfUsers <= 0) {
-            // "User count must be at least one (1).";
             return c.json<UiResponse>({
                 showToast: {
-                    text: "User count must be at least 1",
+                    text: `User count must be > 0`,
                     appearance: "neutral",
                 },
             });
@@ -113,9 +112,7 @@ forms.post("/create-post", async (c) => {
             text: formatMessage(
                 `This post displays the top **${newData.numberOfUsers}** users with the most ${pointName}s in this subreddit.\n\n` +
                     `It is updated periodically, but you can also refresh it manually by clicking the refresh button at the top of the leaderboard.\n\n` +
-                    `Mods,\n\n` +
-                    `If you add a help page to the bot settings, you must create a new leaderboard post or the help page link will not appear within the leaderboard.\n\n` +
-                    `If you remove the help page, the same is true - you must create a new leaderboard post for the help page link to be removed.`,
+                    `[Mod info regarding the leaderboard](https://reddit.com/r/${subredditName}/wiki/therepbot/modinfo)`,
                 {},
             ),
         });

@@ -22,6 +22,7 @@ menu.post("/create-post", async (c) => {
                             },
                             {
                                 label: "Number of users to display",
+                                helpText: "Max is 500",
                                 name: "numberOfUsers",
                                 type: "number",
                                 defaultValue: 20,

@@ -9,13 +9,14 @@ import {
     validateRegexJobHandler,
 } from "./settings";
 import { onAppFirstInstall, onAppInstallOrUpgrade } from "./installEvents";
-import { updateLeaderboard } from "./leaderboard";
+import { modLeaderboardInfoJob, updateLeaderboard } from "./leaderboard";
 import { cleanupDeletedAccounts } from "./cleanupTasks";
 import {
     ADHOC_CLEANUP_JOB,
     ADHOC_POST_OF_THE_MONTH_JOB,
     CLEANUP_JOB,
     UPDATE_LEADERBOARD_JOB,
+    UPDATE_MODINFO_JOB,
     VALIDATE_REGEX_JOB,
 } from "./constants";
 import { handleConfirmReply } from "./utility";
@@ -60,6 +61,10 @@ Devvit.addTrigger({
     onEvent: handleConfirmReply,
 });
 
+Devvit.addSchedulerJob({
+    name: UPDATE_MODINFO_JOB,
+    onRun: modLeaderboardInfoJob,
+});
 Devvit.addSchedulerJob({
     name: UPDATE_LEADERBOARD_JOB,
     onRun: updateLeaderboard,

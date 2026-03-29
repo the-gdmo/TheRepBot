@@ -58,6 +58,9 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you remove the app from your subreddit, it will delete all data and you will have to manually restore it to users. 
 
 ## Version History
+### 25.1.0
+* Reduce leaderboard user listing to be maxed at 500
+* Add mod info wiki page regarding how the leaderboard post works (linked in all new leaderboard posts)
 ### 25.0.0
 * Make leaderboard allow mods to choose how many users to display properly
 * Change leaderboard viewing options to be 1-6 (previous would be too long to read all of them for all but 5)

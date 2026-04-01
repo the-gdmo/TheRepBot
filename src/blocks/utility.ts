@@ -9,7 +9,7 @@ import { logger } from "./logger";
 export async function isModerator(
     context: TriggerContext,
     subredditName: string,
-    username: string
+    username: string,
 ): Promise<boolean> {
     const filteredModeratorList = await context.reddit
         .getModerators({ subredditName, username })
@@ -18,7 +18,7 @@ export async function isModerator(
 }
 
 export async function getSubredditName(
-    context: TriggerContext
+    context: TriggerContext,
 ): Promise<string> {
     if (context.subredditName) {
         return context.subredditName;
@@ -43,12 +43,12 @@ export class SafeWikiClient {
      */
     public async getWikiPage(
         subredditName: string,
-        wikiPath: string
+        wikiPath: string,
     ): Promise<WikiPage | undefined> {
         try {
             const wikiPage = await this.reddit.getWikiPage(
                 subredditName,
-                wikiPath
+                wikiPath,
             );
 
             // 🩹 Some RedditAPIClient versions return a partial wiki page
@@ -89,7 +89,7 @@ export class SafeWikiClient {
 
             console.error(
                 "❌ Unexpected error while getting wiki page!",
-                error
+                error,
             );
             throw error;
         }
@@ -99,7 +99,7 @@ export class SafeWikiClient {
      * Creates a wiki page safely, avoiding empty-content issues.
      */
     public async createWikiPage(
-        options: CreateWikiPageOptions
+        options: CreateWikiPageOptions,
     ): Promise<WikiPage | undefined> {
         try {
             const content = options.content?.trim() || "---";
@@ -128,7 +128,7 @@ export class SafeWikiClient {
 
 export async function handleConfirmReply(
     event: CommentUpdate,
-    context: TriggerContext
+    context: TriggerContext,
 ) {
     if (!event.comment || !event.author) return;
 

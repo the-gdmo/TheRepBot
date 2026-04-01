@@ -483,48 +483,36 @@ export async function modLeaderboardInfoJob(
 ) {
     const subreddit = await context.reddit.getCurrentSubreddit();
     const subredditName = subreddit.name;
-
-    const pageName = "therepbot/modinfo";
+    const safeWiki = new SafeWikiClient(context.reddit);
+    const wikiPath = "therepbot/modinfo";
 
     const template = modInfoTemplate(subredditName);
 
-    let wikiPage: WikiPage | undefined;
-
-    // ──────────────── Fetch wiki ────────────────
+    let existingPage = undefined;
     try {
-        wikiPage = await context.reddit.getWikiPage(subredditName, pageName);
-    } catch {
-        // Page does not exist
-    }
+        existingPage = await safeWiki.getWikiPage(subredditName, wikiPath);
 
-    const wikiOptions = {
-        subredditName,
-        page: pageName,
-        content: template,
-        reason: event.data?.reason as string | undefined,
-    };
-
-    // ──────────────── Create or update ────────────────
-    if (!wikiPage) return;
-    if (wikiPage) {
-        if (wikiPage.content !== template) {
-            await context.reddit.updateWikiPage(wikiOptions);
-            console.log("📝 ModInfo: Template updated.");
-        } else {
-            console.log("✅ ModInfo: Template already up to date.");
+        if (!existingPage) {
+            await safeWiki.createWikiPage({
+                subredditName,
+                page: wikiPath,
+                content: template,
+                reason: "Mod info wiki page setup",
+            });
+            logger.info(`📘 No existing wiki page found — created ${wikiPath}`);
         }
-    } else {
-        await context.reddit.createWikiPage(wikiOptions);
-        console.log("📄 ModInfo: Template created.");
-    }
-    const wikiPageSettings = await wikiPage.getSettings();
-    if (wikiPageSettings.permLevel !== WikiPagePermissionLevel.MODS_ONLY) {
-        await wikiPage.updateSettings({
-            listed: true,
-            permLevel: WikiPagePermissionLevel.MODS_ONLY,
+        logger.info("ℹ️ Existing mod info wiki page found");
+    } catch (err) {
+        logger.error("❌ Error retrieving mod info wiki page", {
+            error: String(err),
         });
-        console.log("🔒 ModInfo: Permissions updated to mods-only.");
-    } else {
-        console.log("✅ ModInfo: Permissions already set to mods-only.");
     }
+    // ──────────────── set page content to template ────────────────
+
+    await context.reddit.updateWikiPage({
+        subredditName,
+        page: wikiPath,
+        content: template,
+        reason: `Set page to template content`,
+    });
 }

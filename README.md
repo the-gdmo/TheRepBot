@@ -58,6 +58,9 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you remove the app from your subreddit, it will delete all data and you will have to manually restore it to users. 
 
 ## Version History
+### 25.2.0
+* Guarantee the mod info page is created and populate it regardless of whether the content matches the template
+* Update the page if any edits exist (checked every minute)
 ### 25.1.0
 * Reduce leaderboard user listing to be maxed at 500
 * Add mod info wiki page regarding how the leaderboard post works (linked in all new leaderboard posts)

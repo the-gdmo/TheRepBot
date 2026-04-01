@@ -5,7 +5,7 @@ import {
     escapeForRegex,
     formatMessage,
     getTriggers,
-    updateAwardeeFlair
+    updateAwardeeFlair,
 } from "../../utils/common-utilities";
 
 import { getAltDupKey, setAltDupKey } from "../../post-logic/redisKeys";
@@ -24,7 +24,7 @@ import { handleAutoSuperuserPromotion } from "../../utils/user-utilities";
 
 export async function handleAltUserAction(
     event: CommentCreate | CommentUpdate,
-    context: TriggerContext
+    context: TriggerContext,
 ): Promise<boolean> {
     if (!event.comment || !event.post) return false;
 
@@ -60,7 +60,7 @@ export async function handleAltUserAction(
         context,
         awarder,
         mentionedUsername,
-        triggerUsed
+        triggerUsed,
     );
     return true;
 }
@@ -70,7 +70,7 @@ export async function handleAltUserAction(
  * ───────────────────────────────────────────────────────────── */
 export async function commentContainsAltCommand(
     event: CommentSubmit | CommentUpdate,
-    context: TriggerContext
+    context: TriggerContext,
 ): Promise<boolean | undefined> {
     if (!event.comment) return false;
 
@@ -80,11 +80,15 @@ export async function commentContainsAltCommand(
         // Fetch commands
         const triggers = await getTriggers(context); // e.g., "!mod"
         for (const trigger of triggers) {
-            const regex = new RegExp(`${trigger}\su\/([a-z0-9_-]+)`, "i");
-            if (regex.test(body)) {
+            if (!new RegExp(`${escapeForRegex(trigger)}\su/([a-z0-9_-]{3,21})`, "i").test(body)) continue;
+
+            if (new RegExp(`${escapeForRegex(trigger)}\su/([a-z0-9_-]{3,21})`, "i").test(body)) {
                 logger.debug("🧩 Alt command check", {
                     body,
-                    containsCommand: regex.test(body),
+                    containsCommand: new RegExp(
+                        escapeForRegex(trigger),
+                        "i",
+                    ).test(body),
                 });
                 return true;
             }
@@ -100,7 +104,7 @@ export async function commentContainsAltCommand(
 
 async function detectAltTrigger(
     context: TriggerContext,
-    commentBody: string
+    commentBody: string,
 ): Promise<string | null> {
     const triggers = await getTriggers(context);
     for (const trigger of triggers) {
@@ -116,7 +120,7 @@ async function detectAltTrigger(
 
 function extractAltUsername(body: string, trigger: string): string | null {
     const match = body.match(
-        new RegExp(`${escapeForRegex(trigger)}\su/([a-z0-9_-]{3,21})`, "i")
+        new RegExp(`${escapeForRegex(trigger)}\su/([a-z0-9_-]{3,21})`, "i"),
     );
     logger.info(`Extracted username`, {
         match: match?.[1] ?? null,
@@ -132,7 +136,7 @@ async function validateAltUsername(
     event: CommentCreate | CommentUpdate,
     context: TriggerContext,
     awarder: string,
-    username: string
+    username: string,
 ): Promise<boolean> {
     const settings = await context.settings.getAll();
 
@@ -143,8 +147,8 @@ async function validateAltUsername(
             formatMessage(
                 (settings[AppSetting.InvalidUsernameMessage] as string) ??
                     TemplateDefaults.InvalidUsernameMessage,
-                { awarder, awardee: username }
-            )
+                { awarder, awardee: username },
+            ),
         );
         return true;
     }
@@ -156,8 +160,8 @@ async function validateAltUsername(
             formatMessage(
                 (settings[AppSetting.UsernameLengthMessage] as string) ??
                     TemplateDefaults.UsernameLengthMessage,
-                { awarder, awardee: username }
-            )
+                { awarder, awardee: username },
+            ),
         );
         return true;
     }
@@ -171,7 +175,7 @@ async function validateAltUsername(
 
 async function isAuthorizedAltUser(
     context: TriggerContext,
-    awarder: string
+    awarder: string,
 ): Promise<boolean> {
     const settings = await context.settings.getAll();
     const altUsers =
@@ -188,7 +192,7 @@ async function isAuthorizedAltUser(
 
 async function altDuplicateExists(
     event: CommentCreate | CommentUpdate,
-    context: TriggerContext
+    context: TriggerContext,
 ): Promise<boolean> {
     const key = await getAltDupKey(event, context);
     if (!key) return false;
@@ -203,7 +207,7 @@ async function executeAltAward(
     context: TriggerContext,
     awarder: string,
     awardee: string,
-    triggerUsed: string
+    triggerUsed: string,
 ) {
     if (!event.subreddit) return;
     const settings = await context.settings.getAll();
@@ -212,7 +216,7 @@ async function executeAltAward(
     const newScore = await context.redis.zIncrBy(
         "thanksPointsStore",
         awardee,
-        1
+        1,
     );
 
     await setAltDupKey(event, context, "1");
@@ -223,7 +227,7 @@ async function executeAltAward(
         event.subreddit.name,
         awardee,
         newScore,
-        settings
+        settings,
     );
 
     // Auto-superuser promotion
@@ -235,7 +239,7 @@ async function executeAltAward(
         context,
         awarder,
         awardee,
-        newScore
+        newScore,
     );
 
     logger.info("🏅 ALT award fully processed", {
@@ -252,14 +256,14 @@ async function notifyAltDuplicate(
     event: CommentCreate | CommentUpdate,
     context: TriggerContext,
     awarder: string,
-    awardee: string
+    awardee: string,
 ) {
     const settings = await context.settings.getAll();
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
     const message = formatMessage(
         (settings[AppSetting.PointAlreadyAwardedToUserMessage] as string) ??
             TemplateDefaults.PointAlreadyAwardedToUserMessage,
-        { awardee, name: pointName, awarder }
+        { awardee, name: pointName, awarder },
     );
 
     await reply(context, event.comment!.id, message);
@@ -270,7 +274,7 @@ async function notifyAlternateCommandSuccess(
     context: TriggerContext,
     awarder: string,
     awardee: string,
-    newScore: number
+    newScore: number,
 ) {
     if (!event.subreddit) return;
     const settings = await context.settings.getAll();
@@ -299,7 +303,7 @@ async function notifyAlternateCommandSuccess(
             leaderboard,
             awardeePage,
             awarderPage,
-        }
+        },
     );
 
     if (notifyMode === "replybypm") {
@@ -322,7 +326,7 @@ async function notifyAltPermissionFailure(
     event: CommentCreate | CommentUpdate,
     context: TriggerContext,
     awarder: string,
-    command: string
+    command: string,
 ) {
     if (!event.subreddit || !event.comment) return;
     const settings = await context.settings.getAll();
@@ -339,7 +343,7 @@ async function notifyAltPermissionFailure(
             altCommand: command,
             subreddit: event.subreddit.name,
             name: pointName,
-        }
+        },
     );
 
     if (
@@ -364,7 +368,7 @@ async function notifyAltPermissionFailure(
 async function notifyMissingAltUsername(
     event: CommentCreate | CommentUpdate,
     context: TriggerContext,
-    awarder: string
+    awarder: string,
 ) {
     const settings = await context.settings.getAll();
 
@@ -374,8 +378,8 @@ async function notifyMissingAltUsername(
         formatMessage(
             (settings[AppSetting.NoUsernameMentionMessage] as string) ??
                 TemplateDefaults.NoUsernameMentionMessage,
-            { awarder, awardee: "" }
-        )
+            { awarder, awardee: "" },
+        ),
     );
 }
 

@@ -68,7 +68,7 @@ export async function userCommandValues(context: TriggerContext) {
 }
 
 export function escapeForRegex(string: string) {
-    return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return string.replace(/[\.\*\+\?\^\$\{\}\(\)\|\[\]\\]{1,}/gi, "\\");
 }
 
 export async function getTriggers(context: TriggerContext) {

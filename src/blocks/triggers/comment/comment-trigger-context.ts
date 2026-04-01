@@ -49,7 +49,7 @@ export class CommentTriggerContext {
 
     public async init(
         event: CommentSubmit | CommentUpdate,
-        context: TriggerContext
+        context: TriggerContext,
     ) {
         if (!event.author) return;
         if (!event.subreddit) return;
@@ -58,7 +58,7 @@ export class CommentTriggerContext {
         this._isMod = await isModerator(
             context,
             this._subredditName,
-            this._awarder
+            this._awarder,
         );
         this._isAltUser = await getUserIsAltUser(context, this._awarder);
         this._isSuperUser = await getUserIsSuperuser(context, this._awarder);
@@ -70,7 +70,7 @@ export class CommentTriggerContext {
 export async function getCurrentScore(
     user: User,
     context: TriggerContext,
-    settings: SettingsValues
+    settings: SettingsValues,
 ): Promise<{
     currentScore: number;
     flairText: string;
@@ -84,7 +84,7 @@ export async function getCurrentScore(
         scoreFromRedis =
             (await context.redis.zScore(
                 `${POINTS_STORE_KEY}`,
-                user.username
+                user.username,
             )) ?? 0;
     } catch {
         scoreFromRedis = 0;
@@ -132,7 +132,7 @@ export async function getCurrentScore(
 export async function userBecomesSuperUser(
     event: CommentSubmit | CommentUpdate,
     userScore: number,
-    context: TriggerContext
+    context: TriggerContext,
 ) {
     if (!event.comment) return;
     if (!event.author) return;
@@ -149,8 +149,9 @@ export async function userBecomesSuperUser(
     const autoSuperuserThreshold =
         (settings[AppSetting.AutoSuperuserThreshold] as number | undefined) ??
         0;
-    const superUserCommand = settings[AppSetting.ModAwardCommand] as string ?? "";
-    const notifyOnAutoSuperuser = ((settings[
+    const superUserCommand =
+        (settings[AppSetting.ModAwardCommand] as string) ?? "";
+    const notifyOnAutoSuperuserMode = ((settings[
         AppSetting.NotifyOnAutoSuperuser
     ] as string[] | undefined) ?? [
         AutoSuperuserReplyOptions.NoReply,
@@ -158,14 +159,13 @@ export async function userBecomesSuperUser(
     if (
         autoSuperuserThreshold &&
         userScore === autoSuperuserThreshold &&
-        notifyOnAutoSuperuser !== AutoSuperuserReplyOptions.NoReply
+        notifyOnAutoSuperuserMode !== AutoSuperuserReplyOptions.NoReply
     ) {
         console.log(
-            `${event.comment.id}: ${recipientUser.username} has reached the auto superuser threshold. Notifying.`
+            `${event.comment.id}: ${recipientUser.username} has reached the auto superuser threshold. Notifying.`,
         );
-        (settings[AppSetting.AutoSuperuserTemplate] as
-            | string
-            | undefined) ?? TemplateDefaults.NotifyOnSuperuserTemplate;
+        (settings[AppSetting.AutoSuperuserTemplate] as string | undefined) ??
+            TemplateDefaults.NotifyOnSuperuserTemplate;
         const message = formatMessage(
             (settings[AppSetting.AutoSuperuserTemplate] as string) ??
                 TemplateDefaults.NotifyOnSuperuserTemplate,
@@ -174,8 +174,7 @@ export async function userBecomesSuperUser(
                 awardee: recipient,
                 threshold: autoSuperuserThreshold.toString(),
                 command: superUserCommand,
-
-            }
+            },
         );
 
         await _replyToUser(
@@ -183,7 +182,7 @@ export async function userBecomesSuperUser(
             recipient,
             message,
             parentComment.id,
-            notifyOnAutoSuperuser
+            notifyOnAutoSuperuserMode,
         );
     }
 }
@@ -193,7 +192,7 @@ export async function _replyToUser(
     toUserName: string,
     messageBody: string,
     commentId: string,
-    replyMode: string
+    replyMode: string,
 ) {
     if (replyMode === "none") return;
 
@@ -203,24 +202,34 @@ export async function _replyToUser(
             (await context.reddit.getCurrentSubredditName());
         try {
             await context.reddit.sendPrivateMessage({
-                subject: `Message from TheRepBot on ${subredditName}`,
+                subject: `Message from r/${subredditName}`,
                 text: messageBody,
                 to: toUserName,
             });
             console.log(`${commentId}: PM sent to ${toUserName}.`);
         } catch {
             console.log(
-                `${commentId}: Error sending PM to ${toUserName}. User may only allow PMs from whitelisted users.`
+                `${commentId}: Error sending PM to ${toUserName}. User may only allow PMs from whitelisted users.`,
             );
         }
     } else if (replyMode === "replybycomment") {
+        const redisKey = `shouldComment:${commentId}`;
+        const parentCommentRespondedTo = await context.redis.exists(redisKey);
+
+        if (parentCommentRespondedTo) {
+            logger.info(`Response sent, returning.`);
+            return;
+        }
+
+        await context.redis.set(redisKey, "1");
+
         const newComment = await context.reddit.submitComment({
             id: commentId,
             text: messageBody,
         });
-        await Promise.all([newComment.distinguish(), newComment.lock()]);
+        await Promise.all([newComment.distinguish()]);
         console.log(
-            `${commentId}: Public comment reply left for ${toUserName}`
+            `${commentId}: Public comment reply left for ${toUserName}`,
         );
     } else {
         console.warn(`${commentId}: Unknown replyMode "${replyMode}"`);
@@ -229,13 +238,13 @@ export async function _replyToUser(
 
 export async function getParentComment(
     event: CommentSubmit | CommentUpdate,
-    context: TriggerContext
+    context: TriggerContext,
 ): Promise<Comment | undefined> {
     let parentComment: Comment | undefined;
     if (!event.comment) return undefined;
     try {
         parentComment = await context.reddit.getCommentById(
-            event.comment.parentId
+            event.comment.parentId,
         );
         return parentComment;
     } catch {

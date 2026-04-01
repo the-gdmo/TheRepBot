@@ -1,6 +1,7 @@
 import { CommentSubmit, CommentUpdate } from "@devvit/protos";
 import { TriggerContext, Comment, SettingsValues } from "@devvit/public-api";
 import {
+    _replyToUser,
     CommentTriggerContext,
     getParentComment,
 } from "./comment-trigger-context";
@@ -26,6 +27,7 @@ import {
     TemplateDefaults,
 } from "../../settings";
 import {
+    escapeForRegex,
     formatMessage,
     getIgnoredContextType,
     getTriggers,
@@ -34,7 +36,7 @@ import {
 
 export async function handleThanksEvent(
     event: CommentSubmit | CommentUpdate,
-    devvitContext: TriggerContext
+    devvitContext: TriggerContext,
 ) {
     if (!event.post || !event.author || !event.comment) {
         logger.warn("❌ Missing required event data", { event });
@@ -49,7 +51,7 @@ export async function handleThanksEvent(
 
     const parentComment: Comment | undefined = await getParentComment(
         event,
-        devvitContext
+        devvitContext,
     );
     if (!parentComment) {
         logger.warn("❌ Parent comment not found", {
@@ -63,7 +65,7 @@ export async function handleThanksEvent(
     const commentBody = event.comment.body.toLowerCase();
     const triggers = await getTriggers(devvitContext);
     const triggerUsed = triggers.find((t) =>
-        commentBody.includes(t.toLowerCase())
+        commentBody.includes(t.toLowerCase()),
     );
 
     if (!triggerUsed) {
@@ -76,7 +78,7 @@ export async function handleThanksEvent(
     const IgnoredContextNeedsHandling = await ignoredContextNeedsHandling(
         event,
         devvitContext,
-        triggerUsed
+        triggerUsed,
     );
     if (ignoredType) {
         logger.info(`ignoredType exists in comment`, { ignoredType });
@@ -100,7 +102,7 @@ export async function handleThanksEvent(
         awarder,
         commentBody,
         triggerUsed,
-        settings
+        settings,
     );
 
     const recipient = parentComment.authorName;
@@ -127,22 +129,75 @@ export async function handleThanksEvent(
         awarder,
         commentTriggerContext,
         devvitContext,
-        settings
+        settings,
     );
 
     // ─────────────────────────────────────────────
     // Detect which command type exists
     // ─────────────────────────────────────────────
+
     const containsMod = await commentContainsModCommand(event, devvitContext);
     const containsUser = await commentContainsUserCommand(event, devvitContext);
     const containsAlt = await commentContainsAltCommand(event, devvitContext);
+
+    logger.debug("Checking values", {
+        value: escapeForRegex(triggerUsed),
+        containsMod,
+        containsUser,
+        containsAlt,
+    });
+
+    // ─────────────────────────────────────────────
+    // Alt command logic (with user or mod command)
+    // Runs regardless of whether the user has permission to use normal mod/user commands
+    // or not, and doesn't care who is being awarded
+    // ─────────────────────────────────────────────
+    if (containsAlt && (containsUser || containsMod)) {
+        if (!isAltUser) {
+            const redisKey = `shouldComment:${parentComment.id}`;
+            const parentCommentRespondedTo =
+                await devvitContext.redis.exists(redisKey);
+
+            if (parentCommentRespondedTo) {
+                logger.info(`Alt response already sent, returning.`);
+                return;
+            }
+
+            logger.error(
+                `User tried to execute alt command and is not an alt user`,
+            );
+            const notifyOnAltFailMode = ((settings[
+                AppSetting.NotifyOnAlternateCommandFail
+            ] as string[]) ?? ["none"])[0];
+            if (!notifyOnAltFailMode) return;
+
+            const altAwardFailMsg = formatMessage(
+                (settings[AppSetting.AlternateCommandFailMessage] as string) ??
+                    TemplateDefaults.AlternateCommandFailMessage,
+                {
+                    altCommand: triggerUsed,
+                },
+            );
+
+            await _replyToUser(
+                devvitContext,
+                awarder,
+                altAwardFailMsg,
+                event.comment.id,
+                notifyOnAltFailMode,
+            );
+            return;
+        }
+        const handled = await handleAltUserAction(event, devvitContext);
+        if (handled) return;
+    }
 
     await selfAwardAttemptLogic(
         event,
         devvitContext,
         awarder,
         recipient,
-        settings
+        settings,
     );
 
     await recipientIsBot(event, devvitContext, awarder, recipient, settings);
@@ -150,11 +205,12 @@ export async function handleThanksEvent(
     // ─────────────────────────────────────────────
     // Normal user command logic
     // ─────────────────────────────────────────────
+
     if (containsUser && !containsMod && !containsAlt) {
-        if (userCanAward) {
+        if (userCanAward /* make this a thing: && userHasPermission*/) {
             await executeUserCommand(event, devvitContext);
             logger.info(
-                "🔒 Event/Parent Commment locked due to settings (normal award)"
+                "🔒 Event/Parent Commment locked due to settings (normal award)",
             );
             return;
         } else {
@@ -171,7 +227,7 @@ export async function handleThanksEvent(
         if (isMod || isSuperUser) {
             await executeModCommand(event, devvitContext);
             logger.info(
-                "🔒 Event/Parent Commment locked due to settings (mod award)"
+                "🔒 Event/Parent Commment locked due to settings (mod award)",
             );
             return;
         } else {
@@ -185,7 +241,7 @@ export async function handleThanksEvent(
                     awarder,
                     awardee: recipient,
                     command,
-                }
+                },
             );
 
             const notify = ((settings[
@@ -213,20 +269,6 @@ export async function handleThanksEvent(
     }
 
     // ─────────────────────────────────────────────
-    // Alt command logic (with user or mod command)
-    // ─────────────────────────────────────────────
-    if (containsAlt && (containsUser || containsMod) && !isAltUser) {
-        logger.error(
-            `User tried to execute alt command and is not an alt user`
-        );
-        return;
-    }
-    if (containsAlt && (containsUser || containsMod)) {
-        const handled = await handleAltUserAction(event, devvitContext);
-        if (handled) return;
-    }
-
-    // ─────────────────────────────────────────────
     // Fallback unexpected flow
     // ─────────────────────────────────────────────
     logger.error("Unexpected command flow detected", {
@@ -242,7 +284,7 @@ export async function unflairedPostLogic(
     event: CommentSubmit | CommentUpdate,
     context: TriggerContext,
     awarder: string,
-    settings: SettingsValues
+    settings: SettingsValues,
 ) {
     if (!event.post || !event.comment || !event.author) return;
     const allowUnflairedPosts =
@@ -270,7 +312,7 @@ export async function unflairedPostLogic(
         // 🚫 Ignore bot’s own comments to prevent loops
         if (event.author.name === context.appName) {
             logger.debug(
-                "🤖 Bot-authored comment detected; skipping unflaired-post response"
+                "🤖 Bot-authored comment detected; skipping unflaired-post response",
             );
             return;
         }
@@ -309,14 +351,14 @@ export async function unflairedPostLogic(
                     {
                         id: event.comment.id,
                         text: unflairedMessage,
-                    }
+                    },
                 );
                 await unflairedPostMessage.distinguish();
             }
         } catch (err) {
             logger.error(
                 "❌ Failed to notify user about unflaired post restriction",
-                { awarder, commentId: event.comment.id, err }
+                { awarder, commentId: event.comment.id, err },
             );
         }
 
@@ -331,14 +373,14 @@ export async function flairTextNotAllowedLogic(
     awarder: string,
     commentBody: string,
     triggerUsed: string,
-    settings: SettingsValues
+    settings: SettingsValues,
 ) {
     if (!event.post || !event.comment || !event.author) return;
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
     const flairTextDisallowedMessage = formatMessage(
         (settings[AppSetting.DisallowedFlairMessage] as string) ??
             TemplateDefaults.DisallowedFlairMessage,
-        { name: pointName }
+        { name: pointName },
     );
     const postFlairText = event.post.linkFlair?.text?.trim();
 
@@ -353,7 +395,7 @@ export async function flairTextNotAllowedLogic(
     if (!event.post.linkFlair || !postFlairText) {
         logger.error(
             `User attempted to award points on unflaired posts, but it's not allowed`,
-            { linkFlair: event.post.linkFlair }
+            { linkFlair: event.post.linkFlair },
         );
         return;
     }
@@ -383,7 +425,7 @@ export async function flairTextNotAllowedLogic(
         if (event.author.name === context.appName) {
             // 🚫 Ignore bot’s own comments to prevent loops
             logger.debug(
-                "🤖 Bot-authored comment detected; skipping disallowed flair response"
+                "🤖 Bot-authored comment detected; skipping disallowed flair response",
             );
             return;
         }
@@ -395,7 +437,7 @@ export async function flairTextNotAllowedLogic(
                 "♻️ Disallowed flair already handled for this comment",
                 {
                     commentId: event.comment.id,
-                }
+                },
             );
             return;
         }
@@ -434,7 +476,7 @@ export async function selfAwardAttemptLogic(
     context: TriggerContext,
     awarder: string,
     recipient: string,
-    settings: SettingsValues
+    settings: SettingsValues,
 ) {
     if (!event.comment || !event.author) return;
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
@@ -471,7 +513,7 @@ export async function replyToUser(
     notifyMode: string,
     recipient: string,
     message: string,
-    commentId: string
+    commentId: string,
 ) {
     if (!notifyMode || notifyMode === "none") {
         logger.debug("ℹ️ replyToUser: notifyMode is none — skipping reply");
@@ -543,7 +585,7 @@ export async function checkPermissionOfUser(
     awarder: string,
     commentTriggerContext: CommentTriggerContext,
     devvitContext: TriggerContext,
-    settings: SettingsValues
+    settings: SettingsValues,
 ) {
     if (!event.post || !event.comment) return;
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
@@ -599,7 +641,7 @@ export async function checkPermissionOfUser(
         const denyMsg = formatMessage(
             (settings[msgKey] as string) ??
                 TemplateDefaults.ModOnlyDisallowedMessage,
-            { awarder, name: pointName }
+            { awarder, name: pointName },
         );
 
         const notifyMode = ((settings[notifyKey] as string[]) ?? ["none"])[0];
@@ -609,7 +651,7 @@ export async function checkPermissionOfUser(
             notifyMode ?? "none",
             awarder,
             denyMsg,
-            event.comment.id
+            event.comment.id,
         );
 
         return;
@@ -620,12 +662,12 @@ export async function awarderIsBot(
     event: CommentSubmit | CommentUpdate,
     devvitContext: TriggerContext,
     awarder: string,
-    settings: SettingsValues
+    settings: SettingsValues,
 ) {
     if (!event.comment) return;
     if (
         ["automoderator", devvitContext.appName.toLowerCase()].includes(
-            awarder.toLowerCase()
+            awarder.toLowerCase(),
         )
     ) {
         logger.debug("❌ System user attempted a command");
@@ -634,7 +676,7 @@ export async function awarderIsBot(
 
     const parentComment: Comment | undefined = await getParentComment(
         event,
-        devvitContext
+        devvitContext,
     );
     if (!parentComment) {
         logger.warn("❌ Parent comment not found", {
@@ -653,7 +695,7 @@ export async function awarderIsBot(
         const botMsg = formatMessage(
             (settings[AppSetting.BotAwardMessage] as string) ??
                 TemplateDefaults.BotAwardMessage,
-            { name: pointName, awardee: recipient }
+            { name: pointName, awardee: recipient },
         );
         const botAwardMessage = await devvitContext.reddit.submitComment({
             id: event.comment.id,
@@ -670,13 +712,13 @@ export async function recipientIsBot(
     devvitContext: TriggerContext,
     awarder: string,
     recipient: string,
-    settings: SettingsValues
+    settings: SettingsValues,
 ) {
     if (!event.comment) return;
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
     if (
         ["automoderator", devvitContext.appName.toLowerCase()].includes(
-            awarder.toLowerCase()
+            awarder.toLowerCase(),
         )
     ) {
         logger.debug("❌ System user attempted a command");
@@ -685,21 +727,21 @@ export async function recipientIsBot(
 
     if (
         ["automoderator", devvitContext.appName.toLowerCase()].includes(
-            recipient.toLowerCase()
+            recipient.toLowerCase(),
         )
     ) {
         // Prevent bot account or Automod granting points
         const botAwardMessage = formatMessage(
             (settings[AppSetting.BotAwardMessage] as string) ??
                 TemplateDefaults.BotAwardMessage,
-            { name: pointName, awardee: recipient }
+            { name: pointName, awardee: recipient },
         );
 
         const awardGivenToBotMessage = await devvitContext.reddit.submitComment(
             {
                 id: event.comment.id,
                 text: botAwardMessage,
-            }
+            },
         );
         await awardGivenToBotMessage.distinguish();
         logger.debug("❌ Bot cannot award itself points");
@@ -710,7 +752,7 @@ export async function recipientIsBot(
 export async function handleIgnoredContext(
     event: CommentSubmit | CommentUpdate,
     context: TriggerContext,
-    trigger: string
+    trigger: string,
 ): Promise<void> {
     if (!event.comment || !event.author || !event.subreddit) return;
 
@@ -727,8 +769,8 @@ export async function handleIgnoredContext(
         ignoredType === "quote"
             ? "a quote block (`> text`)"
             : ignoredType === "alt"
-            ? "`alt text` (text surrounded by backticks (`))"
-            : "a spoiler block (`>!text!<`)";
+              ? "`alt text` (text surrounded by backticks (`))"
+              : "a spoiler block (`>!text!<`)";
 
     const initialTriggerInContextLabelNotification = `Hey u/${event.author.name}, I noticed you used the command **${trigger}** inside ${contextLabel}.\n\n`;
     const confirmInfo = `Edit [this comment](${event.comment.permalink}) with **CONFIRM** if you intended to use the command this way and don't wish to be warned about this in the future.\n\n`;
@@ -745,7 +787,7 @@ export async function handleIgnoredContext(
 
     await context.redis.set(
         `pendingConfirm:${event.author.name.toLowerCase()}`,
-        ignoredType
+        ignoredType,
     );
 
     logger.info("⚠️ Normal command ignored due to context", {
@@ -760,7 +802,7 @@ export async function handleIgnoredContext(
 export async function ignoredContextNeedsHandling(
     event: CommentSubmit | CommentUpdate,
     context: TriggerContext,
-    trigger: string
+    trigger: string,
 ): Promise<boolean> {
     if (!event.comment || !event.author || !event.subreddit) return false;
 

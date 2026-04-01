@@ -20,23 +20,17 @@ import {
     getParentComment,
 } from "../comment-trigger-context";
 import { logger } from "../../../logger";
-import {
-    getModDupKey,
-    setModDupKey,
-} from "../../post-logic/redisKeys";
+import { getModDupKey, setModDupKey } from "../../post-logic/redisKeys";
 import {
     getUserIsSuperuser,
     handleAutoSuperuserPromotion,
 } from "../../utils/user-utilities";
-import {
-    InitialUserWikiOptions,
-    updateUserWiki,
-} from "../../../leaderboard";
+import { InitialUserWikiOptions, updateUserWiki } from "../../../leaderboard";
 import { isModerator, SafeWikiClient } from "../../../utility";
 
 export async function commentContainsModCommand(
     event: CommentSubmit | CommentUpdate,
-    context: TriggerContext
+    context: TriggerContext,
 ): Promise<boolean> {
     if (!event.comment) return false;
 
@@ -61,7 +55,7 @@ export async function commentContainsModCommand(
 
 export async function isSelfAwardModCommand(
     event: CommentSubmit | CommentUpdate,
-    context: TriggerContext
+    context: TriggerContext,
 ): Promise<boolean> {
     if (!event.author) return true;
 
@@ -73,7 +67,7 @@ export async function isSelfAwardModCommand(
 
 async function handleSelfAwardModCommand(
     event: CommentSubmit | CommentUpdate,
-    context: TriggerContext
+    context: TriggerContext,
 ) {
     const parentComment = await getParentComment(event, context);
     if (!event.author || !event.comment || !parentComment) return;
@@ -115,7 +109,7 @@ async function handleSelfAwardModCommand(
 
 export async function isDuplicateModAward(
     event: CommentSubmit | CommentUpdate,
-    context: TriggerContext
+    context: TriggerContext,
 ): Promise<boolean> {
     const key = await getModDupKey(event, context);
     const exists = await context.redis.exists(key);
@@ -124,7 +118,7 @@ export async function isDuplicateModAward(
 
 export async function handleDuplicateModAward(
     event: CommentSubmit | CommentUpdate,
-    context: TriggerContext
+    context: TriggerContext,
 ) {
     const parentComment = await getParentComment(event, context);
     if (!parentComment || !event.author || !event.comment) return;
@@ -136,7 +130,7 @@ export async function handleDuplicateModAward(
     const msg = formatMessage(
         (settings[AppSetting.ModAwardAlreadyGiven] as string) ??
             TemplateDefaults.ModAwardAlreadyGivenMessage,
-        { awarder, awardee, name: pointName }
+        { awarder, awardee, name: pointName },
     );
 
     const notify = ((settings[AppSetting.NotifyOnModAwardFail] as string[]) ?? [
@@ -163,7 +157,7 @@ export async function handleDuplicateModAward(
 export async function handleUnauthorizedModCommand(
     event: CommentSubmit | CommentUpdate,
     context: TriggerContext,
-    trigger: string
+    trigger: string,
 ) {
     const ctx = new CommentTriggerContext();
     await ctx.init(event, context);
@@ -181,7 +175,7 @@ export async function handleUnauthorizedModCommand(
             command: trigger,
             name: pointName,
             awarder,
-        }
+        },
     );
 
     const notify = ((settings[AppSetting.NotifyOnModAwardFail] as string[]) ?? [
@@ -207,7 +201,7 @@ export async function handleUnauthorizedModCommand(
 
 export async function awardPointToUserModCommand(
     event: CommentSubmit | CommentUpdate,
-    context: TriggerContext
+    context: TriggerContext,
 ) {
     if (!event.comment || !event.subreddit || !event.author || !event.post) {
         logger.warn("❌ Missing required event data", { event });
@@ -239,7 +233,7 @@ export async function awardPointToUserModCommand(
     const newScore = await context.redis.zIncrBy(
         "thanksPointsStore",
         awardee,
-        1
+        1,
     );
 
     // 🔒 Prevent duplicates
@@ -251,7 +245,7 @@ export async function awardPointToUserModCommand(
         event.subreddit.name,
         awardee,
         newScore,
-        settings
+        settings,
     );
 
     // ⭐ Auto-superuser logic
@@ -273,7 +267,7 @@ export async function awardPointToUserModCommand(
     const awarderIsModerator = await isModerator(
         context,
         event.subreddit.name,
-        awarder
+        awarder,
     );
     const awarderIsSuperUser = await getUserIsSuperuser(context, awarder);
 
@@ -366,11 +360,11 @@ export async function awardPointToUserModCommand(
         const safeWiki = new SafeWikiClient(context.reddit);
         const awarderPage = await safeWiki.getWikiPage(
             subredditName,
-            `user/${awarder.toLowerCase()}`
+            `user/${awarder.toLowerCase()}`,
         );
         const recipientPage = await safeWiki.getWikiPage(
             subredditName,
-            `user/${awardee}`
+            `user/${awardee}`,
         );
 
         if (!awarderPage) {
@@ -406,7 +400,7 @@ export async function awardPointToUserModCommand(
 
 export async function executeModCommand(
     event: CommentSubmit | CommentUpdate,
-    context: TriggerContext
+    context: TriggerContext,
 ) {
     if (!event.comment || !event.author || !event.post) return;
     const awarder = event.author.name;
@@ -423,6 +417,7 @@ export async function executeModCommand(
     const triggers = await getTriggers(context);
 
     for (const trigger of triggers) {
+
         if (!new RegExp(escapeForRegex(trigger), "i").test(body)) continue;
 
         // if (await handleModIgnoredContextIfNeeded(event, context, trigger)) return;

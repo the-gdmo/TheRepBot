@@ -58,9 +58,7 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you remove the app from your subreddit, it will delete all data and you will have to manually restore it to users. 
 
 ## Version History
-### 26.0.1
-* Update mods when they are setting point commands to inform them that the command may only contain values found on a standard keyboard (32-126 (hex 20-7E))
-### 26.0.0
+### 26.1.0
 * Fix regex issue where certain characters weren't escaped correctly (would make it so certain commands won't register for users)
 * Make alternate command actually work
 ### 25.2.0

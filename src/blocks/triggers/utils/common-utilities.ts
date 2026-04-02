@@ -68,7 +68,9 @@ export async function userCommandValues(context: TriggerContext) {
 }
 
 export function escapeForRegex(string: string) {
-    return string.replace(/[\.\*\+\?\^\$\{\}\(\)\|\[\]\\]{1,}/gi, "\\");
+    // String being replaced represents all symbols that
+    // appear on the standard computer keyboard
+    return string.replace(/[\x20-\x7E]{1,}/gi, "\\");
 }
 
 export async function getTriggers(context: TriggerContext) {

@@ -249,7 +249,7 @@ export enum NotifyOnBotAwardReplyOptions {
 }
 
 export const NotifyOnBlockedUserReplyOptionChoices = [
-{
+    {
         label: "No Notification",
         value: NotifyOnBlockedUserReplyOptions.NoReply,
     },
@@ -731,7 +731,7 @@ export const appSettings: SettingsFormField[] = [
                 helpText:
                     "List of trigger words users can type to award points (e.g., !award, .point). Each command should be on a new line. If you want to use regex, enable the option below",
                 defaultValue: "!award\n.award",
-                onValidate: noValidTriggerWords,
+                onValidate: validateTriggerWords,
             },
             {
                 name: AppSetting.ThanksCommandUsesRegex,
@@ -929,6 +929,7 @@ export const appSettings: SettingsFormField[] = [
                 helpText:
                     "Optional. Alternate command for mods and trusted users to award reputation points",
                 defaultValue: "!modaward",
+                onValidate: validateModTriggerCommand,
             },
             {
                 type: "select",
@@ -1326,14 +1327,14 @@ function isFlairTemplateValid(event: SettingsFormFieldValidatorEvent<string>) {
 }
 
 function selectFieldHasOptionChosen(
-    event: SettingsFormFieldValidatorEvent<string[]>
+    event: SettingsFormFieldValidatorEvent<string[]>,
 ) {
     if (!event.value || event.value.length !== 1) {
         return "You must choose an option (even if this is an irrelevant setting)";
     }
 }
 
-function noValidTriggerWords(event: SettingsFormFieldValidatorEvent<string>) {
+function validateTriggerWords(event: SettingsFormFieldValidatorEvent<string>) {
     if (!event.value || event.value.trim() === "") {
         return "You must specify at least one trigger word";
     }
@@ -1341,11 +1342,26 @@ function noValidTriggerWords(event: SettingsFormFieldValidatorEvent<string>) {
     if (lines.length === 0 || lines.some((line) => line === "")) {
         return "You must specify at least one trigger word";
     }
+
+    if (!lines.some((line) => line.match(/^[\x20-\x7E]+$/im))) {
+        return "Trigger words may only contain characters that exist on a standard computer keyboard";
+    }
+}
+
+function validateModTriggerCommand(
+    event: SettingsFormFieldValidatorEvent<string>,
+) {
+    if (!event.value || event.value.trim() === "") {
+        return "You must specify a command (even if you don't intend to use it)";
+    }
+    if (!event.value.match(/^[\x20-\x7E]+$/i)) {
+        return "Command may only contain characters that exist on a standard computer keyboard";
+    }
 }
 
 async function validateRegexes(
     event: SettingsFormFieldValidatorEvent<boolean>,
-    context: TriggerContext
+    context: TriggerContext,
 ) {
     if (!event.value) {
         return;
@@ -1365,7 +1381,7 @@ async function validateRegexes(
 
 export async function validateRegexJobHandler(
     event: ScheduledJobEvent<JSONObject>,
-    context: TriggerContext
+    context: TriggerContext,
 ) {
     const { username } = event.data as { username: string };
     const user = await context.reddit.getUserByUsername(username);
@@ -1379,7 +1395,7 @@ export async function validateRegexJobHandler(
 
 // 🧮 Validate "Awards Required To Create New Posts"
 export function numberFieldHasValidOption(
-    event: SettingsFormFieldValidatorEvent<number>
+    event: SettingsFormFieldValidatorEvent<number>,
 ) {
     if (typeof event.value !== "number" || isNaN(event.value)) {
         return "Value must be a number.";
@@ -1392,7 +1408,7 @@ export function numberFieldHasValidOption(
 
 function paragraphFieldContainsText(
     event: SettingsFormFieldValidatorEvent<string>,
-    _context: TriggerContext
+    _context: TriggerContext,
 ): string | void | Promise<string | void> {
     if (typeof event.value !== "string") {
         return "Value must be a string.";

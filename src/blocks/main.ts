@@ -4,10 +4,7 @@ import {
     FormField,
     MenuItemOnPressEvent,
 } from "@devvit/public-api";
-import {
-    appSettings,
-    validateRegexJobHandler,
-} from "./settings";
+import { appSettings, validateRegexJobHandler } from "./settings";
 import { onAppFirstInstall, onAppInstallOrUpgrade } from "./installEvents";
 import { modLeaderboardInfoJob, updateLeaderboard } from "./leaderboard";
 import { cleanupDeletedAccounts } from "./cleanupTasks";
@@ -92,12 +89,12 @@ Devvit.addSchedulerJob({
 
 export const manualSetPointsForm = Devvit.createForm(
     (data) => ({ fields: data.fields as FormField[] }),
-    manualSetPointsFormHandler
+    manualSetPointsFormHandler,
 );
 
 export const manualPostRestrictionRemovalForm = Devvit.createForm(
     (data) => ({ fields: data.fields as FormField[] }),
-    manualPostRestrictionRemovalHandler
+    manualPostRestrictionRemovalHandler,
 );
 
 Devvit.addMenuItem({
@@ -143,7 +140,7 @@ Devvit.addMenuItem({
 
 export async function handleCommentPin(
     event: MenuItemOnPressEvent,
-    context: Context
+    context: Context,
 ): Promise<void> {
     if (event.location !== "comment" || !event.targetId) {
         context.ui.showToast({
@@ -179,15 +176,19 @@ export async function handleCommentPin(
             context.ui.showToast({
                 text: "Only top-level comments can be pinned.",
             });
-            await logger.error(`❌ Attempted to pin comment that isn't top-level`);
+            await logger.error(
+                `❌ Attempted to pin comment that isn't top-level`,
+            );
             return;
         }
 
         if (comment.isStickied()) {
-context.ui.showToast({
+            context.ui.showToast({
                 text: "This comment is already pinned.",
             });
-            await logger.error(`❌ Attempted to pin comment that is already stickied`);
+            await logger.error(
+                `❌ Attempted to pin comment that is already stickied`,
+            );
             return;
         }
         await comment.distinguish(true);

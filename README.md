@@ -58,6 +58,8 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you remove the app from your subreddit, it will delete all data and you will have to manually restore it to users. 
 
 ## Version History
+### 26.1.1
+* Allow mods to notify the developer if they receive a modmail notifying them of an error with bot command handling
 ### 26.1.0
 * Fix regex issue where certain characters weren't escaped correctly (would make it so certain commands won't register for users)
 * Make alternate command actually work

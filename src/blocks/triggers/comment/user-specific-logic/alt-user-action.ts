@@ -72,7 +72,7 @@ export async function commentContainsAltCommand(
     event: CommentSubmit | CommentUpdate,
     context: TriggerContext,
 ): Promise<boolean | undefined> {
-    if (!event.comment) return false;
+    if (!event.comment || !event.subreddit) return false;
 
     try {
         const body = event.comment.body ?? "";
@@ -80,9 +80,20 @@ export async function commentContainsAltCommand(
         // Fetch commands
         const triggers = await getTriggers(context); // e.g., "!mod"
         for (const trigger of triggers) {
-            if (!new RegExp(`${escapeForRegex(trigger)}\su/([a-z0-9_-]{3,21})`, "i").test(body)) continue;
+            if (
+                !new RegExp(
+                    `${escapeForRegex(trigger)}\su/([a-z0-9_-]{3,21})`,
+                    "i",
+                ).test(body)
+            )
+                continue;
 
-            if (new RegExp(`${escapeForRegex(trigger)}\su/([a-z0-9_-]{3,21})`, "i").test(body)) {
+            if (
+                new RegExp(
+                    `${escapeForRegex(trigger)}\su/([a-z0-9_-]{3,21})`,
+                    "i",
+                ).test(body)
+            ) {
                 logger.debug("🧩 Alt command check", {
                     body,
                     containsCommand: new RegExp(
@@ -96,7 +107,17 @@ export async function commentContainsAltCommand(
             return false;
         }
     } catch (err) {
-        logger.error(`How did we get here?`, {}, context);
+        const botCreator = "ryry50583583";
+        const message =
+            `We encountered an error which is related to the alternate command in r/${event.subreddit.name}.\n\n` +
+            `If you could take a look at it and provide any insights, that would be appreciated!\n\n` +
+            `**Error details:** ${err instanceof Error ? err.stack || err.message : String(err)}`;
+        logger.error(
+            `If you see this error, please [contact my developer](https://www.reddit.com/message/compose?to=${botCreator}&message=${message}). ` +
+                `Please send the message as-is unless you have any additional information to provide.`,
+            {},
+            context,
+        );
         return;
     }
     return;

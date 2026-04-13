@@ -478,7 +478,7 @@ function modInfoTemplate(subredditName: string): string {
 }
 
 export async function modLeaderboardInfoJob(
-    event: ScheduledJobEvent<JSONObject | undefined>,
+    _: ScheduledJobEvent<JSONObject | undefined>,
     context: JobContext,
 ) {
     const subreddit = await context.reddit.getCurrentSubreddit();

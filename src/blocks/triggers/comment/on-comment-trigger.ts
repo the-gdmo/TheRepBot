@@ -1,5 +1,5 @@
 import { CommentSubmit, CommentUpdate } from "@devvit/protos";
-import { TriggerContext, Comment, SettingsValues } from "@devvit/public-api";
+import { TriggerContext, Comment, SettingsValues, User } from "@devvit/public-api";
 import {
     _replyToUser,
     CommentTriggerContext,
@@ -124,9 +124,20 @@ export async function handleThanksEvent(
     // ─────────────────────────────────────────────
     // Access control enforcement
     // ─────────────────────────────────────────────
+    let user: User | undefined;
+
+    try {
+        user = await devvitContext.reddit.getUserByUsername(awarder);
+    } catch {
+        user = undefined;
+    }
+    if (!user) {
+        logger.warn("❌ Could not fetch user object for awarder", { awarder });
+        return;
+    }
     await checkPermissionOfUser(
         event,
-        awarder,
+        user.id,
         commentTriggerContext,
         devvitContext,
         settings,
@@ -209,9 +220,6 @@ export async function handleThanksEvent(
     if (containsUser && !containsMod && !containsAlt) {
         if (userCanAward /* make this a thing: && userHasPermission*/) {
             await executeUserCommand(event, devvitContext);
-            logger.info(
-                "🔒 Event/Parent Commment locked due to settings (normal award)",
-            );
             return;
         } else {
             // Blocked user already handled inside executeUserCommand
@@ -226,9 +234,6 @@ export async function handleThanksEvent(
     if (containsMod && !containsUser && !containsAlt) {
         if (isMod || isSuperUser) {
             await executeModCommand(event, devvitContext);
-            logger.info(
-                "🔒 Event/Parent Commment locked due to settings (mod award)",
-            );
             return;
         } else {
             const command = await modCommandValue(devvitContext);
@@ -582,7 +587,7 @@ export async function replyToUser(
 
 export async function checkPermissionOfUser(
     event: CommentSubmit | CommentUpdate,
-    awarder: string,
+    awarderID: string,
     commentTriggerContext: CommentTriggerContext,
     devvitContext: TriggerContext,
     settings: SettingsValues,
@@ -593,7 +598,7 @@ export async function checkPermissionOfUser(
     const isMod = commentTriggerContext.isMod;
     const isSuperUser = commentTriggerContext.isSuperUser;
     const isAltUser = commentTriggerContext.isAltUser;
-    const isOP = awarder === event.post.authorId;
+    const isOP = awarderID === event.post.authorId;
     const accessControl = ((settings[AppSetting.AccessControl] as string[]) ?? [
         "everyone",
     ])[0];
@@ -606,6 +611,16 @@ export async function checkPermissionOfUser(
         (accessControl === "moderators-superusers-and-op" &&
             (isMod || isSuperUser || isOP)) ||
         (accessControl === "alt-users-only" && isAltUser);
+
+    logger.debug("Permission check", {
+        accessControl,
+        isMod,
+        isSuperUser,
+        isAltUser,
+        isOP,
+        hasPermission,
+    });
+
     if (!hasPermission) {
         let msgKey: AppSetting;
         let notifyKey: AppSetting;
@@ -641,7 +656,7 @@ export async function checkPermissionOfUser(
         const denyMsg = formatMessage(
             (settings[msgKey] as string) ??
                 TemplateDefaults.ModOnlyDisallowedMessage,
-            { awarder, name: pointName },
+            { awarder: awarderID, name: pointName },
         );
 
         const notifyMode = ((settings[notifyKey] as string[]) ?? ["none"])[0];
@@ -649,7 +664,7 @@ export async function checkPermissionOfUser(
         await replyToUser(
             devvitContext,
             notifyMode ?? "none",
-            awarder,
+            awarderID,
             denyMsg,
             event.comment.id,
         );

@@ -49,7 +49,7 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
 
     if (isMod && modsExempt) {
         logger.info(
-            `✅ ${author.username} is a moderator and is exempt from restrictions`
+            `✅ ${author.username} is a moderator and is exempt from restrictions`,
         );
         return;
     }
@@ -64,7 +64,7 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
     const lastValidPostTitleKey = await getLastValidPostTitleKey(author);
     const restrictedFlagExists = await restrictedKeyExists(
         context,
-        author.username
+        author.username,
     );
 
     //check if user is restricted, if they are, remove post and send notification with AppSetting.SubsequentPostRestrictionMessage
@@ -97,7 +97,7 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
             .replace(/{{commands}}/g, commandList)
             .replace(
                 /{{markdown_guide}}/g,
-                "https://www.reddit.com/wiki/markdown"
+                "https://www.reddit.com/wiki/markdown",
             )
             .replace(/{{requirement}}/g, requirement.toString())
             .replace(/{{subreddit}}/g, subredditName);
@@ -107,7 +107,7 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         if (helpPage) {
             msg = msg.replace(
                 /{{helpPage}}/g,
-                `https://www.reddit.com/r/${subredditName}/wiki/${helpPage}`
+                `https://www.reddit.com/r/${subredditName}/wiki/${helpPage}`,
             );
         }
         if (discordLink) msg = msg.replace(/{{discord}}/g, discordLink);
@@ -145,7 +145,7 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
     if (helpPage) {
         text = text.replace(
             /{{helpPage}}/g,
-            `https://www.reddit.com/r/${subredditName}/wiki/${helpPage}`
+            `https://www.reddit.com/r/${subredditName}/wiki/${helpPage}`,
         );
     }
     if (discordLink) {

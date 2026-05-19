@@ -28,6 +28,7 @@
     "media": {
         "dir": "assets"
     },
+    "marketingAssets": { "icon": "assets/repbot.png" },
     "menu": {
         "items": [
             {
@@ -41,5 +42,9 @@
     },
     "forms": {
         "post-create-form": "/internal/form/create-post"
+    },
+    "scripts": {
+        "dev": "vite build --watch",
+        "build": "vite build"
     }
 }

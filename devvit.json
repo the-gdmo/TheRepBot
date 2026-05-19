@@ -28,7 +28,9 @@
     "media": {
         "dir": "assets"
     },
-    "marketingAssets": { "icon": "assets/repbot.png" },
+    "marketingAssets": {
+        "icon": "assets/repbot.png"
+    },
     "menu": {
         "items": [
             {

@@ -58,6 +58,11 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you remove the app from your subreddit, it will delete all data and you will have to manually restore it to users. 
 
 ## Version History
+### 27.1.1
+* Update message content to work properly if an alternate award fail occurs (sent as a modmail which the subreddit can click the "contact my developer" to send to my creator)
+### 27.1.0
+* Add "Moderators and Post Authors" option to "Who can award points?"
+* Add notify and message setting for "Moderators and Post Authors" option
 ### 27.0.0
 * Make Post Author check actually work in terms of awarding logic if "Who can award points?" is set to "Moderators, Superusers, and Post Author (OP)"
 * Upload profile icon (possible as of Devvit 0.12.24)

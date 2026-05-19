@@ -1,5 +1,10 @@
 import { CommentSubmit, CommentUpdate } from "@devvit/protos";
-import { TriggerContext, Comment, SettingsValues, User } from "@devvit/public-api";
+import {
+    TriggerContext,
+    Comment,
+    SettingsValues,
+    User,
+} from "@devvit/public-api";
 import {
     _replyToUser,
     CommentTriggerContext,
@@ -19,6 +24,7 @@ import {
     handleAltUserAction,
 } from "./user-specific-logic/alt-user-action";
 import {
+    AccessControlOptions,
     AppSetting,
     NotifyOnDisallowedFlairReplyOptions,
     NotifyOnModAwardFailReplyOptions,
@@ -135,13 +141,23 @@ export async function handleThanksEvent(
         logger.warn("❌ Could not fetch user object for awarder", { awarder });
         return;
     }
-    await checkPermissionOfUser(
+
+    const hasPermission = await userHasPermission(
         event,
         user.id,
         commentTriggerContext,
         devvitContext,
         settings,
     );
+
+    if (!hasPermission) {
+        logger.debug("❌ User does not have permission", {
+            awarder,
+            commentId: event.comment.id,
+        });
+
+        return;
+    }
 
     // ─────────────────────────────────────────────
     // Detect which command type exists
@@ -315,7 +331,7 @@ export async function unflairedPostLogic(
     // 🚫 Unflaired posts not allowed
     if (!allowUnflairedPosts && postFlairText === "") {
         // 🚫 Ignore bot’s own comments to prevent loops
-        if (event.author.name === context.appName) {
+        if (event.author.name === context.appSlug) {
             logger.debug(
                 "🤖 Bot-authored comment detected; skipping unflaired-post response",
             );
@@ -427,7 +443,7 @@ export async function flairTextNotAllowedLogic(
             return;
         }
 
-        if (event.author.name === context.appName) {
+        if (event.author.name === context.appSlug) {
             // 🚫 Ignore bot’s own comments to prevent loops
             logger.debug(
                 "🤖 Bot-authored comment detected; skipping disallowed flair response",
@@ -487,7 +503,7 @@ export async function selfAwardAttemptLogic(
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
     const selfMsgTemplate =
         (settings[AppSetting.SelfAwardMessage] as string) ??
-        TemplateDefaults.NotifyOnSelfAwardTemplate;
+        TemplateDefaults.SelfAwardTemplate;
     const notifySelf = ((settings[
         AppSetting.NotifyOnSelfAward
     ] as string[]) ?? [NotifyOnSelfAwardReplyOptions.NoReply])[0];
@@ -527,7 +543,7 @@ export async function replyToUser(
 
     // 🚫 Prevent bot loops
     if (
-        recipient.toLowerCase() === context.appName.toLowerCase() ||
+        recipient.toLowerCase() === context.appSlug.toLowerCase() ||
         recipient.toLowerCase() === "automoderator"
     ) {
         logger.debug("🤖 replyToUser: recipient is bot/system — skipping");
@@ -585,32 +601,36 @@ export async function replyToUser(
     }
 }
 
-export async function checkPermissionOfUser(
+export async function userHasPermission(
     event: CommentSubmit | CommentUpdate,
     awarderID: string,
     commentTriggerContext: CommentTriggerContext,
     devvitContext: TriggerContext,
     settings: SettingsValues,
-) {
-    if (!event.post || !event.comment) return;
+): Promise<boolean> {
+    if (!event.post || !event.comment) return false;
+
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
 
     const isMod = commentTriggerContext.isMod;
     const isSuperUser = commentTriggerContext.isSuperUser;
     const isAltUser = commentTriggerContext.isAltUser;
     const isOP = awarderID === event.post.authorId;
+
     const accessControl = ((settings[AppSetting.AccessControl] as string[]) ?? [
         "everyone",
     ])[0];
 
     const hasPermission =
-        accessControl === "everyone" ||
-        (accessControl === "moderators-only" && isMod) ||
-        (accessControl === "moderators-and-superusers" &&
+        accessControl === AccessControlOptions.Everyone ||
+        (accessControl === AccessControlOptions.ModOnly && isMod) ||
+        (accessControl === AccessControlOptions.ModsAndSuperusers &&
             (isMod || isSuperUser)) ||
-        (accessControl === "moderators-superusers-and-op" &&
+        (accessControl === AccessControlOptions.ModsSuperusersAndPostAuthor &&
             (isMod || isSuperUser || isOP)) ||
-        (accessControl === "alt-users-only" && isAltUser);
+        (accessControl === AccessControlOptions.AltUsersOnly && isAltUser) ||
+        (accessControl === AccessControlOptions.ModsAndPostAuthor &&
+            (isMod || isOP));
 
     logger.debug("Permission check", {
         accessControl,
@@ -626,37 +646,45 @@ export async function checkPermissionOfUser(
         let notifyKey: AppSetting;
 
         switch (accessControl) {
-            case "alt-users-only":
+            case AccessControlOptions.AltUsersOnly:
                 msgKey = AppSetting.AlternateUsersOnlyDisallowedMessage;
                 notifyKey = AppSetting.NotifyOnAltUserDisallowed;
                 break;
 
-            case "moderators-only":
+            case AccessControlOptions.ModOnly:
                 msgKey = AppSetting.ModOnlyDisallowedMessage;
                 notifyKey = AppSetting.NotifyOnModOnlyDisallowed;
                 break;
 
-            case "moderators-and-superusers":
+            case AccessControlOptions.ModsAndSuperusers:
                 msgKey = AppSetting.ApprovedOnlyDisallowedMessage;
                 notifyKey = AppSetting.NotifyOnApprovedOnlyDisallowed;
                 break;
 
-            case "moderators-superusers-and-op":
+            case AccessControlOptions.ModsSuperusersAndPostAuthor:
                 msgKey = AppSetting.OPOnlyDisallowedMessage;
                 notifyKey = AppSetting.NotifyOnOPOnlyDisallowed;
+                break;
+
+            case AccessControlOptions.ModsAndPostAuthor:
+                msgKey = AppSetting.ModsAndPostAuthorDisallowedMessage;
+                notifyKey = AppSetting.NotifyOnModsAndPostAuthorDisallowed;
                 break;
 
             default:
                 logger.warn("⚠️ Unknown accessControl value", {
                     accessControl,
                 });
-                return;
+                return false;
         }
 
         const denyMsg = formatMessage(
             (settings[msgKey] as string) ??
                 TemplateDefaults.ModOnlyDisallowedMessage,
-            { awarder: awarderID, name: pointName },
+            {
+                awarder: awarderID,
+                name: pointName,
+            },
         );
 
         const notifyMode = ((settings[notifyKey] as string[]) ?? ["none"])[0];
@@ -669,8 +697,10 @@ export async function checkPermissionOfUser(
             event.comment.id,
         );
 
-        return;
+        return false;
     }
+
+    return true;
 }
 
 export async function awarderIsBot(
@@ -681,7 +711,7 @@ export async function awarderIsBot(
 ) {
     if (!event.comment) return;
     if (
-        ["automoderator", devvitContext.appName.toLowerCase()].includes(
+        ["automoderator", devvitContext.appSlug.toLowerCase()].includes(
             awarder.toLowerCase(),
         )
     ) {
@@ -704,7 +734,7 @@ export async function awarderIsBot(
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
 
     if (
-        awarder === devvitContext.appName ||
+        awarder === devvitContext.appSlug ||
         awarder.toLowerCase() === "automoderator"
     ) {
         const botMsg = formatMessage(
@@ -732,7 +762,7 @@ export async function recipientIsBot(
     if (!event.comment) return;
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
     if (
-        ["automoderator", devvitContext.appName.toLowerCase()].includes(
+        ["automoderator", devvitContext.appSlug.toLowerCase()].includes(
             awarder.toLowerCase(),
         )
     ) {
@@ -741,7 +771,7 @@ export async function recipientIsBot(
     }
 
     if (
-        ["automoderator", devvitContext.appName.toLowerCase()].includes(
+        ["automoderator", devvitContext.appSlug.toLowerCase()].includes(
             recipient.toLowerCase(),
         )
     ) {

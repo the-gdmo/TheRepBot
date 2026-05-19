@@ -107,6 +107,8 @@ export enum AppSetting {
     NotifyOnBlockedUser = "notifyOnBlockedUser",
     NotifyOnTrustedUserAwardSuccess = "notifyOnTrustedUserAwardSuccess",
     TrustedUserAwardSuccessMessage = "trustedUserAwardSuccessMessage",
+    ModsAndPostAuthorDisallowedMessage = "modsAndPostAuthorDisallowedMessage",
+    NotifyOnModsAndPostAuthorDisallowed = "notifyOnModsAndPostAuthorDisallowed",
 }
 
 export enum TemplateDefaults {
@@ -121,7 +123,7 @@ export enum TemplateDefaults {
     ApprovedOnlyDisallowedMessage = "Only moderators and approved users can award points.",
     SelfAwardMessage = "You can't award yourself a {{name}}.",
     BotAwardMessage = "You can't award u/{{awardee}} {{name}}s.",
-    NotifyOnSelfAwardTemplate = "Hello {{awarder}}, you cannot award a {{name}} to yourself.",
+    SelfAwardTemplate = "Hello {{awarder}}, you cannot award a {{name}} to yourself.",
     NotifyOnSuccessTemplate = "+1 {{name}} awarded to u/{{awardee}} by u/{{awarder}}. Total: {{total}}{{symbol}}. {{awardee}}'s user page is located [here]({{awardeePage}}). Leaderboard is located [here]({{leaderboard}}).",
     NotifyOnSuperuserTemplate = "Hello {{awardee}},\n\nNow that you have reached {{threshold}} points you can now award points yourself, even if normal users do not have permission to. Please use the command `{{command}}` if you'd like to do this.",
     MessageToRestrictedUsers = "***ATTENTION to OP: You must award {{name}}s by replying to the successful comments. Valid command(s) are **{{commands}}**. Failure to do so may result in a ban.***\n\n***Commenters MUST put the location in spoiler tags.***\n\n*To hide text, write it like this `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({{markdown_guide}})*.",
@@ -138,6 +140,7 @@ export enum TemplateDefaults {
     PostAuthorAwardMessage = "OPs cannot be awarded points.",
     PointAlreadyAwardedToUserViaAltCommandMessage = "{{awardee}} has already received a {{name}} for this post.",
     TrustedUserAwardSuccessMessage = "Superuser u/{{awarder}} gave an award! u/{{awardee}} now has {{total}}{{symbol}} {{name}}s. {{awardee}}'s user page is located [here]({{awardeePage}}). Leaderboard is located [here]({{leaderboard}}).",
+    ModsAndPostAuthorDisallowedMessage = "Only moderators and Post Authors (OPs) can award {{name}}s.",
 }
 
 export enum AutoSuperuserReplyOptions {
@@ -163,6 +166,27 @@ export enum NotifyOnModOnlyDisallowedReplyOptions {
     ReplyByPM = "replybypm",
     ReplyAsComment = "replybycomment",
 }
+
+export enum NotifyOnModAndPostAuthorDisallowedReplyOptions {
+    NoReply = "none",
+    ReplyByPM = "replybypm",
+    ReplyAsComment = "replybycomment",
+}
+
+const NotifyOnModAndPostAuthorDisallowedReplyOptionChoices = [
+    {
+        label: "No Notification",
+        value: NotifyOnModAndPostAuthorDisallowedReplyOptions.NoReply,
+    },
+    {
+        label: "Send user a private message",
+        value: NotifyOnModAndPostAuthorDisallowedReplyOptions.ReplyByPM,
+    },
+    {
+        label: "Reply as comment",
+        value: NotifyOnModAndPostAuthorDisallowedReplyOptions.ReplyAsComment,
+    },
+];
 
 export enum NotifyOnPostAuthorAwardReplyOptions {
     NoReply = "none",
@@ -465,6 +489,7 @@ export enum AccessControlOptions {
     ModOnly = "moderators-only",
     ModsAndSuperusers = "moderators-and-superusers",
     ModsSuperusersAndPostAuthor = "moderators-superusers-and-op",
+    ModsAndPostAuthor = "moderators-and-op",
     Everyone = "everyone",
 }
 
@@ -480,6 +505,10 @@ const AccessControlOptionChoices = [
     {
         label: "Moderators and Superusers",
         value: AccessControlOptions.ModsAndSuperusers,
+    },
+    {
+        label: "Moderators and Post Author (OP)",
+        value: AccessControlOptions.ModsAndPostAuthor,
     },
     {
         label: "Moderators, Superusers, and Post Author (OP)",
@@ -852,6 +881,25 @@ export const appSettings: SettingsFormField[] = [
             },
             {
                 type: "select",
+                name: AppSetting.NotifyOnModsAndPostAuthorDisallowed,
+                label: "Notify users when only moderators and the Post Author (OP) can award points",
+                options: NotifyOnModAndPostAuthorDisallowedReplyOptionChoices,
+                defaultValue: [
+                    NotifyOnModAndPostAuthorDisallowedReplyOptions.NoReply,
+                ],
+                onValidate: selectFieldHasOptionChosen,
+            },
+            {
+                type: "paragraph",
+                name: AppSetting.ModsAndPostAuthorDisallowedMessage,
+                label: "Mods and Post Author Disallowed Message",
+                helpText:
+                    "Message shown when a user tries to award a point but only moderators and the Post Author (OP) can award points",
+                defaultValue: TemplateDefaults.ModsAndPostAuthorDisallowedMessage,
+                onValidate: paragraphFieldContainsText,
+            },
+            {
+                type: "select",
                 name: AppSetting.NotifyOnApprovedOnlyDisallowed,
                 label: "Notify users when only moderators and approved users can award points",
                 options: NotifyOnApprovedOnlyDisallowedReplyOptionChoices,
@@ -1146,7 +1194,7 @@ export const appSettings: SettingsFormField[] = [
                 label: "Self Award Message",
                 helpText:
                     "Shown when someone tries to award themselves. Placeholders Supported: {{name}}, {{awarder}}",
-                defaultValue: TemplateDefaults.NotifyOnSelfAwardTemplate,
+                defaultValue: TemplateDefaults.SelfAwardTemplate,
                 onValidate: paragraphFieldContainsText,
             },
             {

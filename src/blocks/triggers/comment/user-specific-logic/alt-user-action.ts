@@ -108,12 +108,13 @@ export async function commentContainsAltCommand(
         }
     } catch (err) {
         const botCreator = "ryry50583583";
+        const subject = `Alternate%20Command%20Error%20in%20r/${event.subreddit.name}`;
         const message =
-            `We encountered an error which is related to the alternate command in r/${event.subreddit.name}.\n\n` +
-            `If you could take a look at it and provide any insights, that would be appreciated!\n\n` +
-            `**Error details:** ${err instanceof Error ? err.stack || err.message : String(err)}`;
+            `We%20encountered%20an%20error%20which%20is%20related%20to%20the%20alternate%20command%20in%20r/${event.subreddit.name}.%0A%0A` +
+            `If%20you%20could%20take%20a%20look%20at%20it%20and%20provide%20any%20insights,%20that%20would%20be%20appreciated!%0A%0A` +
+            `**Error details:**%20***${err instanceof Error ? err.stack || err.message : String(err)}***`;
         logger.error(
-            `If you see this error, please [contact my developer](https://www.reddit.com/message/compose?to=${botCreator}&message=${message}). ` +
+            `If you see this error, please [contact my developer](https://www.reddit.com/message/compose?to=${botCreator}&message=${message}&subject=${subject}). ` +
                 `Please send the message as-is unless you have any additional information to provide.`,
             {},
             context,

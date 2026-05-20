@@ -32,7 +32,6 @@ import {
 } from "./triggers/utils/mod-utilities";
 import { logger } from "./logger";
 import { addPostOfTheMonthFlair } from "./postOfTheMonth";
-import { getFlairToggleKey } from "./triggers/utils/redisKeys";
 
 Devvit.addSettings(appSettings);
 

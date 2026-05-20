@@ -3,7 +3,6 @@ import {
     FormOnSubmitEvent,
     JSONObject,
     MenuItemOnPressEvent,
-    SettingsValues,
     TriggerContext,
     User,
 } from "@devvit/public-api";
@@ -15,11 +14,10 @@ import {
     restrictedKeyExists,
 } from "./redisKeys";
 import {
-    getAuthorFromTarget,
     manualPostRestrictionRemovalForm,
     manualSetPointsForm,
 } from "../../main";
-import { AppSetting, ExistingFlairOverwriteHandling } from "../../settings";
+import { AppSetting } from "../../settings";
 import { getCurrentScore } from "../comment/comment-trigger-context";
 import { updateAwardeeFlair } from "./common-utilities";
 

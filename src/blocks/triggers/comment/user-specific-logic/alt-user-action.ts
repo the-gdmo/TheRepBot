@@ -11,7 +11,6 @@ import {
 import {
     flairToggleKeyExists,
     getAltDupKey,
-    getFlairToggleKey,
     setAltDupKey,
 } from "../../utils/redisKeys";
 

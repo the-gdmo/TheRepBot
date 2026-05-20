@@ -8,7 +8,7 @@ import {
     getLastValidPostTitleKey,
     getRestrictedKey,
     restrictedKeyExists,
-} from "./redisKeys";
+} from "../utils/redisKeys";
 import { isModerator } from "../utils/user-utilities";
 
 export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {

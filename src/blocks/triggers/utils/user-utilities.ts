@@ -4,7 +4,7 @@ import {
     AutoSuperuserReplyOptions,
     TemplateDefaults,
 } from "../../settings";
-import { POINTS_STORE_KEY } from "../post-logic/redisKeys";
+import { POINTS_STORE_KEY } from "./redisKeys";
 import { formatMessage, modCommandValue } from "./common-utilities";
 import { getParentComment } from "../comment/comment-trigger-context";
 import { CommentSubmit, CommentUpdate } from "@devvit/protos";

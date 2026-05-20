@@ -1,5 +1,5 @@
 import { CommentCreate, CommentSubmit, CommentUpdate } from "@devvit/protos";
-import { TriggerContext } from "@devvit/public-api";
+import { TriggerContext, User } from "@devvit/public-api";
 
 import {
     escapeForRegex,
@@ -8,7 +8,12 @@ import {
     updateAwardeeFlair,
 } from "../../utils/common-utilities";
 
-import { getAltDupKey, setAltDupKey } from "../../post-logic/redisKeys";
+import {
+    flairToggleKeyExists,
+    getAltDupKey,
+    getFlairToggleKey,
+    setAltDupKey,
+} from "../../utils/redisKeys";
 
 import { logger } from "../../../logger";
 import {
@@ -243,15 +248,6 @@ async function executeAltAward(
 
     await setAltDupKey(event, context, "1");
 
-    // Update flair
-    await updateAwardeeFlair(
-        context,
-        event.subreddit.name,
-        awardee,
-        newScore,
-        settings,
-    );
-
     // Auto-superuser promotion
     await handleAutoSuperuserPromotion(event, context, newScore, triggerUsed);
 
@@ -269,6 +265,34 @@ async function executeAltAward(
         awardee,
         newScore,
     });
+
+    let user: User | undefined;
+    try {
+        user = await context.reddit.getUserByUsername(awardee);
+    } catch {}
+
+    if (!user) {
+        logger.error("Failed to fetch user for flair update after ALT award");
+        return;
+    }
+
+    const flairHandlingDisabled = await flairToggleKeyExists(context, user);
+
+    if (flairHandlingDisabled) {
+        logger.info(
+            "Flair handling is disabled for this user, skipping flair update",
+        );
+        return;
+    }
+
+    // Update flair
+    await updateAwardeeFlair(
+        context,
+        event.subreddit.name,
+        awardee,
+        newScore,
+        settings,
+    );
 }
 /* ─────────────────────────────────────────────────────────────
  * Notifications

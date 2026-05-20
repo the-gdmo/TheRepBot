@@ -13,13 +13,15 @@ import {
     POINTS_STORE_KEY,
     requiredKeyExists,
     restrictedKeyExists,
-} from "../post-logic/redisKeys";
+} from "./redisKeys";
 import {
+    getAuthorFromTarget,
     manualPostRestrictionRemovalForm,
     manualSetPointsForm,
 } from "../../main";
 import { AppSetting, ExistingFlairOverwriteHandling } from "../../settings";
 import { getCurrentScore } from "../comment/comment-trigger-context";
+import { updateAwardeeFlair } from "./common-utilities";
 
 export async function handleUserRestrictionCheck(
     event: MenuItemOnPressEvent,
@@ -252,64 +254,6 @@ export async function handleManualPointSetting(
     context.ui.showForm(manualSetPointsForm, { fields });
 }
 
-async function updateAwardeeFlair(
-    context: TriggerContext,
-    subredditName: string,
-    commentAuthor: string,
-    newScore: number,
-    settings: SettingsValues
-) {
-    const pointSymbol = (settings[AppSetting.PointSymbol] as string) ?? "";
-    const flairSetting = ((settings[AppSetting.ExistingFlairHandling] as
-        | string[]
-        | undefined) ?? [
-        ExistingFlairOverwriteHandling.OverwriteNumeric,
-    ])[0] as ExistingFlairOverwriteHandling;
-
-    // Make sure newScore is a safe primitive
-    const scoreValue =
-        newScore !== undefined && newScore !== null ? Number(newScore) : 0;
-
-    let flairText = "";
-    switch (flairSetting) {
-        case ExistingFlairOverwriteHandling.OverwriteNumericSymbol:
-            flairText = `${scoreValue}${pointSymbol}`;
-            break;
-        case ExistingFlairOverwriteHandling.OverwriteNumeric:
-        default:
-            flairText = `${scoreValue}`;
-            break;
-    }
-
-    // CSS class + template logic
-    let cssClass = settings[AppSetting.CSSClass] as string | undefined;
-    let flairTemplate = settings[AppSetting.FlairTemplate] as
-        | string
-        | undefined;
-
-    // If using a flair template, CSS class cannot be used
-    if (flairTemplate) cssClass = undefined;
-
-    try {
-        await context.reddit.setUserFlair({
-            subredditName,
-            username: commentAuthor,
-            cssClass,
-            flairTemplateId: flairTemplate,
-            text: flairText,
-        });
-
-        logger.info(
-            `🧑‍🎨 Awardee flair updated: u/${commentAuthor} → (“${flairText}”)`
-        );
-    } catch (err) {
-        logger.error("❌ Failed to update awardee flair", {
-            user: commentAuthor,
-            err,
-        });
-    }
-}
-
 export async function manualSetPointsFormHandler(
     event: FormOnSubmitEvent<JSONObject>,
     context: Context
@@ -354,15 +298,6 @@ export async function manualSetPointsFormHandler(
         score: entry,
     });
 
-    // Update flair based on new score
-    await updateAwardeeFlair(
-        context,
-        subreddit,
-        user.username,
-        entry,
-        settings
-    );
-
     // Trigger leaderboard update
     await context.scheduler.runJob({
         name: "updateLeaderboard",
@@ -373,6 +308,15 @@ export async function manualSetPointsFormHandler(
     });
 
     context.ui.showToast(`Score for ${user.username} is now ${entry}`);
+
+    // Update flair based on new score
+    await updateAwardeeFlair(
+        context,
+        subreddit,
+        user.username,
+        entry,
+        settings
+    );
 }
 
 export async function handleManualPostRestrictionRemoval(

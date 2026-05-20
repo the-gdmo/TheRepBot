@@ -20,7 +20,11 @@ import {
     getParentComment,
 } from "../comment-trigger-context";
 import { logger } from "../../../logger";
-import { getModDupKey, setModDupKey } from "../../post-logic/redisKeys";
+import {
+    flairToggleKeyExists,
+    getModDupKey,
+    setModDupKey,
+} from "../../utils/redisKeys";
 import {
     getUserIsSuperuser,
     handleAutoSuperuserPromotion,
@@ -76,7 +80,7 @@ async function handleSelfAwardModCommand(
 
     const selfMsgTemplate =
         (settings[AppSetting.SelfAwardMessage] as string) ??
-        TemplateDefaults.NotifyOnSelfAwardTemplate;
+        TemplateDefaults.SelfAwardTemplate;
     const notifySelf = ((settings[
         AppSetting.NotifyOnSelfAward
     ] as string[]) ?? [NotifyOnSelfAwardReplyOptions.NoReply])[0];
@@ -239,15 +243,6 @@ export async function awardPointToUserModCommand(
     // 🔒 Prevent duplicates
     await setModDupKey(event, context, "1");
 
-    // 🎨 Update flair
-    await updateAwardeeFlair(
-        context,
-        event.subreddit.name,
-        awardee,
-        newScore,
-        settings,
-    );
-
     // ⭐ Auto-superuser logic
     const modCommand = (settings[AppSetting.ModAwardCommand] as string) ?? "";
     await handleAutoSuperuserPromotion(event, context, newScore, modCommand);
@@ -396,6 +391,34 @@ export async function awardPointToUserModCommand(
             err,
         });
     }
+
+    let userObj: User | undefined;
+    try {
+        userObj = await context.reddit.getUserByUsername(awardee);
+    } catch {}
+
+    if (!userObj) {
+        logger.error("Failed to fetch user for flair update after ALT award");
+        return;
+    }
+
+    const flairHandlingDisabled = await flairToggleKeyExists(context, userObj);
+
+    if (flairHandlingDisabled) {
+        logger.info(
+            "Flair handling is disabled for this user, skipping flair update",
+        );
+        return;
+    }
+
+    // 🎨 Update flair
+    await updateAwardeeFlair(
+        context,
+        event.subreddit.name,
+        awardee,
+        newScore,
+        settings,
+    );
 }
 
 export async function executeModCommand(
@@ -417,7 +440,6 @@ export async function executeModCommand(
     const triggers = await getTriggers(context);
 
     for (const trigger of triggers) {
-
         if (!new RegExp(escapeForRegex(trigger), "i").test(body)) continue;
 
         // if (await handleModIgnoredContextIfNeeded(event, context, trigger)) return;

@@ -3,7 +3,7 @@ import { addDays, addMinutes, subMinutes } from "date-fns";
 import { CronExpressionParser } from "cron-parser";
 import { ADHOC_CLEANUP_JOB, CLEANUP_JOB_CRON } from "./constants";
 import { AppSetting } from "./settings";
-import { POINTS_STORE_KEY } from "./triggers/post-logic/redisKeys";
+import { POINTS_STORE_KEY } from "./triggers/utils/redisKeys";
 
 const CLEANUP_LOG_KEY = "cleanupStore";
 const DAYS_BETWEEN_CHECKS = 28;

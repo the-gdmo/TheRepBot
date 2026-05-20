@@ -18,7 +18,7 @@ import {
     TemplateDefaults,
 } from "../../settings";
 import { formatMessage } from "../utils/common-utilities";
-import { POINTS_STORE_KEY } from "../post-logic/redisKeys";
+import { POINTS_STORE_KEY } from "../utils/redisKeys";
 
 // src/triggers/comment/comment-trigger-context.ts
 export class CommentTriggerContext {

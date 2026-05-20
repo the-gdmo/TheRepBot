@@ -58,6 +58,9 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you remove the app from your subreddit, it will delete all data and you will have to manually restore it to users. 
 
 ## Version History
+### 27.2.0
+* Allow mods to set whether their own flair or others' should be edited by the bot when they receive an award
+* Allow mods to check whether a user has this toggle enabled or not
 ### 27.1.1
 * Update message content to work properly if an alternate award fail occurs (sent as a modmail which the subreddit can click the "contact my developer" to send to my creator)
 ### 27.1.0

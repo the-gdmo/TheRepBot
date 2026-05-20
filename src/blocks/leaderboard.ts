@@ -10,7 +10,7 @@ import { AppSetting, LeaderboardMode } from "./settings";
 import { getSubredditName, SafeWikiClient } from "./utility";
 import pluralize from "pluralize";
 import { logger } from "./logger";
-import { POINTS_STORE_KEY } from "./triggers/post-logic/redisKeys";
+import { POINTS_STORE_KEY } from "./triggers/utils/redisKeys";
 
 function capitalize(word: string): string {
     return word.charAt(0).toUpperCase() + word.slice(1);

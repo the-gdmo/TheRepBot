@@ -2,7 +2,10 @@ import {
     Context,
     Devvit,
     FormField,
+    FormOnSubmitEvent,
+    JSONObject,
     MenuItemOnPressEvent,
+    User,
 } from "@devvit/public-api";
 import { appSettings, validateRegexJobHandler } from "./settings";
 import { onAppFirstInstall, onAppInstallOrUpgrade } from "./installEvents";
@@ -29,6 +32,7 @@ import {
 } from "./triggers/utils/mod-utilities";
 import { logger } from "./logger";
 import { addPostOfTheMonthFlair } from "./postOfTheMonth";
+import { getFlairToggleKey } from "./triggers/utils/redisKeys";
 
 Devvit.addSettings(appSettings);
 
@@ -92,33 +96,38 @@ export const manualSetPointsForm = Devvit.createForm(
     manualSetPointsFormHandler,
 );
 
+export const manualSetFlairManagementForm = Devvit.createForm(
+    (data) => ({ fields: data.fields as FormField[] }),
+    manualSetFlairManagementFormHandler,
+);
+
 export const manualPostRestrictionRemovalForm = Devvit.createForm(
     (data) => ({ fields: data.fields as FormField[] }),
     manualPostRestrictionRemovalHandler,
 );
 
 Devvit.addMenuItem({
-    label: "Remove post restriction from user",
+    label: "[RepBot] - Remove post restriction from user",
     forUserType: "moderator",
     location: "post",
     onPress: handleManualPostRestrictionRemoval,
 });
 
 Devvit.addMenuItem({
-    label: "Check Posting Restriction",
+    label: "[RepBot] - Check Posting Restriction",
     location: "post",
     onPress: handlePostRestrictionCheck,
 });
 
 Devvit.addMenuItem({
-    label: "Check User Restriction",
+    label: "[RepBot] - Check User Restriction",
     location: "comment",
     forUserType: "moderator",
     onPress: handleUserRestrictionCheck,
 });
 
 Devvit.addMenuItem({
-    label: "Check User Restriction",
+    label: "[RepBot] - Check User Restriction",
     location: "post",
     forUserType: "moderator",
     onPress: handleUserRestrictionCheck,
@@ -132,7 +141,35 @@ Devvit.addMenuItem({
 });
 
 Devvit.addMenuItem({
-    label: "Set TheRepBot score manually",
+    label: "[RepBot] - Check Flair Management For User",
+    forUserType: "moderator",
+    location: "comment",
+    onPress: checkFlairToggle,
+});
+
+Devvit.addMenuItem({
+    label: "[RepBot] - Check Flair Management For User",
+    forUserType: "moderator",
+    location: "post",
+    onPress: checkFlairToggle,
+});
+
+Devvit.addMenuItem({
+    label: "[RepBot] - Toggle Flair Management For User",
+    forUserType: "moderator",
+    location: "comment",
+    onPress: handleFlairToggle,
+});
+
+Devvit.addMenuItem({
+    label: "[RepBot] - Toggle Flair Management For User",
+    forUserType: "moderator",
+    location: "post",
+    onPress: handleFlairToggle,
+});
+
+Devvit.addMenuItem({
+    label: "[RepBot] - Set Score Manually",
     forUserType: "moderator",
     location: "comment",
     onPress: handleManualPointSetting,
@@ -210,6 +247,170 @@ export async function handleCommentPin(
             text: "Failed to pin comment.",
         });
     }
+}
+
+export async function handleFlairToggle(
+    event: MenuItemOnPressEvent,
+    context: Context,
+) {
+    try {
+        if (!event.targetId || !event.location) {
+            context.ui.showToast("Invalid target.");
+            return;
+        }
+
+        let username: string | null = null;
+
+        if (event.location === "comment") {
+            const comment = await context.reddit.getCommentById(event.targetId);
+            username = comment?.authorName ?? null;
+        } else if (event.location === "post") {
+            const post = await context.reddit.getPostById(event.targetId);
+            username = post?.authorName ?? null;
+        }
+
+        if (!username) {
+            context.ui.showToast(
+                "Cannot toggle flair. User may be shadowbanned.",
+            );
+            return;
+        }
+
+        let currentValue = "";
+
+        const key = `flairToggle:${username}`;
+        const exists = await context.redis.exists(key);
+
+        if (exists) {
+            currentValue = "disabled";
+        } else {
+            currentValue = "enabled";
+        }
+
+        const fields = [
+            {
+                name: "isEnabled",
+                type: "string",
+                label: `Flair management for u/${username}`,
+                defaultValue: currentValue,
+                helpText:
+                    "enabled = bot manages flair, disabled = bot will not manage flair",
+                required: true,
+            },
+        ];
+
+        context.ui.showForm(manualSetFlairManagementForm, { fields });
+    } catch (err) {
+        logger.error("❌ Failed to toggle flair management", {
+            error: String(err),
+        });
+
+        context.ui.showToast(
+            "An error occurred while toggling flair management.",
+        );
+    }
+}
+
+export async function checkFlairToggle(
+    event: MenuItemOnPressEvent,
+    context: Context,
+): Promise<void> {
+    if (!event.targetId) {
+        context.ui.showToast("Invalid target.");
+        return;
+    }
+
+    const username = await getAuthorFromTarget(context, event.targetId);
+
+    if (!username) {
+        context.ui.showToast("Could not resolve user.");
+        return;
+    }
+
+    const key = `flairToggle:${username}`;
+    const exists = await context.redis.exists(key);
+
+    if (exists) {
+        context.ui.showToast(
+            `Flair management is currently disabled for u/${username}`,
+        );
+    } else {
+        context.ui.showToast(
+            `Flair management is currently enabled for u/${username}`,
+        );
+    }
+}
+
+export async function getAuthorFromTarget(
+    context: Context,
+    targetId: string,
+): Promise<string | null> {
+    try {
+        // Try comment first
+        const comment = await context.reddit.getCommentById(targetId);
+        return comment?.authorName ?? null;
+    } catch {}
+
+    try {
+        // Try post fallback
+        const post = await context.reddit.getPostById(targetId);
+        return post?.authorName ?? null;
+    } catch {}
+
+    return null;
+}
+
+export async function manualSetFlairManagementFormHandler(
+    event: FormOnSubmitEvent<JSONObject>,
+    context: Context,
+) {
+    const value = event.values.isEnabled as string | undefined;
+
+    if (value !== "enabled" && value !== "disabled") {
+        context.ui.showToast(`You must enter "enabled" or "disabled"`);
+        return;
+    }
+
+    // 🔍 Resolve user from target
+    let username: string | null = null;
+
+    try {
+        if (context.commentId) {
+            const comment = await context.reddit.getCommentById(context.commentId);
+            username = comment?.authorName ?? null;
+        } else if (context.postId) {
+            const post = await context.reddit.getPostById(context.postId);
+            username = post?.authorName ?? null;
+        }
+    } catch {}
+
+    if (!username) {
+        context.ui.showToast("Could not resolve user.");
+        return;
+    }
+
+    let user: User | undefined;
+    try {
+        user = await context.reddit.getUserByUsername(username);
+    } catch {}
+
+    if (!user) {
+        context.ui.showToast("User may be shadowbanned.");
+        return;
+    }
+
+    const key = `flairToggle:${user.username}`;
+
+    // enabled = no key
+    if (value === "enabled") {
+        await context.redis.del(key);
+    } else {
+        await context.redis.set(key, "disabled");
+    }
+
+    context.ui.showToast(
+        `Flair management for u/${user.username} is now ${value}`,
+    );
 }
 
 Devvit.configure({

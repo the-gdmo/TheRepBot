@@ -58,6 +58,9 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 NOTE: If you remove the app from your subreddit, it will delete all data and you will have to manually restore it to users. 
 
 ## Version History
+### 27.3.0
+* Add manual username entry (only available in burger menu of main subreddit page (ie not on a post or comment))
+* Make entry for flair management option (ie "enabled"/"disabled") case-insensitive
 ### 27.2.0
 * Allow mods to set whether their own flair or others' should be edited by the bot when they receive an award
 * Allow mods to check whether a user has this toggle enabled or not

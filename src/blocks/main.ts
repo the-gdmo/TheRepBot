@@ -99,11 +99,22 @@ export const manualSetFlairManagementForm = Devvit.createForm(
     (data) => ({ fields: data.fields as FormField[] }),
     manualSetFlairManagementFormHandler,
 );
+export const manualSetFlairManagementForUserForm = Devvit.createForm(
+    (data) => ({ fields: data.fields as FormField[] }),
+    manualSetFlairManagementForUserFormHandler,
+);
 
 export const manualPostRestrictionRemovalForm = Devvit.createForm(
     (data) => ({ fields: data.fields as FormField[] }),
     manualPostRestrictionRemovalHandler,
 );
+
+Devvit.addMenuItem({
+    label: "[RepBot] - Set Flair Management For Specified User",
+    forUserType: "moderator",
+    location: "subreddit",
+    onPress: handleFlairToggleForUser,
+});
 
 Devvit.addMenuItem({
     label: "[RepBot] - Remove post restriction from user",
@@ -293,7 +304,7 @@ export async function handleFlairToggle(
                 label: `Flair management for u/${username}`,
                 defaultValue: currentValue,
                 helpText:
-                    "enabled = bot manages flair, disabled = bot will not manage flair",
+                    "Case insensitive. 'enabled' = bot manages flair, 'disabled' = bot will not manage flair",
                 required: true,
             },
         ];
@@ -364,8 +375,13 @@ export async function manualSetFlairManagementFormHandler(
     context: Context,
 ) {
     const value = event.values.isEnabled as string | undefined;
-
-    if (value !== "enabled" && value !== "disabled") {
+    if (!value) {
+        context.ui.showToast("Your entry must contain a value.");
+        return;
+    }
+    const enabled = /^enabled$/i;
+    const disabled = /^disabled$/i;
+    if (disabled.test(value) && !enabled.test(value)) {
         context.ui.showToast(`You must enter "enabled" or "disabled"`);
         return;
     }
@@ -375,7 +391,9 @@ export async function manualSetFlairManagementFormHandler(
 
     try {
         if (context.commentId) {
-            const comment = await context.reddit.getCommentById(context.commentId);
+            const comment = await context.reddit.getCommentById(
+                context.commentId,
+            );
             username = comment?.authorName ?? null;
         } else if (context.postId) {
             const post = await context.reddit.getPostById(context.postId);
@@ -401,7 +419,7 @@ export async function manualSetFlairManagementFormHandler(
     const key = `flairToggle:${user.username}`;
 
     // enabled = no key
-    if (value === "enabled") {
+    if (enabled.test(value)) {
         await context.redis.del(key);
     } else {
         await context.redis.set(key, "disabled");
@@ -409,6 +427,93 @@ export async function manualSetFlairManagementFormHandler(
 
     context.ui.showToast(
         `Flair management for u/${user.username} is now ${value}`,
+    );
+}
+
+export async function handleFlairToggleForUser(
+    _: MenuItemOnPressEvent,
+    context: Context,
+) {
+    try {
+        const fields = [
+            {
+                name: "target",
+                type: "string",
+                label: "Target Username (no u/)",
+                defaultValue: "",
+                helpText:
+                    "Case insensitive. The username of the user you want to toggle flair management for",
+                required: true,
+            },
+            {
+                name: "isEnabled",
+                type: "string",
+                label: `Set Flair Management Status`,
+                defaultValue: "",
+                helpText:
+                    "Case insensitive. 'enabled' = bot manages flair, 'disabled' = bot will not manage flair",
+                required: true,
+            },
+        ];
+
+        context.ui.showForm(manualSetFlairManagementForUserForm, { fields });
+    } catch (err) {
+        logger.error("❌ Failed to toggle flair management", {
+            error: String(err),
+        });
+
+        context.ui.showToast(
+            "An error occurred while toggling flair management.",
+        );
+    }
+}
+
+export async function manualSetFlairManagementForUserFormHandler(
+    event: FormOnSubmitEvent<JSONObject>,
+    context: Context,
+) {
+    const isEnabled = event.values.isEnabled as string | undefined;
+    const target = event.values.target as string | undefined;
+
+    if (!isEnabled) {
+        context.ui.showToast("Enablement status is required.");
+        return;
+    }
+
+    if (!target) {
+        context.ui.showToast("Target user is required.");
+        return;
+    }
+
+    const enabled = /^enabled$/i;
+    const disabled = /^disabled$/i;
+
+    if (!disabled.test(isEnabled) && !enabled.test(isEnabled)) {
+        context.ui.showToast(`You must enter "enabled" or "disabled"`);
+        return;
+    }
+
+    const userRegex = /^[a-z0-9\_\-]{3,21}$/i;
+
+    if (!userRegex.test(target)) {
+        context.ui.showToast(
+            "Username must be between 3 and 21 characters long and contain only letters, numbers, underscores, or hyphens.",
+        );
+        return;
+    }
+
+    // 🔍 Resolve user from target
+    const key = `flairToggle:${target}`;
+
+    // enabled = no key
+    if (enabled.test(isEnabled)) {
+        await context.redis.del(key);
+    } else {
+        await context.redis.set(key, "disabled");
+    }
+
+    context.ui.showToast(
+        `Flair management for u/${target} is now ${isEnabled}`,
     );
 }
 

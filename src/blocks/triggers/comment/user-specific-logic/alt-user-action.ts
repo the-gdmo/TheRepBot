@@ -82,7 +82,7 @@ export async function commentContainsAltCommand(
         const body = event.comment.body ?? "";
 
         // Fetch commands
-        const triggers = await getTriggers(context); // e.g., "!mod"
+        const triggers = await getTriggers(context);
         for (const trigger of triggers) {
             if (
                 !new RegExp(

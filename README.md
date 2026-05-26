@@ -60,10 +60,11 @@ NOTE: If you remove the app from your subreddit, it will delete all data and you
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 ## Version History
+### 28.0.1
+* Remove inaccurate statement from v28.0.0
 ### 28.0.0
 * Sunset custom leaderboard post (Support is being deprecated by Reddit after June 2026)
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from this version onwards.
-* Add option to notify mods of the subreddit when a new version is released
 ### 27.3.0
 * Add manual username entry (only available in burger menu of main subreddit page (ie not on a post or comment))
 * Make entry for flair management option (ie "enabled"/"disabled") case-insensitive

@@ -363,8 +363,7 @@ export async function updateLeaderboard(
     const wikiPageName =
         (settings[AppSetting.LeaderboardName] as string | undefined) ??
         "leaderboard";
-    const leaderboardSize =
-        (settings[AppSetting.LeaderboardSize] as number | undefined) ?? 20;
+    const leaderboardSize = settings[AppSetting.LeaderboardSize] as number | undefined ?? 50;
 
     const subredditName = await getSubredditName(context);
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";

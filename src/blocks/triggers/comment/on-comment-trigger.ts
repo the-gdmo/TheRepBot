@@ -180,43 +180,57 @@ export async function handleThanksEvent(
     // or not, and doesn't care who is being awarded
     // ─────────────────────────────────────────────
     if (containsAlt && (containsUser || containsMod)) {
-        if (!isAltUser) {
-            const redisKey = `shouldComment:${parentComment.id}`;
-            const parentCommentRespondedTo =
-                await devvitContext.redis.exists(redisKey);
-
-            if (parentCommentRespondedTo) {
-                logger.info(`Alt response already sent, returning.`);
+        if (isAltUser) {
+            const handled = await handleAltUserAction(event, devvitContext);
+            if (handled) {
+                // Trigger leaderboard update
+                await devvitContext.scheduler.runJob({
+                    name: "updateLeaderboard",
+                    runAt: new Date(),
+                    data: {
+                        reason: `Updated score for ${user.username}. Triggered by alternate command.`,
+                    },
+                });
+                logger.info("✅ Alternate command executed successfully");
+                return;
+            } else {
+                logger.debug("❌ Alternate command detected but not handled");
                 return;
             }
+        }
+        const redisKey = `shouldComment:${parentComment.id}`;
+        const parentCommentRespondedTo =
+            await devvitContext.redis.exists(redisKey);
 
-            logger.error(
-                `User tried to execute alt command and is not an alt user`,
-            );
-            const notifyOnAltFailMode = ((settings[
-                AppSetting.NotifyOnAlternateCommandFail
-            ] as string[]) ?? ["none"])[0];
-            if (!notifyOnAltFailMode) return;
-
-            const altAwardFailMsg = formatMessage(
-                (settings[AppSetting.AlternateCommandFailMessage] as string) ??
-                    TemplateDefaults.AlternateCommandFailMessage,
-                {
-                    altCommand: triggerUsed,
-                },
-            );
-
-            await _replyToUser(
-                devvitContext,
-                awarder,
-                altAwardFailMsg,
-                event.comment.id,
-                notifyOnAltFailMode,
-            );
+        if (parentCommentRespondedTo) {
+            logger.info(`Alt response already sent, returning.`);
             return;
         }
-        const handled = await handleAltUserAction(event, devvitContext);
-        if (handled) return;
+
+        logger.error(
+            `User tried to execute alt command and is not an alt user`,
+        );
+        const notifyOnAltFailMode = ((settings[
+            AppSetting.NotifyOnAlternateCommandFail
+        ] as string[]) ?? ["none"])[0];
+        if (!notifyOnAltFailMode) return;
+
+        const altAwardFailMsg = formatMessage(
+            (settings[AppSetting.AlternateCommandFailMessage] as string) ??
+                TemplateDefaults.AlternateCommandFailMessage,
+            {
+                altCommand: triggerUsed,
+            },
+        );
+
+        await _replyToUser(
+            devvitContext,
+            awarder,
+            altAwardFailMsg,
+            event.comment.id,
+            notifyOnAltFailMode,
+        );
+        return;
     }
 
     await selfAwardAttemptLogic(
@@ -234,13 +248,24 @@ export async function handleThanksEvent(
     // ─────────────────────────────────────────────
 
     if (containsUser && !containsMod && !containsAlt) {
-        if (userCanAward /* make this a thing: && userHasPermission*/) {
-            await executeUserCommand(event, devvitContext);
-            return;
-        } else {
-            // Blocked user already handled inside executeUserCommand
+        if (!userCanAward) {
             logger.debug("❌ User blocked from awarding points", { awarder });
+            return;
         }
+        const handled = await executeUserCommand(event, devvitContext);
+        // Trigger leaderboard update
+        if (handled) {
+            await devvitContext.scheduler.runJob({
+                name: "updateLeaderboard",
+                runAt: new Date(),
+                data: {
+                    reason: `Updated score for ${user.username}. Triggered by user command.`,
+                },
+            });
+            logger.info("✅ User command executed successfully");
+            return;
+        }
+        logger.debug("❌ User command detected but not handled");
         return;
     }
 
@@ -249,8 +274,19 @@ export async function handleThanksEvent(
     // ─────────────────────────────────────────────
     if (containsMod && !containsUser && !containsAlt) {
         if (isMod || isSuperUser) {
-            await executeModCommand(event, devvitContext);
-            return;
+            const handled = await executeModCommand(event, devvitContext);
+            // Trigger leaderboard update
+            if (handled) {
+                await devvitContext.scheduler.runJob({
+                    name: "updateLeaderboard",
+                    runAt: new Date(),
+                    data: {
+                        reason: `Updated score for ${user.username}. Triggered by mod command.`,
+                    },
+                });
+                logger.info("✅ Mod command executed successfully");
+                return;
+            }
         } else {
             const command = await modCommandValue(devvitContext);
             //send message saying no perms

@@ -424,38 +424,60 @@ export async function awardPointToUserModCommand(
 export async function executeModCommand(
     event: CommentSubmit | CommentUpdate,
     context: TriggerContext,
-) {
-    if (!event.comment || !event.author || !event.post) return;
+): Promise<boolean> {
+    if (!event.comment || !event.author || !event.post) {
+        return false;
+    }
+
     const awarder = event.author.name;
 
     let user: User | undefined;
+
     try {
         user = await context.reddit.getUserByUsername(awarder);
     } catch {
         user = undefined;
     }
-    if (!user) return;
+
+    if (!user) {
+        return false;
+    }
 
     const body = (event.comment.body ?? "").toLowerCase();
+
     const triggers = await getTriggers(context);
 
     for (const trigger of triggers) {
-        if (!new RegExp(escapeForRegex(trigger), "i").test(body)) continue;
+        if (!new RegExp(escapeForRegex(trigger), "i").test(body)) {
+            continue;
+        }
 
-        // if (await handleModIgnoredContextIfNeeded(event, context, trigger)) return;
+        // if (await handleModIgnoredContextIfNeeded(event, context, trigger)) {
+        //     return false;
+        // }
 
-        await handleUnauthorizedModCommand(event, context, trigger);
+        await handleUnauthorizedModCommand(
+            event,
+            context,
+            trigger,
+        );
 
         if (await isSelfAwardModCommand(event, context)) {
             await handleSelfAwardModCommand(event, context);
-            return;
+
+            return false;
         }
 
         if (await isDuplicateModAward(event, context)) {
             await handleDuplicateModAward(event, context);
-            return;
+
+            return false;
         }
 
         await awardPointToUserModCommand(event, context);
+
+        return true;
     }
+
+    return false;
 }

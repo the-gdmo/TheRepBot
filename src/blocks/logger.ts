@@ -61,7 +61,7 @@ async function sendModPM(context: TriggerContext, message: string): Promise<void
     await context.reddit.sendPrivateMessage({
       to: `/r/${subreddit}`,
       subject: "TheRepBot Error Alert",
-      text: message.slice(0, 10000),
+      text: message.slice(0, 10_000),
     });
   } catch (e) {
     console.error("Logger: Failed to send Reddit PM:", e);

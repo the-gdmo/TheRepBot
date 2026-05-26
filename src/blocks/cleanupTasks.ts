@@ -10,7 +10,7 @@ const DAYS_BETWEEN_CHECKS = 28;
 
 export async function setCleanupForUsers(
     usernames: string[],
-    context: TriggerContext
+    context: TriggerContext,
 ) {
     if (usernames.length === 0) {
         return;
@@ -21,13 +21,13 @@ export async function setCleanupForUsers(
         ...usernames.map((username) => ({
             member: username,
             score: addDays(new Date(), DAYS_BETWEEN_CHECKS).getTime(),
-        }))
+        })),
     );
 }
 
 async function userActive(
     username: string,
-    context: TriggerContext
+    context: TriggerContext,
 ): Promise<boolean> {
     try {
         const user = await context.reddit.getUserByUsername(username);
@@ -44,7 +44,7 @@ interface UserActive {
 
 export async function cleanupDeletedAccounts(
     _: unknown,
-    context: TriggerContext
+    context: TriggerContext,
 ) {
     const now = new Date().getTime();
     const items = await context.redis.zRange(CLEANUP_LOG_KEY, 0, now, {
@@ -56,12 +56,12 @@ export async function cleanupDeletedAccounts(
         return;
     }
 
+    const settings = await context.settings.getAll();
     await context.reddit.getAppUser(); // Ensure Reddit is reachable
+    const leaderboardSize =
+        (settings[AppSetting.LeaderboardSize] as number) ?? 50;
 
-    const leaderboardSizeSetting = await context.settings.get(
-        AppSetting.LeaderboardSize
-    );
-    const itemsToCheck = Number(leaderboardSizeSetting) || 50;
+    const itemsToCheck = leaderboardSize; // Use the configured leaderboard size
     const usersToCheck = items
         .slice(0, itemsToCheck)
         .map((item) => item.member);
@@ -106,7 +106,7 @@ export async function cleanupDeletedAccounts(
 }
 
 export async function populateCleanupLogAndScheduleCleanup(
-    context: TriggerContext
+    context: TriggerContext,
 ) {
     const scoreUsers = (
         await context.redis.zRange(`${POINTS_STORE_KEY}`, 0, -1)
@@ -125,9 +125,9 @@ export async function populateCleanupLogAndScheduleCleanup(
                 member: username,
                 score: addMinutes(
                     new Date(),
-                    Math.random() * 60 * 24 * DAYS_BETWEEN_CHECKS
+                    Math.random() * 60 * 24 * DAYS_BETWEEN_CHECKS,
                 ).getTime(),
-            }))
+            })),
         );
     }
 
@@ -146,9 +146,9 @@ export async function populateCleanupLogAndScheduleCleanup(
                 member: username,
                 score: addMinutes(
                     new Date(),
-                    Math.random() * 60 * 24 * DAYS_BETWEEN_CHECKS
+                    Math.random() * 60 * 24 * DAYS_BETWEEN_CHECKS,
                 ).getTime(),
-            }))
+            })),
         );
         await context.redis.set(redisKey, newValue);
     }
@@ -156,7 +156,7 @@ export async function populateCleanupLogAndScheduleCleanup(
     const jobs = await context.scheduler.listJobs();
     const adhocJobs = jobs.filter((job) => job.name === ADHOC_CLEANUP_JOB);
     await Promise.all(
-        adhocJobs.map((job) => context.scheduler.cancelJob(job.id))
+        adhocJobs.map((job) => context.scheduler.cancelJob(job.id)),
     );
 
     await scheduleAdhocCleanup(context);
@@ -178,9 +178,9 @@ export async function scheduleAdhocCleanup(context: TriggerContext) {
         .toDate();
 
     if (nextAdhocTime < subMinutes(nextScheduledTime, 5)) {
-            await context.scheduler.runJob({
-                name: ADHOC_CLEANUP_JOB,
-                runAt: nextAdhocTime < new Date() ? new Date() : nextAdhocTime,
-            });
+        await context.scheduler.runJob({
+            name: ADHOC_CLEANUP_JOB,
+            runAt: nextAdhocTime < new Date() ? new Date() : nextAdhocTime,
+        });
     }
 }

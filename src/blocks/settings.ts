@@ -1341,11 +1341,15 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.LeaderboardSize,
                 type: "number",
                 label: "Leaderboard Size",
-                helpText: "Number of users to show on the leaderboard (1-100)",
+                helpText: "Number of users to show on the leaderboard (1-1,000)",
                 defaultValue: 50,
                 onValidate: ({ value }) => {
-                    if (value !== undefined && (value < 1 || value > 100)) {
-                        return "Value should be between 1 and 100";
+                    if (value === undefined || value === null || isNaN(value)) {
+                        return "You must enter a number";
+                    }
+
+                    if (value !== undefined && (value < 1 || value > 1_000)) {
+                        return "Value should be between 1 and 1,000";
                     }
                 },
             },
@@ -1379,41 +1383,41 @@ export const appSettings: SettingsFormField[] = [
             },
         ],
     },
-    {
-        type: "group",
-        label: "Summary Message Settings",
-        fields: [
-            {
-                type: "boolean",
-                label: "Create a new Modmail conversation for each summary",
-                name: AppSetting.DigestNewMessageEachDay,
-                helpText:
-                    "If enabled, a new modmail conversation will be created for each summary message. If disabled, the bot will reply to the previous summary message when sending a new summary.",
-                defaultValue: true,
-            },
-            {
-                type: "select",
-                label: "Frequency of summary messages",
-                name: AppSetting.DigestFrequency,
-                helpText:
-                    "Choose how often you would like to receive the summary messages",
-                options: [
-                    { label: "Daily", value: DigestFrequency.Daily },
-                    { label: "Weekly", value: DigestFrequency.Weekly },
-                ],
-                multiSelect: false,
-                defaultValue: [DigestFrequency.Daily],
-            },
-            {
-                type: "boolean",
-                label: "Send summary to the 'Mod Notifications' section of modmail",
-                helpText:
-                    "If set, the daily digest will be sent to the 'Mod Notifications' section of modmail, otherwise it will go into the main inbox.",
-                name: AppSetting.DigestAsModNotification,
-                defaultValue: false,
-            },
-        ],
-    },
+    // {
+    //     type: "group",
+    //     label: "Summary Message Settings",
+    //     fields: [
+    //         {
+    //             type: "boolean",
+    //             label: "Create a new Modmail conversation for each summary",
+    //             name: AppSetting.DigestNewMessageEachDay,
+    //             helpText:
+    //                 "If enabled, a new modmail conversation will be created for each summary message. If disabled, the bot will reply to the previous summary message when sending a new summary.",
+    //             defaultValue: true,
+    //         },
+    //         {
+    //             type: "select",
+    //             label: "Frequency of summary messages",
+    //             name: AppSetting.DigestFrequency,
+    //             helpText:
+    //                 "Choose how often you would like to receive the summary messages",
+    //             options: [
+    //                 { label: "Daily", value: DigestFrequency.Daily },
+    //                 { label: "Weekly", value: DigestFrequency.Weekly },
+    //             ],
+    //             multiSelect: false,
+    //             defaultValue: [DigestFrequency.Daily],
+    //         },
+    //         {
+    //             type: "boolean",
+    //             label: "Send summary to the 'Mod Notifications' section of modmail",
+    //             helpText:
+    //                 "If set, the daily digest will be sent to the 'Mod Notifications' section of modmail, otherwise it will go into the main inbox.",
+    //             name: AppSetting.DigestAsModNotification,
+    //             defaultValue: false,
+    //         },
+    //     ],
+    // },
     // {
     //     type: "group",
     //     label: "Upgrade Notification Settings",

@@ -7,7 +7,10 @@ import {
     CLEANUP_JOB_CRON,
     MODINFO_CRON,
     POST_OF_THE_MONTH_CRON,
+    UPDATE_LEADERBOARD_JOB,
     UPDATE_MODINFO_JOB,
+    UPGRADE_NOTIFIER_CRON,
+    UPGRADE_NOTIFIER_JOB,
 } from "./constants";
 
 export async function onAppFirstInstall(
@@ -38,11 +41,15 @@ export async function onAppInstallOrUpgrade(
         name: UPDATE_MODINFO_JOB,
         cron: MODINFO_CRON,
     });
+    await context.scheduler.runJob({
+        name: UPGRADE_NOTIFIER_JOB,
+        cron: UPGRADE_NOTIFIER_CRON,
+    });
 
     await populateCleanupLogAndScheduleCleanup(context);
 
     await context.scheduler.runJob({
-        name: "updateLeaderboard",
+        name: UPDATE_LEADERBOARD_JOB,
         runAt: new Date(),
         data: { reason: "TheRepBot has been installed or upgraded." },
     });

@@ -7,6 +7,23 @@ import {
 } from "@devvit/public-api";
 import { VALIDATE_REGEX_JOB } from "./constants";
 
+export const CONFIGURATION_DEFAULTS = {
+    appRemovedMessage: `Hi,
+
+{modName} has removed RepBot from r/{subredditName}. As a result, RepBot will no longer be able to perform moderation tasks or provide its services on this subreddit.
+
+As RepBot is a developer platform app, it needs to be removed properly from the list of installed apps, which you can find [here](https://developers.reddit.com/r/{subredditName}/apps).
+
+If you did not mean to remove RepBot, you must first uninstall it from the link above, and then you can re-add it from the app listing [here](https://developers.reddit.com/apps/bot-bouncer). Please don't invite this user account to the mod list manually - it won't be able to accept the invite.
+
+If you are removing RepBot because of concerns about how it works, we would love to hear from you. Please modmail r/BotBouncer with any feedback you may have.`,
+};
+
+export enum DigestFrequency {
+    Daily = "daily",
+    Weekly = "weekly",
+}
+
 export enum ExistingFlairOverwriteHandling {
     OverwriteNumericSymbol = "overwritenumericsymbol",
     OverwriteNumeric = "overwritenumeric",
@@ -20,6 +37,11 @@ export enum LeaderboardMode {
 }
 
 export enum AppSetting {
+    Digest = "dailyDigest",
+    DigestNewMessageEachDay = "dailyDigestNewMessageEachDay",
+    DigestFrequency = "dailyDigestFrequency",
+    DigestAsModNotification = "dailyDigestAsModNotification",
+    // UpgradeNotifier = "upgradeNotifier",
     EnablePostOfTheMonth = "enablePostOfTheMonth",
     NotifyOnPostAuthorAward = "notifyOnPostAuthorAward",
     PostAuthorAwardMessage = "postAuthorAwardMessage",
@@ -894,7 +916,8 @@ export const appSettings: SettingsFormField[] = [
                 label: "Mods and Post Author Disallowed Message",
                 helpText:
                     "Message shown when a user tries to award a point but only moderators and the Post Author (OP) can award points",
-                defaultValue: TemplateDefaults.ModsAndPostAuthorDisallowedMessage,
+                defaultValue:
+                    TemplateDefaults.ModsAndPostAuthorDisallowedMessage,
                 onValidate: paragraphFieldContainsText,
             },
             {
@@ -1356,6 +1379,55 @@ export const appSettings: SettingsFormField[] = [
             },
         ],
     },
+    {
+        type: "group",
+        label: "Summary Message Settings",
+        fields: [
+            {
+                type: "boolean",
+                label: "Create a new Modmail conversation for each summary",
+                name: AppSetting.DigestNewMessageEachDay,
+                helpText:
+                    "If enabled, a new modmail conversation will be created for each summary message. If disabled, the bot will reply to the previous summary message when sending a new summary.",
+                defaultValue: true,
+            },
+            {
+                type: "select",
+                label: "Frequency of summary messages",
+                name: AppSetting.DigestFrequency,
+                helpText:
+                    "Choose how often you would like to receive the summary messages",
+                options: [
+                    { label: "Daily", value: DigestFrequency.Daily },
+                    { label: "Weekly", value: DigestFrequency.Weekly },
+                ],
+                multiSelect: false,
+                defaultValue: [DigestFrequency.Daily],
+            },
+            {
+                type: "boolean",
+                label: "Send summary to the 'Mod Notifications' section of modmail",
+                helpText:
+                    "If set, the daily digest will be sent to the 'Mod Notifications' section of modmail, otherwise it will go into the main inbox.",
+                name: AppSetting.DigestAsModNotification,
+                defaultValue: false,
+            },
+        ],
+    },
+    // {
+    //     type: "group",
+    //     label: "Upgrade Notification Settings",
+    //     fields: [
+    //         {
+    //             type: "boolean",
+    //             label: "Upgrade notifications",
+    //             name: AppSetting.UpgradeNotifier,
+    //             helpText:
+    //                 "Receive a message when a new version of RepBot is released",
+    //             defaultValue: true,
+    //         },
+    //     ],
+    // },
 ];
 
 function isFlairTemplateValid(event: SettingsFormFieldValidatorEvent<string>) {

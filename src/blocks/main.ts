@@ -56,6 +56,11 @@ Devvit.addTrigger({
     onEvent: onAppInstallOrUpgrade,
 });
 
+// Devvit.addSchedulerJob({
+//     name: UPGRADE_NOTIFIER_JOB,
+//     onRun: checkForUpdates,
+// });
+
 Devvit.addTrigger({
     event: "CommentUpdate",
     onEvent: handleConfirmReply,

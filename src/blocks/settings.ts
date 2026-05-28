@@ -1329,7 +1329,7 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.LeaderboardSize,
                 type: "number",
                 label: "Leaderboard Size",
-                helpText: "Number of users to show on the leaderboard (1-1,000)",
+                helpText: "Number of users to show on the leaderboard (1-10,000)",
                 defaultValue: 50,
                 onValidate: ({ value }) => {
                     if (value === undefined || value === null || isNaN(value)) {

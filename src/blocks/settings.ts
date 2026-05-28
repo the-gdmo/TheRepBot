@@ -364,18 +364,6 @@ const NotifyOnBotAwardReplyOptionChoices = [
     },
 ];
 
-const NotifyOnModApproveReplyOptionChoices = [
-    { label: "No Notification", value: NotifyOnModApproveReplyOptions.NoReply },
-    {
-        label: "Send user a private message",
-        value: NotifyOnModApproveReplyOptions.ReplyByPM,
-    },
-    {
-        label: "Reply as comment",
-        value: NotifyOnModApproveReplyOptions.ReplyAsComment,
-    },
-];
-
 const NotifyOnAltUserDisallowedReplyOptionChoices = [
     {
         label: "No Notification",
@@ -1348,8 +1336,8 @@ export const appSettings: SettingsFormField[] = [
                         return "You must enter a number";
                     }
 
-                    if (value !== undefined && (value < 1 || value > 1_000)) {
-                        return "Value should be between 1 and 1,000";
+                    if (value !== undefined && (value < 1 || value > 10_000)) {
+                        return "Value should be between 1 and 10,000";
                     }
                 },
             },

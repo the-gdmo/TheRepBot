@@ -235,7 +235,7 @@ export async function updateAuthorRedis(
             logger.info(
                 `Sending restriction lifted Toast to u/${user.username}`,
                 {
-                    preview: liftedMsg.slice(0, 1000),
+                    preview: liftedMsg.slice(0, 1_000),
                 },
             );
 

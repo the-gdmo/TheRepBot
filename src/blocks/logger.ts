@@ -71,8 +71,10 @@ async function sendModPM(context: TriggerContext, message: string): Promise<void
 function logToConsole(level: LogLevel, coloredMsg: string): void {
   switch (level) {
     case LogLevel.INFO:
-    case LogLevel.DEBUG:
       console.info(coloredMsg);
+      break;
+    case LogLevel.DEBUG:
+      console.debug(coloredMsg);
       break;
     case LogLevel.WARN:
       console.warn(coloredMsg);
@@ -86,30 +88,30 @@ function logToConsole(level: LogLevel, coloredMsg: string): void {
 }
 
 export const logger = {
-  info: (message: string, context?: Record<string, any>) => {
-    const msg = formatMessage(LogLevel.INFO, message, context);
+  info: (message: string, placeholders?: Record<string, any>) => {
+    const msg = formatMessage(LogLevel.INFO, message, placeholders);
     const colored = colorize(LogLevel.INFO, msg);
     logToConsole(LogLevel.INFO, colored);
     writeToFile(msg);
   },
-  warn: (message: string, context?: Record<string, any>) => {
-    const msg = formatMessage(LogLevel.WARN, message, context);
+  warn: (message: string, placeholders?: Record<string, any>) => {
+    const msg = formatMessage(LogLevel.WARN, message, placeholders);
     const colored = colorize(LogLevel.WARN, msg);
     logToConsole(LogLevel.WARN, colored);
     writeToFile(msg);
   },
-  debug: (message: string, context?: Record<string, any>) => {
-    const msg = formatMessage(LogLevel.DEBUG, message, context);
+  debug: (message: string, placeholders?: Record<string, any>) => {
+    const msg = formatMessage(LogLevel.DEBUG, message, placeholders);
     const colored = colorize(LogLevel.DEBUG, msg);
     logToConsole(LogLevel.DEBUG, colored); // ✅ was console.debug
     writeToFile(msg);
   },
   error: async (
     message: string,
-    context?: Record<string, any>,
+    placeholders?: Record<string, any>,
     triggerContext?: TriggerContext
   ) => {
-    const msg = formatMessage(LogLevel.ERROR, message, context);
+    const msg = formatMessage(LogLevel.ERROR, message, placeholders);
     const colored = colorize(LogLevel.ERROR, msg);
     logToConsole(LogLevel.ERROR, colored);
     writeToFile(msg);

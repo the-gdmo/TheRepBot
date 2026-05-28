@@ -112,13 +112,24 @@ export async function commentContainsAltCommand(
         }
     } catch (err) {
         const botCreator = "ryry50583583";
-        const subject = `Alternate%20Command%20Error%20in%20r/${event.subreddit.name}`;
-        const message =
-            `We%20encountered%20an%20error%20which%20is%20related%20to%20the%20alternate%20command%20in%20r/${event.subreddit.name}.%0A%0A` +
-            `If%20you%20could%20take%20a%20look%20at%20it%20and%20provide%20any%20insights,%20that%20would%20be%20appreciated!%0A%0A` +
-            `**Error details:**%20***${err instanceof Error ? err.stack || err.message : String(err)}***`;
+
+        const subjectRaw = `Alternate Command Error in r/${event.subreddit.name}`;
+
+        const messageRaw = `We encountered an error which is related to the alternate command in r/${event.subreddit.name}.
+    
+    If you could take a look at it and provide any insights, that would be appreciated!
+    
+    Error details:
+    
+    ${err instanceof Error ? err.stack || err.message : String(err)}`;
+
+        const subject = encodeURIComponent(subjectRaw);
+        const message = encodeURIComponent(messageRaw);
+
+        const redditLink = `https://www.reddit.com/message/compose?to=${botCreator}&subject=${subject}&message=${message}`;
+
         logger.error(
-            `If you see this error, please [contact my developer](https://www.reddit.com/message/compose?to=${botCreator}&message=${message}&subject=${subject}). ` +
+            `If you see this error, please [contact my developer](${redditLink}).\n\n` +
                 `Please send the message as-is unless you have any additional information to provide.`,
             {},
             context,

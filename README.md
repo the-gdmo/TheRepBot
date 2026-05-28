@@ -60,6 +60,8 @@ NOTE: If you remove the app from your subreddit, it will delete all data and you
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 ## Version History
+### 29.1.0
+* Make alternate command fail message actually link properly
 ### 29.0.0
 * Make custom leaderboard length allow up to 1,000 entries (will only update once a point is awarded to someone)
 * Remove "Summary Message Settings" group

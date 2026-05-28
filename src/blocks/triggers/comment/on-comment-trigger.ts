@@ -100,17 +100,6 @@ export async function handleThanksEvent(
         }
     }
 
-    await unflairedPostLogic(event, devvitContext, awarder, settings);
-
-    await flairTextNotAllowedLogic(
-        event,
-        devvitContext,
-        awarder,
-        commentBody,
-        triggerUsed,
-        settings,
-    );
-
     const recipient = parentComment.authorName;
     if (!recipient) {
         logger.warn("❌ No recipient found", { parentComment });
@@ -173,6 +162,17 @@ export async function handleThanksEvent(
         containsUser,
         containsAlt,
     });
+
+    await unflairedPostLogic(event, devvitContext, awarder, settings);
+
+    await flairTextNotAllowedLogic(
+        event,
+        devvitContext,
+        awarder,
+        commentBody,
+        triggerUsed,
+        settings,
+    );
 
     // ─────────────────────────────────────────────
     // Alt command logic (with user or mod command)
@@ -343,7 +343,8 @@ export async function unflairedPostLogic(
     awarder: string,
     settings: SettingsValues,
 ) {
-    if (!event.post || !event.comment || !event.author) return;
+    if (!event.post || !event.comment || !event.author || !event.subreddit) return;
+
     const allowUnflairedPosts =
         (settings[AppSetting.AllowUnflairedPosts] as boolean) ?? true;
 
@@ -449,13 +450,19 @@ export async function flairTextNotAllowedLogic(
     // Disallowed flair guard (non-terminating)
     // ─────────────────────────────────────────────
 
-    if (!event.post.linkFlair || !postFlairText) {
+    if (
+        (settings[AppSetting.DisallowedFlairs] as string).includes(
+            postFlairText ?? "",
+        )
+    ) {
         logger.error(
-            `User attempted to award points on unflaired posts, but it's not allowed`,
+            `User attempted to award points on flair-disallowed post, but it's not allowed`,
             { linkFlair: event.post.linkFlair },
         );
         return;
     }
+
+    if (!postFlairText) return;
 
     const rawDisallowedFlairs =
         (settings[AppSetting.DisallowedFlairs] as string | undefined) ?? "";

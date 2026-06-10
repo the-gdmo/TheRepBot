@@ -1,6 +1,4 @@
 import {
-    JSONObject,
-    ScheduledJobEvent,
     SettingsFormField,
     SettingsFormFieldValidatorEvent,
     TriggerContext,

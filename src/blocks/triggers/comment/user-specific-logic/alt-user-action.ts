@@ -85,35 +85,32 @@ export async function commentContainsAltCommand(
         const triggers = await getTriggers(context);
         for (const trigger of triggers) {
             if (
-                !new RegExp(
-                    `${escapeForRegex(trigger)}\su/([a-z0-9_-]{3,21})`,
-                    "i",
-                ).test(body)
+                !new RegExp(`.*${trigger}\su/([a-z0-9_-]{3,21})`, "i").test(
+                    body,
+                )
             )
                 continue;
 
             if (
-                new RegExp(
-                    `${escapeForRegex(trigger)}\su/([a-z0-9_-]{3,21})`,
-                    "i",
-                ).test(body)
+                new RegExp(`.*${trigger}\su/([a-z0-9_-]{3,21})`, "i").test(body)
             ) {
                 logger.debug("🧩 Alt command check", {
                     body,
                     containsCommand: new RegExp(
-                        escapeForRegex(trigger),
+                        `.*${trigger}\su/([a-z0-9_-]{3,21})`,
                         "i",
                     ).test(body),
                 });
                 return true;
+            } else {
+                logger.info(`Comment doesn't contain alt command`);
+                return false;
             }
-            logger.info(`Comment doesn't contain alt command`);
-            return false;
         }
     } catch (err) {
         const botCreator = "ryry50583583";
 
-        const subjectRaw = `Alternate Command Error in r/${event.subreddit.name}`;
+        const subjectRaw = `Alternate Command Error`;
 
         const messageRaw = `We encountered an error which is related to the alternate command in r/${event.subreddit.name}.
     
@@ -126,10 +123,10 @@ export async function commentContainsAltCommand(
         const subject = encodeURIComponent(subjectRaw);
         const message = encodeURIComponent(messageRaw);
 
-        const redditLink = `https://www.reddit.com/message/compose?to=${botCreator}&subject=${subject}&message=${message}`;
+        const messageComposeLink = `https://www.reddit.com/message/compose?to=${botCreator}&subject=${subject}&message=${message}`;
 
         logger.error(
-            `If you see this error, please [contact my developer](${redditLink}).\n\n` +
+            `If you see this error, please [contact my developer](${messageComposeLink}).\n\n` +
                 `Please send the message as-is unless you have any additional information to provide.`,
             {},
             context,

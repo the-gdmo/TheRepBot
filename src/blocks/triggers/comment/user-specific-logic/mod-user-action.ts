@@ -42,7 +42,7 @@ export async function commentContainsModCommand(
     const commentBody = event.comment.body ?? "";
     const modCommand = await modCommandValue(context);
 
-    const triggerUsed = allTriggers.find((t) => commentBody.includes(t));
+    const triggerUsed = allTriggers.find((t) => new RegExp(`.*${t}.*`, "i").test(commentBody));
     if (!triggerUsed) return false;
     const usedCommand = triggerUsed.toLowerCase();
 

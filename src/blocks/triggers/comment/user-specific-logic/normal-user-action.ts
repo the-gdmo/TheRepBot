@@ -364,11 +364,9 @@ export async function executeUserCommand(
 
     if (!user) return false;
 
-    const triggers = await getTriggers(context);
+    const allTriggers = await getTriggers(context);
 
-    const triggerUsed = triggers.find((t) =>
-        commentBody.includes(t.toLowerCase()),
-    );
+    const triggerUsed = allTriggers.find((t) => new RegExp(`.*${t}.*`, "i").test(commentBody));
 
     if (!triggerUsed) return false;
 

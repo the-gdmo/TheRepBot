@@ -71,7 +71,7 @@ export async function handleThanksEvent(
     const commentBody = event.comment.body.toLowerCase();
     const triggers = await getTriggers(devvitContext);
     const triggerUsed = triggers.find((t) =>
-        commentBody.includes(t.toLowerCase()),
+        commentBody.includes(t),
     );
 
     if (!triggerUsed) {
@@ -264,8 +264,9 @@ export async function handleThanksEvent(
             });
             logger.info("✅ User command executed successfully");
             return;
+        } else {
+            logger.debug("❌ User command detected but not handled");
         }
-        logger.debug("❌ User command detected but not handled");
         return;
     }
 

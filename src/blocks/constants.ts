@@ -3,7 +3,6 @@ export const UPDATE_LEADERBOARD_JOB = "updateLeaderboard";
 export const UPDATE_MODINFO_JOB = "updateModInfo";
 export const CLEANUP_JOB = "cleanupDeletedAccounts";
 export const ADHOC_CLEANUP_JOB = "cleanupDeletedAccountsAdhoc";
-export const VALIDATE_REGEX_JOB = "validateRegex";
 export const ADHOC_POST_OF_THE_MONTH_JOB = "updatePostOfTheMonthAdhoc"
 // export const UPGRADE_NOTIFIER_JOB = "upgradeNotifier";
 

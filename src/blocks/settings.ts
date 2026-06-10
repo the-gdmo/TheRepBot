@@ -5,7 +5,6 @@ import {
     SettingsFormFieldValidatorEvent,
     TriggerContext,
 } from "@devvit/public-api";
-import { VALIDATE_REGEX_JOB } from "./constants";
 
 export const CONFIGURATION_DEFAULTS = {
     appRemovedMessage: `Hi,
@@ -53,7 +52,6 @@ export enum AppSetting {
     NotifyOnSelfAward = "notifyOnSelfAward",
     NotifyUsersWhenAPointIsAwarded = "notifyUsersWhenAPointIsAwarded",
     UsersWhoCannotAwardPointsMessage = "usersWhoCannotAwardPointsMessage",
-    ThanksCommandUsesRegex = "thanksCommandUsesRegex",
     ModAwardCommand = "modAwardCommand",
     SuperUsers = "superUsers",
     AutoSuperuserThreshold = "autoSuperuserThreshold",
@@ -772,13 +770,6 @@ export const appSettings: SettingsFormField[] = [
                 onValidate: validateTriggerWords,
             },
             {
-                name: AppSetting.ThanksCommandUsesRegex,
-                type: "boolean",
-                label: "Treat user commands as regular expressions",
-                defaultValue: false,
-                onValidate: validateRegexes,
-            },
-            {
                 type: "boolean",
                 name: AppSetting.AllowUnflairedPosts,
                 label: "Allow awarding points on unflaired posts?",
@@ -1460,40 +1451,6 @@ function validateModTriggerCommand(
     if (!event.value.match(/^[\x20-\x7E]+$/i)) {
         return "Command may only contain characters that exist on a standard computer keyboard";
     }
-}
-
-async function validateRegexes(
-    event: SettingsFormFieldValidatorEvent<boolean>,
-    context: TriggerContext,
-) {
-    if (!event.value) {
-        return;
-    }
-
-    const user = await context.reddit.getCurrentUser();
-    if (!user) {
-        return;
-    }
-
-    await context.scheduler.runJob({
-        name: VALIDATE_REGEX_JOB,
-        runAt: new Date(),
-        data: { username: user.username },
-    });
-}
-
-export async function validateRegexJobHandler(
-    event: ScheduledJobEvent<JSONObject>,
-    context: TriggerContext,
-) {
-    const { username } = event.data as { username: string };
-    const user = await context.reddit.getUserByUsername(username);
-    if (!user) return;
-
-    // Here you would perform regex validation on user commands.
-    // This is an example: you can extend with actual validation logic.
-    // For demo, just log.
-    console.log(`Validating regex commands for user ${username}`);
 }
 
 // 🧮 Validate "Awards Required To Create New Posts"

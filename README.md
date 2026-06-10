@@ -60,6 +60,9 @@ NOTE: If you remove the app from your subreddit, it will delete all data and you
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 ## Version History
+### 30.0.0
+* Make it so that commands will register properly (accidentally had it where it would only register if the comment contained the command in all lowercase previously)
+* Remove "Treat user commands as regular expressions" from settings as it wasn't actually used in the code
 ### 29.1.2
 * Make settings page accurately display leaderboard wiki page capacity
 ### 29.1.1

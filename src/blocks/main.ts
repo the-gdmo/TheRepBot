@@ -7,7 +7,7 @@ import {
     MenuItemOnPressEvent,
     User,
 } from "@devvit/public-api";
-import { appSettings, validateRegexJobHandler } from "./settings";
+import { appSettings } from "./settings";
 import { onAppFirstInstall, onAppInstallOrUpgrade } from "./installEvents";
 import { modLeaderboardInfoJob, updateLeaderboard } from "./leaderboard";
 import { cleanupDeletedAccounts } from "./cleanupTasks";
@@ -17,7 +17,6 @@ import {
     CLEANUP_JOB,
     UPDATE_LEADERBOARD_JOB,
     UPDATE_MODINFO_JOB,
-    VALIDATE_REGEX_JOB,
 } from "./constants";
 import { handleConfirmReply } from "./utility";
 import { handleThanksEvent } from "./triggers/comment/on-comment-trigger";
@@ -88,11 +87,6 @@ Devvit.addSchedulerJob({
 Devvit.addSchedulerJob({
     name: ADHOC_CLEANUP_JOB,
     onRun: cleanupDeletedAccounts,
-});
-
-Devvit.addSchedulerJob({
-    name: VALIDATE_REGEX_JOB,
-    onRun: validateRegexJobHandler,
 });
 
 export const manualSetPointsForm = Devvit.createForm(

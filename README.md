@@ -63,6 +63,7 @@ NOTE: If you remove the app from your subreddit, it will delete all data and you
 ### 30.0.0
 * Make it so that commands will register properly (accidentally had it where it would only register if the comment contained the command in all lowercase previously)
 * Remove "Treat user commands as regular expressions" from settings as it wasn't actually used in the code
+* Update to the latest version of devvit
 ### 29.1.2
 * Make settings page accurately display leaderboard wiki page capacity
 ### 29.1.1

@@ -10,6 +10,7 @@ import {
     restrictedKeyExists,
 } from "../utils/redisKeys";
 import { isModerator } from "../utils/user-utilities";
+import { formatMessage } from "../utils/common-utilities";
 
 export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
     if (!event.subreddit || !event.author || !event.post) {
@@ -70,14 +71,29 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
     //check if user is restricted, if they are, remove post and send notification with AppSetting.SubsequentPostRestrictionMessage
     //and return
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
-    const triggerWords = (
+    const triggers = (
         (settings[AppSetting.PointTriggerWords] as string) ?? "!award\n.award"
     )
         .split(/\r?\n/)
         .map((w) => w.trim())
         .filter(Boolean);
 
-    const commandList = triggerWords.join(", ");
+    let commandList = "";
+
+    for (const [index, trigger] of triggers.entries()) {
+        if (index === 0) {
+            commandList += `**${trigger}**`;
+        } else if (triggers.length === 2) {
+            commandList += ` and **${trigger}**`;
+        } else if (index === triggers.length - 1) {
+            commandList += `, and **${trigger}**`;
+        } else {
+            commandList += `, **${trigger}**`;
+        }
+    }
+
+    console.log(commandList);
+
     const helpPage = (settings[AppSetting.PointSystemHelpPage] as string) ?? "";
     const discordLink =
         (settings[AppSetting.DiscordServerLink] as string) ?? "";
@@ -112,11 +128,12 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         }
         if (discordLink) msg = msg.replace(/{{discord}}/g, discordLink);
 
+        const formattedMsg = formatMessage(event, msg, {});
         // Post restriction comment
         const subsequentPostRestrictionMessage =
             await context.reddit.submitComment({
                 id: event.post.id,
-                text: msg,
+                text: formattedMsg,
             });
 
         await subsequentPostRestrictionMessage.distinguish(true);
@@ -152,9 +169,10 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         text = text.replace(/{{discord}}/g, discordLink);
     }
 
+    const formattedText = formatMessage(event, text, {});
     const initialPostRestrictionMessage = await context.reddit.submitComment({
         id: event.post.id,
-        text,
+        text: formattedText,
     });
 
     await initialPostRestrictionMessage.distinguish(true);

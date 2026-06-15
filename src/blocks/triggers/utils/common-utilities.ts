@@ -4,21 +4,23 @@ import { logger } from "../../logger";
 import { CommentSubmit, CommentUpdate } from "@devvit/protos";
 
 export function formatMessage(
+    event: CommentSubmit | CommentUpdate,
     template: string,
     placeholders: Record<string, string>
 ): string {
+    if (!event.subreddit) return "";
     let result = template;
     for (const [key, value] of Object.entries(placeholders)) {
         const regex = new RegExp(`{{${key}}}`, "g");
         result = result.replace(regex, value);
     }
 
-    const footer = `\n\n---\n\n^(I am a bot - please contact the mods with any questions)`;
+    const footer = `\n\n---\n\n^(I am a bot — contact the mods of [r/${event.subreddit.name}](https://reddit.com/r/${event.subreddit.name}) with any questions or [r/TheRepBot](https://www.reddit.com/message/compose?to=r/TheRepBot) to talk directly with my developer)`;
     if (
         !result
             .trim()
             .endsWith(
-                `\n\n---\n\n^(I am a bot - please contact the mods with any questions)`
+                `\n\n---\n\n^(I am a bot — contact the mods of [r/${event.subreddit.name}](https://reddit.com/r/${event.subreddit.name}) with any questions or [r/TheRepBot](https://www.reddit.com/message/compose?to=r/TheRepBot) to talk directly with my developer)`
             )
     ) {
         result = result.trim() + footer;
@@ -233,7 +235,7 @@ export async function checkIgnoredContext(
 
                     ---
 
-                    ^(I am a bot - please contact the mods of ${event.subreddit.name} with any questions)
+                    ^(I am a bot — contact the mods of [r/${event.subreddit.name}](https://reddit.com/r/${event.subreddit.name}) with any questions or [r/TheRepBot](https://www.reddit.com/message/compose?to=r/TheRepBot) to talk directly with my developer)
 
                     ---`;
 

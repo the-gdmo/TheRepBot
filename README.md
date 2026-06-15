@@ -33,7 +33,7 @@ I recommend testing settings out on a test subreddit before deploying to a real 
 * `{{leaderboard}}`: Link to a page of the subreddit's leaderboard. Uses the Old Reddit version of this page.
 * `{{threshold}}`: Threshold to become a superuser. Specified in 'Auto Superuser Threshold'.
 * `{{command}}`: Notifies the user who has reached the threshold of a special command they can use. Specified in 'Superuser/Mod award command'.
-* `{{commands}}`: Lists all valid non-superuser/non-mod command(s) (comma-separated list (if more than 1)). Specified in 'Trigger Words'. 
+* `{{commands}}`: Lists all valid non-superuser/non-mod command(s) (comma-separated list (if more than 1) (eg "!award, ?award, and /award")). Specified in 'Trigger Words'. 
 * `{{markdown_guide}}`: Link to Reddit's Markdown Guide.
 * `{{user}}`: The username of the person being awarded. Used in 'Alternate Award Command'.
 * `{{altCommand}}`: Alternate command to directly award users. Used in 'Alternate Command Success/Fail Message'.
@@ -60,6 +60,8 @@ NOTE: If you remove the app from your subreddit, it will delete all data and you
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 ## Version History
+### 30.1.0
+* Improve formatting on "commands" placeholder (ie, last option will have an 'and' before it and it's a comma-separated list if there is more than 2 triggers specified)
 ### 30.0.0
 * Make it so that commands will register properly (accidentally had it where it would only register if the comment contained the command in all lowercase previously)
 * Remove "Treat user commands as regular expressions" from settings as it wasn't actually used in the code

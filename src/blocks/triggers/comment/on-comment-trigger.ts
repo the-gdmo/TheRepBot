@@ -70,9 +70,7 @@ export async function handleThanksEvent(
     const awarder = event.author.name;
     const commentBody = event.comment.body.toLowerCase();
     const triggers = await getTriggers(devvitContext);
-    const triggerUsed = triggers.find((t) =>
-        commentBody.includes(t),
-    );
+    const triggerUsed = triggers.find((t) => commentBody.includes(t));
 
     if (!triggerUsed) {
         logger.debug("❌ No valid award command found.");
@@ -216,6 +214,7 @@ export async function handleThanksEvent(
         if (!notifyOnAltFailMode) return;
 
         const altAwardFailMsg = formatMessage(
+            event,
             (settings[AppSetting.AlternateCommandFailMessage] as string) ??
                 TemplateDefaults.AlternateCommandFailMessage,
             {
@@ -293,6 +292,7 @@ export async function handleThanksEvent(
             //send message saying no perms
             // ModAwardCommandFailMessage
             const modAwardFailMsg = formatMessage(
+                event,
                 (settings[AppSetting.ModAwardCommandFail] as string) ??
                     TemplateDefaults.ModAwardCommandFailMessage,
                 {
@@ -344,7 +344,8 @@ export async function unflairedPostLogic(
     awarder: string,
     settings: SettingsValues,
 ) {
-    if (!event.post || !event.comment || !event.author || !event.subreddit) return;
+    if (!event.post || !event.comment || !event.author || !event.subreddit)
+        return;
 
     const allowUnflairedPosts =
         (settings[AppSetting.AllowUnflairedPosts] as boolean) ?? true;
@@ -437,6 +438,7 @@ export async function flairTextNotAllowedLogic(
     if (!event.post || !event.comment || !event.author) return;
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
     const flairTextDisallowedMessage = formatMessage(
+        event,
         (settings[AppSetting.DisallowedFlairMessage] as string) ??
             TemplateDefaults.DisallowedFlairMessage,
         { name: pointName },
@@ -552,7 +554,7 @@ export async function selfAwardAttemptLogic(
         AppSetting.NotifyOnSelfAward
     ] as string[]) ?? [NotifyOnSelfAwardReplyOptions.NoReply])[0];
     if (awarder === recipient) {
-        const selfText = formatMessage(selfMsgTemplate, {
+        const selfText = formatMessage(event, selfMsgTemplate, {
             awarder,
             name: pointName,
         });
@@ -723,6 +725,7 @@ export async function userHasPermission(
         }
 
         const denyMsg = formatMessage(
+            event,
             (settings[msgKey] as string) ??
                 TemplateDefaults.ModOnlyDisallowedMessage,
             {
@@ -782,6 +785,7 @@ export async function awarderIsBot(
         awarder.toLowerCase() === "automoderator"
     ) {
         const botMsg = formatMessage(
+            event,
             (settings[AppSetting.BotAwardMessage] as string) ??
                 TemplateDefaults.BotAwardMessage,
             { name: pointName, awardee: recipient },
@@ -821,6 +825,7 @@ export async function recipientIsBot(
     ) {
         // Prevent bot account or Automod granting points
         const botAwardMessage = formatMessage(
+            event,
             (settings[AppSetting.BotAwardMessage] as string) ??
                 TemplateDefaults.BotAwardMessage,
             { name: pointName, awardee: recipient },
@@ -862,11 +867,13 @@ export async function handleIgnoredContext(
               : "a spoiler block (`>!text!<`)";
 
     const initialTriggerInContextLabelNotification = `Hey u/${event.author.name}, I noticed you used the command **${trigger}** inside ${contextLabel}.\n\n`;
-    const confirmInfo = `Edit [this comment](${event.comment.permalink}) with **CONFIRM** if you intended to use the command this way and don't wish to be warned about this in the future.\n\n`;
-    const botInfo = `---\n\n^(I am a bot — contact the mods of [r/${event.subreddit.name}](https://reddit.com/r/${event.subreddit.name}) with any questions or [r/TheRepBot](https://www.reddit.com/message/compose?to=r/TheRepBot) to talk directly with [my developer](https://reddit.com/u/ryry50583583))`;
+    const confirmInfo = `Edit [this comment](${event.comment.permalink}) with **CONFIRM** if you intended to use the command this way and don't wish to be warned about this in the future.`;
 
-    const dmText =
-        initialTriggerInContextLabelNotification + confirmInfo + botInfo;
+    const dmText = formatMessage(
+        event,
+        initialTriggerInContextLabelNotification + confirmInfo,
+        {},
+    );
 
     await context.reddit.sendPrivateMessage({
         to: event.author.name,

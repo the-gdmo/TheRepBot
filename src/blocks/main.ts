@@ -33,7 +33,6 @@ import {
 import { logger } from "./logger";
 import { addPostOfTheMonthFlair } from "./postOfTheMonth";
 import { checkForUpdates } from "./upgradeNotify/upgradeNotifier";
-import { checkForUpdatesCommentSubmit } from "./upgradeNotify/upgradeNotifierComment";
 
 Devvit.addSettings(appSettings);
 
@@ -41,11 +40,6 @@ Devvit.addSettings(appSettings);
 Devvit.addTrigger({
     events: ["CommentSubmit", "CommentUpdate"],
     onEvent: handleThanksEvent,
-});
-
-Devvit.addTrigger({
-    events: ["CommentSubmit", "CommentUpdate"],
-    onEvent: checkForUpdatesCommentSubmit,
 });
 
 Devvit.addTrigger({

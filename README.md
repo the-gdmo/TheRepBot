@@ -61,6 +61,8 @@ NOTE: If you remove the app from your subreddit, it will delete all data and you
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 ## Version History
+### 30.4.0
+* Remove comment triggers from upgrade notification (was using for testing purposes)
 ### 30.3.0
 * Add {{commandsWithOr}} and {{commandsWithAnd}} placeholders
 * Update settings to reflect the above

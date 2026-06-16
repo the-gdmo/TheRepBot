@@ -15,12 +15,12 @@ export function formatMessage(
         result = result.replace(regex, value);
     }
 
-    const footer = `\n\n---\n\n^(I am a bot — contact the mods of [r/${event.subreddit.name}](https://reddit.com/r/${event.subreddit.name}) with any questions or [r/TheRepBot](https://www.reddit.com/message/compose?to=r/TheRepBot) to talk directly with my developer)`;
+    const footer = `\n\n---\n\n^(I am a bot — [contact the mods of r/${event.subreddit.name}](https://reddit.com/message/compose?to=r/${event.subreddit.name}) with any questions or [r/TheRepBot](https://www.reddit.com/message/compose?to=r/TheRepBot) to talk directly with my developer)`;
     if (
         !result
             .trim()
             .endsWith(
-                `\n\n---\n\n^(I am a bot — contact the mods of [r/${event.subreddit.name}](https://reddit.com/r/${event.subreddit.name}) with any questions or [r/TheRepBot](https://www.reddit.com/message/compose?to=r/TheRepBot) to talk directly with my developer)`
+                `\n\n---\n\n^(I am a bot — [contact the mods of r/${event.subreddit.name}](https://reddit.com/message/compose?to=r/${event.subreddit.name}) with any questions or [r/TheRepBot](https://www.reddit.com/message/compose?to=r/TheRepBot) to talk directly with my developer)`
             )
     ) {
         result = result.trim() + footer;

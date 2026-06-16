@@ -166,7 +166,7 @@ export async function userBecomesSuperUser(
         );
         (settings[AppSetting.AutoSuperuserTemplate] as string | undefined) ??
             TemplateDefaults.NotifyOnSuperuserTemplate;
-        const message = formatMessage(
+        const message = formatMessage(event,
             (settings[AppSetting.AutoSuperuserTemplate] as string) ??
                 TemplateDefaults.NotifyOnSuperuserTemplate,
             {

@@ -78,21 +78,24 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         .map((w) => w.trim())
         .filter(Boolean);
 
-    let commandList = "";
+    let commandListWithOr = "";
+    let commandListWithAnd = "";
 
     for (const [index, trigger] of triggers.entries()) {
         if (index === 0) {
-            commandList += `**${trigger}**`;
+            commandListWithOr += `**${trigger}**`;
+            commandListWithAnd += `**${trigger}**`;
         } else if (triggers.length === 2) {
-            commandList += ` and **${trigger}**`;
+            commandListWithOr += ` or **${trigger}**`;
+            commandListWithAnd += ` and **${trigger}**`;
         } else if (index === triggers.length - 1) {
-            commandList += `, and **${trigger}**`;
+            commandListWithOr += `, or **${trigger}**`;
+            commandListWithAnd += `, and **${trigger}**`;
         } else {
-            commandList += `, **${trigger}**`;
+            commandListWithOr += `, **${trigger}**`;
+            commandListWithAnd += `, **${trigger}**`;
         }
     }
-
-    console.log(commandList);
 
     const helpPage = (settings[AppSetting.PointSystemHelpPage] as string) ?? "";
     const discordLink =
@@ -110,7 +113,12 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
 
         let msg = subsequentTemplate
             .replace(/{{name}}/g, pointName)
-            .replace(/{{commands}}/g, commandList)
+            .replace(/{{commandsWithOr}}/g, commandListWithOr)
+            .replace(/{{commandsWithAnd}}/g, commandListWithAnd)
+            .replace(
+                /{{markdown_guide}}/g,
+                "https://www.reddit.com/wiki/markdown",
+            )
             .replace(
                 /{{markdown_guide}}/g,
                 "https://www.reddit.com/wiki/markdown",
@@ -155,7 +163,8 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
 
     let text = template
         .replace(/{{name}}/g, pointName)
-        .replace(/{{commands}}/g, commandList)
+        .replace(/{{commandsWithOr}}/g, commandListWithOr)
+        .replace(/{{commandsWithAnd}}/g, commandListWithAnd)
         .replace(/{{markdown_guide}}/g, "https://www.reddit.com/wiki/markdown")
         .replace(/{{subreddit}}/g, subredditName);
 

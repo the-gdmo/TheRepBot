@@ -11,7 +11,7 @@ export const CONFIGURATION_DEFAULTS = {
 
 As RepBot is a developer platform app, it needs to be removed properly from the list of installed apps, which you can find [here](https://developers.reddit.com/r/{subredditName}/apps).
 
-If you did not mean to remove RepBot, you must first uninstall it from the link above, and then you can re-add it from the app listing [here](https://developers.reddit.com/apps/bot-bouncer). Please don't invite this user account to the mod list manually - it won't be able to accept the invite.
+If you did not mean to remove RepBot, you must first uninstall it from the link above, and then you can re-add it from the app listing [here](https://developers.reddit.com/apps/therepbot). Please don't invite this user account to the mod list manually - it won't be able to accept the invite.
 
 If you are removing RepBot because of concerns about how it works, we would love to hear from you. Please modmail r/BotBouncer with any feedback you may have.`,
 };
@@ -38,7 +38,7 @@ export enum AppSetting {
     DigestNewMessageEachDay = "dailyDigestNewMessageEachDay",
     DigestFrequency = "dailyDigestFrequency",
     DigestAsModNotification = "dailyDigestAsModNotification",
-    // UpgradeNotifier = "upgradeNotifier",
+    UpgradeNotifier = "upgradeNotifier",
     EnablePostOfTheMonth = "enablePostOfTheMonth",
     NotifyOnPostAuthorAward = "notifyOnPostAuthorAward",
     PostAuthorAwardMessage = "postAuthorAwardMessage",
@@ -143,7 +143,7 @@ export enum TemplateDefaults {
     SelfAwardTemplate = "Hello {{awarder}}, you cannot award a {{name}} to yourself.",
     NotifyOnSuccessTemplate = "+1 {{name}} awarded to u/{{awardee}} by u/{{awarder}}. Total: {{total}}{{symbol}}. {{awardee}}'s user page is located [here]({{awardeePage}}). Leaderboard is located [here]({{leaderboard}}).",
     NotifyOnSuperuserTemplate = "Hello {{awardee}},\n\nNow that you have reached {{threshold}} points you can now award points yourself, even if normal users do not have permission to. Please use the command `{{command}}` if you'd like to do this.",
-    MessageToRestrictedUsers = "***ATTENTION to OP:*** You must award {{name}}s by replying to the successful comments. Valid command(s) are {{commands}}. Failure to do so may result in a ban.\n\n*^ To hide text, write it like this `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({{markdown_guide}})*.",
+    MessageToRestrictedUsers = "***ATTENTION to OP:*** You must award {{name}}s by replying to the successful comments. Valid command(s) are {{commandsWithAnd}}. Failure to do so may result in a ban.\n\n*^ To hide text, write it like this `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({{markdown_guide}})*.",
     AlternateCommandSuccessMessage = "+1 {{name}} awarded to u/{{awardee}} [{{total}}{{symbol}}]. {{awardee}}'s user page is located [here]({{awardeePage}}). Leaderboard is located [here]({{leaderboard}}).",
     AlternateCommandFailMessage = "You do not have permission to use **{{altCommand}}** on specific users.",
     PointAlreadyAwardedToUserMessage = "{{awardee}} has already received a {{name}} for this post.",
@@ -675,7 +675,7 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.MessageToRestrictedUsers,
                 label: "Initial Post Restriction Message",
                 helpText:
-                    "Sent on initial post. Required even if not used. Placeholders Supported: {{name}}, {{commands}}, {{markdown_guide}}, {{subreddit}}, {{helpPage}}, {{discord}}",
+                    "Sent on initial post. Required even if not used. Placeholders Supported: {{name}}, {{commandsWithOr}}, {{commandsWithAnd}}, {{markdown_guide}}, {{subreddit}}, {{helpPage}}, {{discord}}",
                 defaultValue: TemplateDefaults.MessageToRestrictedUsers,
                 onValidate: paragraphFieldContainsText,
             },
@@ -684,7 +684,7 @@ export const appSettings: SettingsFormField[] = [
                 type: "paragraph",
                 label: "Subsequent Post Restriction Message",
                 helpText:
-                    "Required even if not used. Message to send users when they try to post while restricted from posting. Placeholders supported: {{permalink}}, {{title}}, {{name}}, {{commands}}, {{helpPage}}",
+                    "Required even if not used. Message to send users when they try to post while restricted from posting. Placeholders supported: {{permalink}}, {{title}}, {{name}}, {{commandsWithOr}}, {{commandsWithAnd}}, {{helpPage}}",
                 defaultValue: TemplateDefaults.SubsequentPostRestrictionMessage,
                 onValidate: paragraphFieldContainsText,
             },
@@ -1318,7 +1318,8 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.LeaderboardSize,
                 type: "number",
                 label: "Leaderboard Size",
-                helpText: "Number of users to show on the leaderboard (1-10,000)",
+                helpText:
+                    "Number of users to show on the leaderboard (1-10,000)",
                 defaultValue: 50,
                 onValidate: ({ value }) => {
                     if (value === undefined || value === null || isNaN(value)) {
@@ -1395,20 +1396,21 @@ export const appSettings: SettingsFormField[] = [
     //         },
     //     ],
     // },
-    // {
-    //     type: "group",
-    //     label: "Upgrade Notification Settings",
-    //     fields: [
-    //         {
-    //             type: "boolean",
-    //             label: "Upgrade notifications",
-    //             name: AppSetting.UpgradeNotifier,
-    //             helpText:
-    //                 "Receive a message when a new version of RepBot is released",
-    //             defaultValue: true,
-    //         },
-    //     ],
-    // },
+    {
+        type: "group",
+        label: "Upgrade Notification Settings",
+        fields: [
+            {
+                type: "boolean",
+                label: "Upgrade notifications",
+                name: AppSetting.UpgradeNotifier,
+                helpText:
+                    "Receive a message when a new version of RepBot is released",
+                defaultValue: true,
+            },
+        ],
+        // },
+    },
 ];
 
 function isFlairTemplateValid(event: SettingsFormFieldValidatorEvent<string>) {

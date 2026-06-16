@@ -178,7 +178,7 @@ async function validateAltUsername(
         await reply(
             context,
             event.comment!.id,
-            formatMessage(
+            formatMessage(event,
                 (settings[AppSetting.InvalidUsernameMessage] as string) ??
                     TemplateDefaults.InvalidUsernameMessage,
                 { awarder, awardee: username },
@@ -191,7 +191,7 @@ async function validateAltUsername(
         await reply(
             context,
             event.comment!.id,
-            formatMessage(
+            formatMessage(event,
                 (settings[AppSetting.UsernameLengthMessage] as string) ??
                     TemplateDefaults.UsernameLengthMessage,
                 { awarder, awardee: username },
@@ -313,7 +313,7 @@ async function notifyAltDuplicate(
 ) {
     const settings = await context.settings.getAll();
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
-    const message = formatMessage(
+    const message = formatMessage(event,
         (settings[AppSetting.PointAlreadyAwardedToUserMessage] as string) ??
             TemplateDefaults.PointAlreadyAwardedToUserMessage,
         { awardee, name: pointName, awarder },
@@ -344,7 +344,7 @@ async function notifyAlternateCommandSuccess(
     const leaderboard = `https://old.reddit.com/r/${
         event.subreddit.name
     }/wiki/${settings[AppSetting.LeaderboardName] ?? "leaderboard"}`;
-    const message = formatMessage(
+    const message = formatMessage(event,
         (settings[AppSetting.AlternateCommandSuccessMessage] as string) ??
             TemplateDefaults.AlternateCommandSuccessMessage,
         {
@@ -389,7 +389,7 @@ async function notifyAltPermissionFailure(
         settings[AppSetting.NotifyOnAlternateCommandFail] as string[]
     )?.[0];
 
-    const failTemplate = formatMessage(
+    const failTemplate = formatMessage(event,
         (settings[AppSetting.AlternateCommandFailMessage] as string) ??
             TemplateDefaults.AlternateCommandFailMessage,
         {
@@ -429,6 +429,7 @@ async function notifyMissingAltUsername(
         context,
         event.comment!.id,
         formatMessage(
+            event,
             (settings[AppSetting.NoUsernameMentionMessage] as string) ??
                 TemplateDefaults.NoUsernameMentionMessage,
             { awarder, awardee: "" },

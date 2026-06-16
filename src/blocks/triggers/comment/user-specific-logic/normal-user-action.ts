@@ -80,7 +80,7 @@ async function awardPointToUserNormalCommand(
     const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${recipient}`;
     const awarderPage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${awarder}`;
 
-    const successMessage = formatMessage(
+    const successMessage = formatMessage(event,
         (settings[AppSetting.SuccessMessage] as string) ??
             TemplateDefaults.NotifyOnSuccessTemplate,
         {
@@ -225,7 +225,7 @@ export async function updateAuthorRedis(
             subredditName,
         });
 
-        const liftedMsg = formatMessage(
+        const liftedMsg = formatMessage(event,
             (settings[AppSetting.RestrictionLiftedMessage] as string) ??
                 TemplateDefaults.RestrictionLiftedMessage,
             { awarder, subreddit: subredditName },
@@ -298,7 +298,7 @@ export async function updateAuthorRedis(
         subredditName,
     });
 
-    const liftedMsg = formatMessage(
+    const liftedMsg = formatMessage(event,
         (settings[AppSetting.RestrictionLiftedMessage] as string) ??
             TemplateDefaults.RestrictionLiftedMessage,
         { awarder, subreddit: subredditName },
@@ -387,7 +387,7 @@ export async function executeUserCommand(
             settings[AppSetting.NotifyOnBlockedUser] as string[]
         )?.[0];
 
-        const blockedMessage = formatMessage(blockedTemplate, {
+        const blockedMessage = formatMessage(event,blockedTemplate, {
             name: pointName,
             awarder,
             subreddit: event.subreddit.name,
@@ -422,7 +422,7 @@ export async function executeUserCommand(
 
     // 🛑 Self award check
     if (awarder === recipient) {
-        const selfAwardTemplate = formatMessage(
+        const selfAwardTemplate = formatMessage(event,
             (settings[AppSetting.SelfAwardMessage] as string) ??
                 TemplateDefaults.SelfAwardMessage,
             {
@@ -466,7 +466,7 @@ export async function executeUserCommand(
     const alreadyAwarded = await context.redis.exists(key);
 
     if (alreadyAwarded) {
-        const alreadyAwardedTemplate = formatMessage(
+        const alreadyAwardedTemplate = formatMessage(event,
             (settings[
                 AppSetting.PointAlreadyAwardedToUserMessage
             ] as string) ??

@@ -9,6 +9,8 @@ import {
     POST_OF_THE_MONTH_CRON,
     UPDATE_LEADERBOARD_JOB,
     UPDATE_MODINFO_JOB,
+    UPGRADE_NOTIFIER_CRON,
+    UPGRADE_NOTIFIER_JOB,
     // UPGRADE_NOTIFIER_CRON,
     // UPGRADE_NOTIFIER_JOB,
 } from "./constants";
@@ -41,10 +43,10 @@ export async function onAppInstallOrUpgrade(
         name: UPDATE_MODINFO_JOB,
         cron: MODINFO_CRON,
     });
-    // await context.scheduler.runJob({
-    //     name: UPGRADE_NOTIFIER_JOB,
-    //     cron: UPGRADE_NOTIFIER_CRON,
-    // });
+    await context.scheduler.runJob({
+        name: UPGRADE_NOTIFIER_JOB,
+        cron: UPGRADE_NOTIFIER_CRON,
+    });
 
     await populateCleanupLogAndScheduleCleanup(context);
 

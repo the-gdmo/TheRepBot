@@ -17,6 +17,7 @@ import {
     CLEANUP_JOB,
     UPDATE_LEADERBOARD_JOB,
     UPDATE_MODINFO_JOB,
+    UPGRADE_NOTIFIER_JOB,
 } from "./constants";
 import { handleConfirmReply } from "./utility";
 import { handleThanksEvent } from "./triggers/comment/on-comment-trigger";
@@ -31,6 +32,8 @@ import {
 } from "./triggers/utils/mod-utilities";
 import { logger } from "./logger";
 import { addPostOfTheMonthFlair } from "./postOfTheMonth";
+import { checkForUpdates } from "./upgradeNotify/upgradeNotifier";
+import { checkForUpdatesCommentSubmit } from "./upgradeNotify/upgradeNotifierComment";
 
 Devvit.addSettings(appSettings);
 
@@ -38,6 +41,11 @@ Devvit.addSettings(appSettings);
 Devvit.addTrigger({
     events: ["CommentSubmit", "CommentUpdate"],
     onEvent: handleThanksEvent,
+});
+
+Devvit.addTrigger({
+    events: ["CommentSubmit", "CommentUpdate"],
+    onEvent: checkForUpdatesCommentSubmit,
 });
 
 Devvit.addTrigger({
@@ -55,10 +63,10 @@ Devvit.addTrigger({
     onEvent: onAppInstallOrUpgrade,
 });
 
-// Devvit.addSchedulerJob({
-//     name: UPGRADE_NOTIFIER_JOB,
-//     onRun: checkForUpdates,
-// });
+Devvit.addSchedulerJob({
+    name: UPGRADE_NOTIFIER_JOB,
+    onRun: checkForUpdates,
+});
 
 Devvit.addTrigger({
     event: "CommentUpdate",

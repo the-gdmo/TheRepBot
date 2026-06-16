@@ -499,8 +499,9 @@ export async function modLeaderboardInfoJob(
                 reason: "Mod info wiki page setup",
             });
             logger.info(`📘 No existing wiki page found — created ${wikiPath}`);
+        } else {
+            logger.info("ℹ️ Existing mod info wiki page found");
         }
-        logger.info("ℹ️ Existing mod info wiki page found");
     } catch (err) {
         logger.error("❌ Error retrieving mod info wiki page", {
             error: String(err),

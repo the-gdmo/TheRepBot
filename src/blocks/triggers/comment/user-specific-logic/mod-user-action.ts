@@ -87,7 +87,7 @@ async function handleSelfAwardModCommand(
     const awarder = event.author.name;
     const recipient = parentComment.authorName;
     if (awarder === recipient) {
-        const selfText = formatMessage(selfMsgTemplate, {
+        const selfText = formatMessage(event,selfMsgTemplate, {
             awarder,
             name: pointName,
         });
@@ -131,7 +131,7 @@ export async function handleDuplicateModAward(
     const awarder = event.author.name;
     const awardee = parentComment.authorName;
 
-    const msg = formatMessage(
+    const msg = formatMessage(event,
         (settings[AppSetting.ModAwardAlreadyGiven] as string) ??
             TemplateDefaults.ModAwardAlreadyGivenMessage,
         { awarder, awardee, name: pointName },
@@ -172,7 +172,7 @@ export async function handleUnauthorizedModCommand(
     const awarder = event.author!.name;
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
 
-    const failMsg = formatMessage(
+    const failMsg = formatMessage(event,
         (settings[AppSetting.ModAwardCommandFail] as string) ??
             TemplateDefaults.ModAwardCommandFailMessage,
         {
@@ -275,7 +275,7 @@ export async function awardPointToUserModCommand(
 
     const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${awardee}`;
     const awarderPage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${awarder}`;
-    const modSuccessMessage = formatMessage(modSuccessTemplate, {
+    const modSuccessMessage = formatMessage(event,modSuccessTemplate, {
         awardee,
         awarder,
         total: newScore.toString(),
@@ -286,7 +286,7 @@ export async function awardPointToUserModCommand(
         awarderPage,
     });
 
-    const trustedUserMessage = formatMessage(trustedUserSuccessTemplate, {
+    const trustedUserMessage = formatMessage(event,trustedUserSuccessTemplate, {
         awardee,
         awarder,
         total: newScore.toString(),

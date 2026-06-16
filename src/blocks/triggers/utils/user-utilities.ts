@@ -113,7 +113,7 @@ export async function handleAutoSuperuserPromotion(
 
     if (notifyMode === AutoSuperuserReplyOptions.NoReply) return;
 
-    const superUserNotification = formatMessage(
+    const superUserNotification = formatMessage(event,
         (settings[AppSetting.AutoSuperuserTemplate] as string) ??
             TemplateDefaults.NotifyOnSuperuserTemplate,
         {

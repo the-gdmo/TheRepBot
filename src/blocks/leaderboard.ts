@@ -17,7 +17,7 @@ function capitalize(word: string): string {
 }
 
 function markdownEscape(input: string): string {
-    return input.replace(/([\\`*_{}\[\]()#+\-.!])/g, "\\$1");
+    return input.replace(/([\\\`\*\_\{\}\[\]\(\)\#\+\.\!\-])/g, "\\$1");
 }
 
 function formatDate(dateString: number): string {

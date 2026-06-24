@@ -40,7 +40,7 @@ export async function commentContainsUserCommand(
     const body = event.comment.body.toLowerCase();
 
     return userCommands.some((command) =>
-        new RegExp(`${command}`, "i").test(body),
+        new RegExp(`${command}`, "g").test(body),
     );
 }
 
@@ -80,7 +80,8 @@ async function awardPointToUserNormalCommand(
     const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${recipient}`;
     const awarderPage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${awarder}`;
 
-    const successMessage = formatMessage(event,
+    const successMessage = formatMessage(
+        event,
         (settings[AppSetting.SuccessMessage] as string) ??
             TemplateDefaults.NotifyOnSuccessTemplate,
         {
@@ -225,7 +226,8 @@ export async function updateAuthorRedis(
             subredditName,
         });
 
-        const liftedMsg = formatMessage(event,
+        const liftedMsg = formatMessage(
+            event,
             (settings[AppSetting.RestrictionLiftedMessage] as string) ??
                 TemplateDefaults.RestrictionLiftedMessage,
             { awarder, subreddit: subredditName },
@@ -298,7 +300,8 @@ export async function updateAuthorRedis(
         subredditName,
     });
 
-    const liftedMsg = formatMessage(event,
+    const liftedMsg = formatMessage(
+        event,
         (settings[AppSetting.RestrictionLiftedMessage] as string) ??
             TemplateDefaults.RestrictionLiftedMessage,
         { awarder, subreddit: subredditName },
@@ -366,7 +369,9 @@ export async function executeUserCommand(
 
     const allTriggers = await getTriggers(context);
 
-    const triggerUsed = allTriggers.find((t) => new RegExp(`.*${t}.*`, "i").test(commentBody));
+    const triggerUsed = allTriggers.find((t) =>
+        new RegExp(`^${t}`, "g").test(commentBody),
+    );
 
     if (!triggerUsed) return false;
 
@@ -387,7 +392,7 @@ export async function executeUserCommand(
             settings[AppSetting.NotifyOnBlockedUser] as string[]
         )?.[0];
 
-        const blockedMessage = formatMessage(event,blockedTemplate, {
+        const blockedMessage = formatMessage(event, blockedTemplate, {
             name: pointName,
             awarder,
             subreddit: event.subreddit.name,
@@ -405,8 +410,7 @@ export async function executeUserCommand(
 
             await userIsBlockedFromAwardingPointsMessage.distinguish();
         } else if (
-            notifyBlockedUserMode ===
-            NotifyOnBlockedUserReplyOptions.ReplyByPM
+            notifyBlockedUserMode === NotifyOnBlockedUserReplyOptions.ReplyByPM
         ) {
             await context.reddit.sendPrivateMessage({
                 to: awarder,
@@ -422,7 +426,8 @@ export async function executeUserCommand(
 
     // 🛑 Self award check
     if (awarder === recipient) {
-        const selfAwardTemplate = formatMessage(event,
+        const selfAwardTemplate = formatMessage(
+            event,
             (settings[AppSetting.SelfAwardMessage] as string) ??
                 TemplateDefaults.SelfAwardMessage,
             {
@@ -452,8 +457,7 @@ export async function executeUserCommand(
             await context.reddit.sendPrivateMessage({
                 to: awarder,
                 text: selfAwardTemplate,
-                subject:
-                    `You tried to award yourself a ${pointName}`,
+                subject: `You tried to award yourself a ${pointName}`,
             });
         }
 
@@ -461,15 +465,14 @@ export async function executeUserCommand(
     }
 
     // 🛑 Duplicate award check
-    const key = `userAwardGiven:${parentComment.id}`;
+    const key = `userAwardGiven:${parentComment.id}:${event.post.id}:${event.subreddit.name}`;
 
     const alreadyAwarded = await context.redis.exists(key);
 
     if (alreadyAwarded) {
-        const alreadyAwardedTemplate = formatMessage(event,
-            (settings[
-                AppSetting.PointAlreadyAwardedToUserMessage
-            ] as string) ??
+        const alreadyAwardedTemplate = formatMessage(
+            event,
+            (settings[AppSetting.PointAlreadyAwardedToUserMessage] as string) ??
                 TemplateDefaults.PointAlreadyAwardedToUserMessage,
             {
                 awarder,
@@ -479,27 +482,22 @@ export async function executeUserCommand(
         );
 
         const notifyMode = (
-            settings[
-                AppSetting.NotifyOnPointAlreadyAwardedToUser
-            ] as string[]
+            settings[AppSetting.NotifyOnPointAlreadyAwardedToUser] as string[]
         )?.[0];
 
         if (
             notifyMode ===
-            NotifyOnPointAlreadyAwardedToUserReplyOptions
-                .ReplyAsComment
+            NotifyOnPointAlreadyAwardedToUserReplyOptions.ReplyAsComment
         ) {
-            const alreadyAwardedMessage =
-                await context.reddit.submitComment({
-                    id: event.comment.id,
-                    text: alreadyAwardedTemplate,
-                });
+            const alreadyAwardedMessage = await context.reddit.submitComment({
+                id: event.comment.id,
+                text: alreadyAwardedTemplate,
+            });
 
             await alreadyAwardedMessage.distinguish();
         } else if (
             notifyMode ===
-            NotifyOnPointAlreadyAwardedToUserReplyOptions
-                .ReplyByPM
+            NotifyOnPointAlreadyAwardedToUserReplyOptions.ReplyByPM
         ) {
             await context.reddit.sendPrivateMessage({
                 to: awarder,
@@ -553,12 +551,7 @@ export async function executeUserCommand(
             commentUrl: event.comment.permalink,
         };
 
-        await updateUserWiki(
-            context,
-            awarder,
-            recipient,
-            givenData,
-        );
+        await updateUserWiki(context, awarder, recipient, givenData);
     } catch (err) {
         logger.error("❌ Failed to update user wiki (Normal award)", {
             awarder,
@@ -568,23 +561,15 @@ export async function executeUserCommand(
     }
 
     // 🏆 Award point + side effects
-    await awardPointToUserNormalCommand(
-        event,
-        context,
-        awarder,
-        recipient,
-    );
+    await awardPointToUserNormalCommand(event, context, awarder, recipient);
 
     // Auto Superuser logic
     const commandUsed =
-        (settings[AppSetting.PointTriggerWords] as string) ??
-        "!award\n.award";
+        (settings[AppSetting.PointTriggerWords] as string) ?? "!award\n.award";
 
     const currentScore =
-        ((await context.redis.zScore(
-            POINTS_STORE_KEY,
-            recipient,
-        )) as number) ?? 0;
+        ((await context.redis.zScore(POINTS_STORE_KEY, recipient)) as number) ??
+        0;
 
     await handleAutoSuperuserPromotion(
         event,

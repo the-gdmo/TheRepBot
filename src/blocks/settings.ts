@@ -150,7 +150,7 @@ export enum TemplateDefaults {
     ModAwardCommandSuccessMessage = "Moderator u/{{awarder}} gave an award! u/{{awardee}} now has {{total}}{{symbol}} {{name}}s. {{awardee}}'s user page is located [here]({{awardeePage}}). Leaderboard is located [here]({{leaderboard}}).",
     ModAwardCommandFailMessage = "Hello {{awarder}}. You must be a moderator or trusted user to use {{command}}.",
     ModAwardAlreadyGivenMessage = "{{awardee}} has already received a mod award for this comment.",
-    UsernameLengthMessage = "***{{awardee}}*** is not valid. Reddit usernames are between 3 and 21 characters long.",
+    UsernameLengthMessage = "u/{{awardee}} is not valid. Reddit usernames are between 3 and 21 characters long.",
     InvalidUsernameMessage = "Your target is not valid. Reddit usernames contain only letters, numbers, hyphens, and underscores.",
     NoUsernameMentionMessage = "You must mention a user (eg u/{{awardee}}) to award specific users.",
     RestrictionLiftedMessage = "Your posting restriction has been removed. You now have permission to make a post again in r/{{subreddit}}!",

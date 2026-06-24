@@ -1,7 +1,7 @@
 import { CommentCreate, CommentUpdate } from "@devvit/protos";
 import { Comment, TriggerContext, User } from "@devvit/public-api";
 import { logger } from "../../logger";
-import { escapeForRegex, getTriggers } from "./common-utilities";
+import { getTriggers } from "./common-utilities";
 
 export const POINTS_STORE_KEY = `thanksPointsStore`;
 
@@ -183,8 +183,7 @@ export async function getAltDupKey(
     event: CommentCreate | CommentUpdate,
     context: TriggerContext,
 ): Promise<string> {
-    if (!event.post) return "";
-    if (!event.comment) return "";
+    if (!event.post || !event.comment || !event.subreddit) return "";
     const commentBodyRaw = event.comment.body ?? "";
     const commentBody = commentBodyRaw.toLowerCase();
     const allTriggers = await getTriggers(context);
@@ -194,14 +193,14 @@ export async function getAltDupKey(
     if (!triggerUsed) return "";
     const validMatch = commentBody.match(
         new RegExp(
-            `${escapeForRegex(triggerUsed)}\\s+u/([a-z0-9_-]{3,21})`,
-            "i",
+            `${triggerUsed}\su/([a-z0-9_-]{3,21})`,
+            "g",
         ),
     );
     if (validMatch) {
         mentionedUsername = validMatch[1];
     }
-    return `customAward-${event.post.id}-${mentionedUsername}`;
+    return `customAward:${event.post.id}:${event.subreddit.name}:${mentionedUsername}`;
 }
 
 //------------------------
@@ -239,7 +238,7 @@ export async function getModDupKey(
     event: CommentCreate | CommentUpdate,
     context: TriggerContext,
 ): Promise<string> {
-    if (!event.comment) return "";
+    if (!event.comment || !event.post || !event.subreddit) return "";
     let parentComment: Comment | undefined;
     try {
         parentComment = await context.reddit.getCommentById(
@@ -253,5 +252,5 @@ export async function getModDupKey(
         logger.warn("❌ Parent comment not found.");
         return "";
     }
-    return `modAward-${parentComment.id}`;
+    return `modAward:${parentComment.id}:${event.post.id}:${event.subreddit.name}`;
 }

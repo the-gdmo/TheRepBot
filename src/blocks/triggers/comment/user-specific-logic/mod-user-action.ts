@@ -9,7 +9,6 @@ import {
     TemplateDefaults,
 } from "../../../settings";
 import {
-    escapeForRegex,
     formatMessage,
     getTriggers,
     modCommandValue,
@@ -42,9 +41,9 @@ export async function commentContainsModCommand(
     const commentBody = event.comment.body ?? "";
     const modCommand = await modCommandValue(context);
 
-    const triggerUsed = allTriggers.find((t) => new RegExp(`.*${t}.*`, "i").test(commentBody));
+    const triggerUsed = allTriggers.find((t) => new RegExp(`${t}`, "g").test(commentBody));
     if (!triggerUsed) return false;
-    const usedCommand = triggerUsed.toLowerCase();
+    const usedCommand = triggerUsed;
 
     const isModCommand = usedCommand === modCommand;
 
@@ -448,7 +447,7 @@ export async function executeModCommand(
     const triggers = await getTriggers(context);
 
     for (const trigger of triggers) {
-        if (!new RegExp(escapeForRegex(trigger), "i").test(body)) {
+        if (!new RegExp(trigger, "g").test(body)) {
             continue;
         }
 

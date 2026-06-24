@@ -2,7 +2,6 @@ import { CommentCreate, CommentSubmit, CommentUpdate } from "@devvit/protos";
 import { TriggerContext, User } from "@devvit/public-api";
 
 import {
-    escapeForRegex,
     formatMessage,
     getTriggers,
     updateAwardeeFlair,
@@ -36,7 +35,8 @@ export async function handleAltUserAction(
     const awarder = event.author?.name;
     if (!awarder) return false;
 
-    const triggerUsed = await detectAltTrigger(context, commentBody);
+    const triggers = await getTriggers(context);
+    const triggerUsed = triggers.find((t) => commentBody.includes(t));
     if (!triggerUsed) return false;
 
     const mentionedUsername = extractAltUsername(commentBody, triggerUsed);
@@ -75,37 +75,40 @@ export async function handleAltUserAction(
 export async function commentContainsAltCommand(
     event: CommentSubmit | CommentUpdate,
     context: TriggerContext,
-): Promise<boolean | undefined> {
+): Promise<boolean> {
     if (!event.comment || !event.subreddit) return false;
+
+    let found = false;
 
     try {
         const body = event.comment.body ?? "";
 
-        // Fetch commands
         const triggers = await getTriggers(context);
-        for (const trigger of triggers) {
-            if (
-                !new RegExp(`.*${trigger}\su/([a-z0-9_-]{3,21})`, "i").test(
-                    body,
-                )
-            )
-                continue;
 
-            if (
-                new RegExp(`.*${trigger}\su/([a-z0-9_-]{3,21})`, "i").test(body)
-            ) {
-                logger.debug("🧩 Alt command check", {
-                    body,
-                    containsCommand: new RegExp(
-                        `.*${trigger}\su/([a-z0-9_-]{3,21})`,
-                        "i",
-                    ).test(body),
-                });
-                return true;
-            } else {
-                logger.info(`Comment doesn't contain alt command`);
-                return false;
+        for (const trigger of triggers) {
+            const regex = new RegExp(
+                `${trigger}\\su\\/([a-z0-9_-]{3,21}).*`,
+                "i",
+            );
+
+            const containsCommand = regex.test(body);
+
+            logger.debug("🧩 Alt command check", {
+                trigger,
+                body,
+                regex,
+                containsCommand,
+            });
+
+            if (containsCommand) {
+                logger.info("Comment contains alt command");
+                found = true;
+                break;
             }
+        }
+
+        if (!found) {
+            logger.info("Comment does not contain alt command");
         }
     } catch (err) {
         const botCreator = "ryry50583583";
@@ -114,11 +117,11 @@ export async function commentContainsAltCommand(
 
         const messageRaw = `We encountered an error which is related to the alternate command in r/${event.subreddit.name}.
     
-    If you could take a look at it and provide any insights, that would be appreciated!
-    
-    Error details:
-    
-    ${err instanceof Error ? err.stack || err.message : String(err)}`;
+If you could take a look at it and provide any insights, that would be appreciated!
+
+Error details:
+
+${err instanceof Error ? err.stack || err.message : String(err)}`;
 
         const subject = encodeURIComponent(subjectRaw);
         const message = encodeURIComponent(messageRaw);
@@ -131,35 +134,43 @@ export async function commentContainsAltCommand(
             {},
             context,
         );
-        return;
+
+        return false;
     }
-    return;
+
+    return found;
 }
 
-async function detectAltTrigger(
-    context: TriggerContext,
-    commentBody: string,
-): Promise<string | null> {
-    const triggers = await getTriggers(context);
-    for (const trigger of triggers) {
-        const regex = new RegExp(`${trigger}\su\/([a-z0-9_-]{3,21})`, "i");
-        if (regex.test(commentBody)) {
-            logger.info(`Trigger used`, { trigger });
-            return trigger;
-        }
-    }
-    logger.error(`No trigger found`);
-    return null;
-}
+// async function detectAltTrigger(
+//     context: TriggerContext,
+//     commentBody: string,
+// ): Promise<string | null> {
+//     const triggers = await getTriggers(context);
+//     for (const trigger of triggers) {
+//         const regex = new RegExp(`${trigger}\su\/([a-z0-9_-]{3,21})`, "g");
+//         if (regex.test(commentBody)) {
+//             logger.info(`Trigger used`, { trigger });
+//             return trigger;
+//         }
+//     }
+//     logger.error(`No trigger found`);
+//     return null;
+// }
 
 function extractAltUsername(body: string, trigger: string): string | null {
-    const match = body.match(
-        new RegExp(`${escapeForRegex(trigger)}\su/([a-z0-9_-]{3,21})`, "i"),
-    );
-    logger.info(`Extracted username`, {
-        match: match?.[1] ?? null,
+    const prefix = `${trigger} u/`;
+
+    if (!body.startsWith(prefix)) {
+        return null;
+    }
+
+    logger.info(`Extracting username from alt command`, {
+        body,
+        trigger,
+        returnValue: body.slice(prefix.length).trim().split(/\s+/)[0] ?? null,
     });
-    return match?.[1] ?? null;
+
+    return body.slice(prefix.length).trim().split(/\s+/)[0] ?? null;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -170,37 +181,54 @@ async function validateAltUsername(
     event: CommentCreate | CommentUpdate,
     context: TriggerContext,
     awarder: string,
-    username: string,
+    trigger: string,
 ): Promise<boolean> {
     const settings = await context.settings.getAll();
+
+    const body = event.comment?.body?.trim() ?? "";
+    const prefix = `${trigger} u/`;
+
+    if (!body.startsWith(prefix)) {
+        return false;
+    }
+
+    const username = body.slice(prefix.length).trim();
 
     if (!/^[a-z0-9_-]+$/i.test(username)) {
         await reply(
             context,
             event.comment!.id,
-            formatMessage(event,
+            formatMessage(
+                event,
                 (settings[AppSetting.InvalidUsernameMessage] as string) ??
                     TemplateDefaults.InvalidUsernameMessage,
-                { awarder, awardee: username },
+                {
+                    awarder,
+                    awardee: username,
+                },
             ),
         );
-        return true;
+        return false;
     }
 
     if (username.length < 3 || username.length > 21) {
         await reply(
             context,
             event.comment!.id,
-            formatMessage(event,
+            formatMessage(
+                event,
                 (settings[AppSetting.UsernameLengthMessage] as string) ??
                     TemplateDefaults.UsernameLengthMessage,
-                { awarder, awardee: username },
+                {
+                    awarder,
+                    awardee: username,
+                },
             ),
         );
-        return true;
+        return false;
     }
 
-    return false;
+    return true;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -313,7 +341,8 @@ async function notifyAltDuplicate(
 ) {
     const settings = await context.settings.getAll();
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
-    const message = formatMessage(event,
+    const message = formatMessage(
+        event,
         (settings[AppSetting.PointAlreadyAwardedToUserMessage] as string) ??
             TemplateDefaults.PointAlreadyAwardedToUserMessage,
         { awardee, name: pointName, awarder },
@@ -344,7 +373,8 @@ async function notifyAlternateCommandSuccess(
     const leaderboard = `https://old.reddit.com/r/${
         event.subreddit.name
     }/wiki/${settings[AppSetting.LeaderboardName] ?? "leaderboard"}`;
-    const message = formatMessage(event,
+    const message = formatMessage(
+        event,
         (settings[AppSetting.AlternateCommandSuccessMessage] as string) ??
             TemplateDefaults.AlternateCommandSuccessMessage,
         {
@@ -389,7 +419,8 @@ async function notifyAltPermissionFailure(
         settings[AppSetting.NotifyOnAlternateCommandFail] as string[]
     )?.[0];
 
-    const failTemplate = formatMessage(event,
+    const failTemplate = formatMessage(
+        event,
         (settings[AppSetting.AlternateCommandFailMessage] as string) ??
             TemplateDefaults.AlternateCommandFailMessage,
         {

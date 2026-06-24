@@ -33,7 +33,6 @@ import {
     TemplateDefaults,
 } from "../../settings";
 import {
-    escapeForRegex,
     formatMessage,
     getIgnoredContextType,
     getTriggers,
@@ -110,11 +109,6 @@ export async function handleThanksEvent(
     const userCanAward = commentTriggerContext.userCanAward;
 
     // ─────────────────────────────────────────────
-    // Prevent system/bot self-awards
-    // ─────────────────────────────────────────────
-    await awarderIsBot(event, devvitContext, awarder, settings);
-
-    // ─────────────────────────────────────────────
     // Access control enforcement
     // ─────────────────────────────────────────────
     let user: User | undefined;
@@ -155,22 +149,11 @@ export async function handleThanksEvent(
     const containsAlt = await commentContainsAltCommand(event, devvitContext);
 
     logger.debug("Checking values", {
-        value: escapeForRegex(triggerUsed),
+        trigger: triggerUsed,
         containsMod,
         containsUser,
         containsAlt,
     });
-
-    await unflairedPostLogic(event, devvitContext, awarder, settings);
-
-    await flairTextNotAllowedLogic(
-        event,
-        devvitContext,
-        awarder,
-        commentBody,
-        triggerUsed,
-        settings,
-    );
 
     // ─────────────────────────────────────────────
     // Alt command logic (with user or mod command)
@@ -231,6 +214,17 @@ export async function handleThanksEvent(
         );
         return;
     }
+
+    await unflairedPostLogic(event, devvitContext, awarder, settings);
+
+    await flairTextNotAllowedLogic(
+        event,
+        devvitContext,
+        awarder,
+        commentBody,
+        triggerUsed,
+        settings,
+    );
 
     await selfAwardAttemptLogic(
         event,

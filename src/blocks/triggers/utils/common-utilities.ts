@@ -73,7 +73,7 @@ export function escapeForRegex(string: string) {
     // String being replaced represents all symbols that
     // appear on the standard computer keyboard
     const regex = /[\`\~\!\@\#\$\%\^\&\*\(\)\_\+\-\=\{\}\[\]\:\"\;\'\<\>\?\,\.\/\|\\a-z0-9\s]+/gi;
-    return string.replace(regex, "\\");
+    return string.replace(regex, (match) => `${match}`);
 }
 
 export async function getTriggers(context: TriggerContext) {
@@ -160,19 +160,19 @@ export function commandUsedInIgnoredContext(
     commentBody: string,
     command: string
 ): boolean {
-    const quoteBlock = `> .*${command}.*`;
+    const quoteBlock = `>.*${command}.*`;
     const altText = `\`.*${command}.*\``;
     const spoilerText = `>!.*${command}.*!<`;
 
     const patterns = [
         // Quote block: > anything with command
-        new RegExp(`${quoteBlock}`, "i"),
+        new RegExp(`${quoteBlock}`, "g"),
 
         // Alt text: [anything including command using `grave accent`]
-        new RegExp(`${altText}`, "i"),
+        new RegExp(`${altText}`, "g"),
 
         // Spoiler block: >! anything with command !<
-        new RegExp(`${spoilerText}`, "i"),
+        new RegExp(`${spoilerText}`, "g"),
     ];
 
     return patterns.some((p) => p.test(commentBody));
@@ -187,9 +187,9 @@ export function getIgnoredContextType(
     const spoilerText = `>!.*${command}.*!<`;
 
     const patterns: { type: "quote" | "alt" | "spoiler"; regex: RegExp }[] = [
-        { type: "quote", regex: new RegExp(`${quoteBlock}`, "i") },
-        { type: "alt", regex: new RegExp(`${altText}`, "i") },
-        { type: "spoiler", regex: new RegExp(`${spoilerText}`, "i") },
+        { type: "quote", regex: new RegExp(`${quoteBlock}`, "g") },
+        { type: "alt", regex: new RegExp(`${altText}`, "g") },
+        { type: "spoiler", regex: new RegExp(`${spoilerText}`, "g") },
     ];
 
     for (const { type, regex } of patterns) {
@@ -205,7 +205,7 @@ export async function checkIgnoredContext(
 ) {
     // Check ignored contexts for each trigger in comment
     for (const trigger of await getTriggers(context)) {
-        if (!new RegExp(`${escapeForRegex(trigger)}`, "i").test(comment))
+        if (!new RegExp(`${trigger}`, "g").test(comment))
             continue;
 
         if (!event.author) return;

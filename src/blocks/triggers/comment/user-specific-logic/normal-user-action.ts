@@ -2,7 +2,7 @@ import { TriggerContext, User } from "@devvit/public-api";
 import {
     formatMessage,
     getTriggers,
-    updateAwardeeFlair,
+    ScoreResult,
     userCommandValues,
 } from "../../utils/common-utilities";
 import {
@@ -25,14 +25,18 @@ import {
 import { getParentComment } from "../comment-trigger-context";
 import { InitialUserWikiOptions, updateUserWiki } from "../../../leaderboard";
 import { SafeWikiClient } from "../../../utility";
-import { handleAutoSuperuserPromotion } from "../../utils/user-utilities";
+import {
+    getCurrentScore,
+    handleAutoSuperuserPromotion,
+} from "../../utils/user-utilities";
+import { setUserScore } from "../on-comment-trigger";
 
 /**
  * Checks if a comment contains any user command keywords.
  */
 export async function commentContainsUserCommand(
     event: CommentSubmit | CommentUpdate,
-    context: TriggerContext,
+    context: TriggerContext
 ): Promise<boolean> {
     if (!event.comment) return false;
 
@@ -40,7 +44,7 @@ export async function commentContainsUserCommand(
     const body = event.comment.body.toLowerCase();
 
     return userCommands.some((command) =>
-        new RegExp(`${command}`, "g").test(body),
+        new RegExp(`${command}`, "g").test(body)
     );
 }
 
@@ -51,7 +55,7 @@ async function awardPointToUserNormalCommand(
     event: CommentSubmit | CommentUpdate,
     context: TriggerContext,
     awarder: string,
-    recipient: string,
+    recipient: User | undefined
 ) {
     const parentComment = await getParentComment(event, context);
     if (!parentComment || !event.subreddit || !event.comment || !event.post)
@@ -59,13 +63,34 @@ async function awardPointToUserNormalCommand(
 
     const awardee = parentComment.authorName;
     const settings = await context.settings.getAll();
-    const awardKey = `userCommand:${recipient}-${event.comment.id}`;
+    const awardKey = `userCommand:${recipient?.username}-${event.comment.id}`;
 
     // Mark as awarded
     await context.redis.set(awardKey, "1");
 
-    // Increment score
-    const newScore = await context.redis.zIncrBy(POINTS_STORE_KEY, awardee, 1);
+    if (!recipient) {
+        logger.warn("❌ Recipient user not found", {
+            awardee,
+            awarder,
+        });
+        return;
+    }
+
+    const existingScore = await getCurrentScore(recipient, context);
+
+    if (!existingScore) {
+        logger.warn("❌ Could not retrieve existing score for user", {
+            awardee,
+            awarder,
+        });
+        return;
+    }
+
+    const newScore: ScoreResult = {
+        score: existingScore.score + 1,
+        userHasFlair: existingScore.userHasFlair,
+        flairIsNumber: existingScore.flairIsNumber,
+    };
 
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
     const pointSymbol = (settings[AppSetting.PointSymbol] as string) ?? "";
@@ -83,17 +108,17 @@ async function awardPointToUserNormalCommand(
     const successMessage = formatMessage(
         event,
         (settings[AppSetting.SuccessMessage] as string) ??
-            TemplateDefaults.NotifyOnSuccessTemplate,
+            TemplateDefaults.NotifyOnNormalAwardSuccessTemplate,
         {
-            awardee: recipient,
+            awardee,
             awarder,
-            total: newScore.toString(),
+            total: newScore.score.toString(),
             name: pointName,
             symbol: pointSymbol,
             leaderboard,
             awardeePage,
             awarderPage,
-        },
+        }
     );
 
     if (notifySuccess === NotifyOnSuccessReplyOptions.ReplyByPM) {
@@ -104,7 +129,7 @@ async function awardPointToUserNormalCommand(
                 text: successMessage,
             }),
             context.reddit.sendPrivateMessage({
-                to: recipient,
+                to: awardee,
                 subject: `You were awarded a ${pointName}`,
                 text: successMessage,
             }),
@@ -130,7 +155,7 @@ async function awardPointToUserNormalCommand(
         await updateAuthorRedis(event, user, context);
     }
 
-    logger.info(`✅ Awarded 1 point to ${recipient} from ${awarder}`, {
+    logger.info(`✅ Awarded 1 point to ${recipient.username} from ${awarder}`, {
         newScore,
     });
 
@@ -141,7 +166,7 @@ async function awardPointToUserNormalCommand(
     } catch {}
 
     if (!userObj) {
-        logger.error("Failed to fetch user for flair update after ALT award");
+        logger.error("Failed to fetch user for flair update after normal award");
         return;
     }
 
@@ -149,19 +174,12 @@ async function awardPointToUserNormalCommand(
 
     if (flairHandlingDisabled) {
         logger.info(
-            "Flair handling is disabled for this user, skipping flair update",
+            "Flair handling is disabled for this user, skipping flair update"
         );
         return;
     }
 
-    // 🎨 Update flair
-    await updateAwardeeFlair(
-        context,
-        event.subreddit.name,
-        awardee,
-        newScore,
-        settings,
-    );
+    setUserScore(context, awardee, newScore, settings);
 }
 
 /**
@@ -171,7 +189,7 @@ async function awardPointToUserNormalCommand(
 export async function updateAuthorRedis(
     event: CommentSubmit | CommentUpdate,
     author: User | undefined,
-    context: TriggerContext,
+    context: TriggerContext
 ): Promise<void> {
     if (!event.author || !event.post || !author) return;
 
@@ -203,7 +221,7 @@ export async function updateAuthorRedis(
             "Checking if restriction lifted notification already sent",
             {
                 notificationKey,
-            },
+            }
         );
 
         const notificationSent = await context.redis.exists(notificationKey);
@@ -230,7 +248,7 @@ export async function updateAuthorRedis(
             event,
             (settings[AppSetting.RestrictionLiftedMessage] as string) ??
                 TemplateDefaults.RestrictionLiftedMessage,
-            { awarder, subreddit: subredditName },
+            { awarder, subreddit: subredditName }
         );
 
         try {
@@ -238,11 +256,11 @@ export async function updateAuthorRedis(
                 `Sending restriction lifted Toast to u/${user.username}`,
                 {
                     preview: liftedMsg.slice(0, 1_000),
-                },
+                }
             );
 
             await logger.info(
-                `✅ Successfully sent restriction lifted Toast to u/${user.username}`,
+                `✅ Successfully sent restriction lifted Toast to u/${user.username}`
             );
         } catch (err) {
             logger.error("❌ Failed to send restriction lifted PM", {
@@ -252,7 +270,7 @@ export async function updateAuthorRedis(
             });
         }
         logger.debug(
-            `🔓 User ${author.username} already unrestricted — skipping restriction counter`,
+            `🔓 User ${author.username} already unrestricted — skipping restriction counter`
         );
         return;
     }
@@ -263,13 +281,13 @@ export async function updateAuthorRedis(
         await context.redis.set(restrictionKey, (currentCount + 1).toString());
 
         logger.info(
-            `⏳ User ${author.username} still restricted: ${currentCount}/${awardsRequired}`,
+            `⏳ User ${author.username} still restricted: ${currentCount}/${awardsRequired}`
         );
         return;
     }
 
     logger.info(
-        `✅ User ${author.username} satisfied award requirement: ${currentCount}/${awardsRequired}`,
+        `✅ User ${author.username} satisfied award requirement: ${currentCount}/${awardsRequired}`
     );
 
     await deleteRestrictedKey(author, context);
@@ -304,7 +322,7 @@ export async function updateAuthorRedis(
         event,
         (settings[AppSetting.RestrictionLiftedMessage] as string) ??
             TemplateDefaults.RestrictionLiftedMessage,
-        { awarder, subreddit: subredditName },
+        { awarder, subreddit: subredditName }
     );
 
     try {
@@ -320,7 +338,7 @@ export async function updateAuthorRedis(
         });
 
         logger.info(
-            `✅ Successfully sent restriction lifted PM to u/${user.username}`,
+            `✅ Successfully sent restriction lifted PM to u/${user.username}`
         );
     } catch (err) {
         logger.error("❌ Failed to send restriction lifted PM", {
@@ -336,7 +354,7 @@ export async function updateAuthorRedis(
  */
 export async function executeUserCommand(
     event: CommentSubmit | CommentUpdate,
-    context: TriggerContext,
+    context: TriggerContext
 ): Promise<boolean> {
     const parentComment = await getParentComment(event, context);
 
@@ -370,7 +388,7 @@ export async function executeUserCommand(
     const allTriggers = await getTriggers(context);
 
     const triggerUsed = allTriggers.find((t) =>
-        new RegExp(`^${t}`, "g").test(commentBody),
+        new RegExp(`^${t}`, "g").test(commentBody)
     );
 
     if (!triggerUsed) return false;
@@ -433,7 +451,7 @@ export async function executeUserCommand(
             {
                 awarder,
                 name: pointName,
-            },
+            }
         );
 
         const notifyNormalSelfAwardMode = (
@@ -478,7 +496,7 @@ export async function executeUserCommand(
                 awarder,
                 awardee: recipient,
                 name: pointName,
-            },
+            }
         );
 
         const notifyMode = (
@@ -528,12 +546,12 @@ export async function executeUserCommand(
 
         const awarderWiki = await safeWiki.getWikiPage(
             subredditName,
-            `user/${awarder.toLowerCase()}`,
+            `user/${awarder.toLowerCase()}`
         );
 
         const recipientWiki = await safeWiki.getWikiPage(
             subredditName,
-            `user/${recipient}`,
+            `user/${recipient}`
         );
 
         if (!awarderWiki) {
@@ -560,8 +578,18 @@ export async function executeUserCommand(
         });
     }
 
+    let awardee: User | undefined;
+    
+        try {
+            awardee = await context.reddit.getUserByUsername(recipient);
+        } catch {
+            awardee = undefined;
+        }
+    
+        if (!awardee) return false;
+
     // 🏆 Award point + side effects
-    await awardPointToUserNormalCommand(event, context, awarder, recipient);
+    await awardPointToUserNormalCommand(event, context, awarder, awardee);
 
     // Auto Superuser logic
     const commandUsed =
@@ -575,7 +603,7 @@ export async function executeUserCommand(
         event,
         context,
         currentScore,
-        commandUsed,
+        commandUsed
     );
 
     return true;

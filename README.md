@@ -33,8 +33,7 @@ I recommend testing settings out on a test subreddit before deploying to a real 
 * `{{leaderboard}}`: Link to a page of the subreddit's leaderboard. Uses the Old Reddit version of this page.
 * `{{threshold}}`: Threshold to become a superuser. Specified in 'Auto Superuser Threshold'.
 * `{{command}}`: Notifies the user who has reached the threshold of a special command they can use. Specified in 'Superuser/Mod award command'.
-* `{{commandsWithOr}}`: Lists all valid non-superuser/non-mod command(s) (comma-separated list (if more than 1) (eg "!award, ?award, or /award")). Specified in 'Trigger Words'. 
-* `{{commandsWithAnd}}`: Lists all valid non-superuser/non-mod command(s) (comma-separated list (if more than 1) (eg "!award, ?award, and /award")). Specified in 'Trigger Words'. 
+* `{{commands}}`: Lists all valid non-superuser/non-mod command(s) specified in 'Trigger Words'. (comma-separated list (if more than 1) (eg "!award, ?award, and /award")). 
 * `{{markdown_guide}}`: Link to Reddit's Markdown Guide.
 * `{{user}}`: The username of the person being awarded. Used in 'Alternate Award Command'.
 * `{{altCommand}}`: Alternate command to directly award users. Used in 'Alternate Command Success/Fail Message'.
@@ -56,11 +55,15 @@ If the application is removed from a subreddit, all data is deleted although the
 
 This app is open source and licensed under the BSD 3-Clause License. You can find the source code on GitHub [here](https://github.com/the-gdmo/TheRepBot).
 
-NOTE: If you remove the app from your subreddit, it will delete all data and you will have to manually restore it to users. 
+NOTE: If you remove the app from your subreddit, it will delete all user specific data and you will have to manually restore it to users. The bot can use numeric flair to update the user's flair, but it cannot do so if there is any special characters between numbers (eg 12!3, 1@6, etc.)
 
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 ## Version History
+### 31.1.0
+* Remove all alternate command logic
+* Allow bot to update flair based on current numeric value (even if flair is different than the bot's internal key)
+* Change {{commandsWithOr}} and {{commandsWithAnd}} placeholders back to just {{commands}}
 ### 31.0.0
 * Make comment already awarded check contain the subreddit as well (for some reason, some comments will trigger the already awarded response even if it hasn't)
 * Make alternate command work properly

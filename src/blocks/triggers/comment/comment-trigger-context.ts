@@ -7,7 +7,6 @@ import {
 } from "@devvit/public-api";
 import {
     getUserCanAward,
-    getUserIsAltUser,
     getUserIsSuperuser,
     isModerator,
 } from "../utils/user-utilities";
@@ -25,7 +24,6 @@ export class CommentTriggerContext {
     private _awarder: string | undefined = undefined;
     private _subredditName: string | undefined = undefined;
     private _isMod: boolean = false;
-    private _isAltUser: boolean = false;
     private _isSuperUser: boolean = false;
     private _userCanAward: boolean = false;
     // More properties...
@@ -42,9 +40,6 @@ export class CommentTriggerContext {
     get isSuperUser() {
         return this._isSuperUser;
     }
-    get isAltUser() {
-        return this._isAltUser;
-    }
     // More getters where needed...
 
     public async init(
@@ -60,74 +55,12 @@ export class CommentTriggerContext {
             this._subredditName,
             this._awarder,
         );
-        this._isAltUser = await getUserIsAltUser(context, this._awarder);
         this._isSuperUser = await getUserIsSuperuser(context, this._awarder);
         this._userCanAward = await getUserCanAward(context, this._awarder);
         // More context setup
     }
 }
 
-export async function getCurrentScore(
-    user: User,
-    context: TriggerContext,
-    settings: SettingsValues,
-): Promise<{
-    currentScore: number;
-    flairText: string;
-    flairSymbol: string;
-}> {
-    const subredditName = (await context.reddit.getCurrentSubreddit()).name;
-    const userFlair = await user.getUserFlairBySubreddit(subredditName);
-
-    let scoreFromRedis: number | undefined;
-    try {
-        scoreFromRedis =
-            (await context.redis.zScore(
-                `${POINTS_STORE_KEY}`,
-                user.username,
-            )) ?? 0;
-    } catch {
-        scoreFromRedis = 0;
-    }
-
-    const flairTextRaw = userFlair?.flairText ?? "";
-    let scoreFromFlair: number;
-    const numberRegex = /^\d+$/;
-
-    if (!flairTextRaw || flairTextRaw === "-") {
-        scoreFromFlair = 0;
-    } else {
-        // Extract numeric part from start of flair text (e.g. "17⭐" -> "17")
-        const numericMatch = flairTextRaw.match(/^\d+/);
-        if (numericMatch && numberRegex.test(numericMatch[0])) {
-            scoreFromFlair = parseInt(numericMatch[0], 10);
-        } else {
-            scoreFromFlair = NaN;
-        }
-    }
-
-    const flairScoreIsNaN = isNaN(scoreFromFlair);
-
-    // Extract symbol by removing the numeric part from flair text, trim whitespace
-    const flairSymbol = flairTextRaw.replace(/^\d+/, "").trim();
-
-    if (settings[AppSetting.PrioritiseScoreFromFlair] && !flairScoreIsNaN) {
-        return {
-            currentScore: scoreFromFlair,
-            flairText: flairTextRaw,
-            flairSymbol,
-        };
-    }
-
-    return {
-        currentScore:
-            !flairScoreIsNaN && scoreFromFlair > scoreFromRedis
-                ? scoreFromFlair
-                : scoreFromRedis,
-        flairText: flairTextRaw,
-        flairSymbol,
-    };
-}
 
 export async function userBecomesSuperUser(
     event: CommentSubmit | CommentUpdate,

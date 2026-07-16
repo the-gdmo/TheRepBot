@@ -20,12 +20,9 @@ import {
     executeModCommand,
 } from "./user-specific-logic/mod-user-action";
 import {
-    commentContainsAltCommand,
-    handleAltUserAction,
-} from "./user-specific-logic/alt-user-action";
-import {
     AccessControlOptions,
     AppSetting,
+    ExistingFlairOverwriteHandling,
     NotifyOnDisallowedFlairReplyOptions,
     NotifyOnModAwardFailReplyOptions,
     NotifyOnSelfAwardReplyOptions,
@@ -37,11 +34,131 @@ import {
     getIgnoredContextType,
     getTriggers,
     modCommandValue,
+    ScoreResult,
 } from "../utils/common-utilities";
+import { setCleanupForUsers } from "../../cleanupTasks";
+import { getCurrentScore } from "../utils/user-utilities";
+
+export async function setUserScore(
+    context: TriggerContext,
+    username: string,
+    newScore: ScoreResult,
+    appSettings: SettingsValues
+) {
+    // Queue user for cleanup checks in 24 hours, overwriting existing value.
+    await setCleanupForUsers([username], context);
+
+    // Queue a leaderboard update.
+    await context.scheduler.runJob({
+        name: "updateLeaderboard",
+        runAt: new Date(),
+        data: {
+            reason: `Awarded a point to ${username}. New score: ${newScore.score}`,
+        },
+    });
+
+    const existingFlairOverwriteHandling =
+        (appSettings[AppSetting.ExistingFlairHandling] as
+            | ExistingFlairOverwriteHandling
+            | undefined) ?? ExistingFlairOverwriteHandling.OverwriteNumeric;
+
+    let shouldSetUserFlair: boolean;
+    if (
+        existingFlairOverwriteHandling ===
+            ExistingFlairOverwriteHandling.OverwriteNumericSymbol ||
+        existingFlairOverwriteHandling ===
+            ExistingFlairOverwriteHandling.OverwriteNumeric
+    ) {
+        shouldSetUserFlair = true;
+    } else if (
+        existingFlairOverwriteHandling ===
+        ExistingFlairOverwriteHandling.NeverSet
+    ) {
+        shouldSetUserFlair = false;
+    } else {
+        shouldSetUserFlair =
+            !newScore.userHasFlair ||
+            newScore.flairIsNumber;
+    }
+
+    if (shouldSetUserFlair) {
+        console.log(
+            `Setting points flair for ${username}. New score: ${newScore.score}`
+        );
+
+        let cssClass = appSettings[AppSetting.CSSClass] as string | undefined;
+        // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
+        if (!cssClass) {
+            cssClass = undefined;
+        }
+
+        let flairTemplate = appSettings[AppSetting.FlairTemplate] as
+            | string
+            | undefined;
+        // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
+        if (!flairTemplate) {
+            flairTemplate = undefined;
+        }
+
+        if (flairTemplate && cssClass) {
+            // Prioritise flair templates over CSS classes.
+            cssClass = undefined;
+        }
+
+        const flairTextTemplate = "{{points}}";
+
+        if (!context.subredditName) {
+            logger.error(
+                "❌ No subreddit name found in context, cannot set user flair"
+            );
+            return;
+        }
+
+        const key = `flairToggle:${username}`;
+        const exists = await context.redis.exists(key);
+
+        if (exists) {
+            logger.debug("❌ Flair should not be set, skipping", {
+                username,
+                newScore: newScore.score,
+                cssClass,
+                flairTemplate,
+                flairTextTemplate,
+                subreddit: context.subredditName,
+            });
+            return;
+        }
+
+        // symbol check
+        if ((appSettings[AppSetting.PointSymbol] as string) !== "") {
+            await context.reddit.setUserFlair({
+                subredditName: context.subredditName,
+                username,
+                cssClass,
+                flairTemplateId: flairTemplate,
+                text:
+                    newScore.score.toString() +
+                    (appSettings[AppSetting.PointSymbol] as string),
+            });
+        } else {
+            await context.reddit.setUserFlair({
+                subredditName: context.subredditName,
+                username,
+                cssClass,
+                flairTemplateId: flairTemplate,
+                text: newScore.score.toString(),
+            });
+        }
+    } else {
+        console.log(
+            `${username}: Flair not set (option disabled or flair in wrong state)`
+        );
+    }
+}
 
 export async function handleThanksEvent(
     event: CommentSubmit | CommentUpdate,
-    devvitContext: TriggerContext,
+    devvitContext: TriggerContext
 ) {
     if (!event.post || !event.author || !event.comment) {
         logger.warn("❌ Missing required event data", { event });
@@ -56,7 +173,7 @@ export async function handleThanksEvent(
 
     const parentComment: Comment | undefined = await getParentComment(
         event,
-        devvitContext,
+        devvitContext
     );
     if (!parentComment) {
         logger.warn("❌ Parent comment not found", {
@@ -81,7 +198,7 @@ export async function handleThanksEvent(
     const IgnoredContextNeedsHandling = await ignoredContextNeedsHandling(
         event,
         devvitContext,
-        triggerUsed,
+        triggerUsed
     );
     if (ignoredType) {
         logger.info(`ignoredType exists in comment`, { ignoredType });
@@ -97,15 +214,36 @@ export async function handleThanksEvent(
         }
     }
 
-    const recipient = parentComment.authorName;
-    if (!recipient) {
+    const awardee = parentComment.authorName;
+    if (!awardee) {
         logger.warn("❌ No recipient found", { parentComment });
+        return;
+    }
+
+    let recipient: User | undefined;
+
+    try {
+        recipient = await devvitContext.reddit.getUserByUsername(awardee);
+    } catch {
+        recipient = undefined;
+    }
+    if (!recipient) {
+        logger.warn("❌ Could not fetch user object for recipient", {
+            recipient: awardee,
+        });
+        return;
+    }
+
+    const existingScore = await getCurrentScore(recipient, devvitContext);
+    if (!existingScore) {
+        logger.warn("❌ Could not fetch existing score for recipient", {
+            recipient: awardee,
+        });
         return;
     }
 
     const isMod = commentTriggerContext.isMod;
     const isSuperUser = commentTriggerContext.isSuperUser;
-    const isAltUser = commentTriggerContext.isAltUser;
     const userCanAward = commentTriggerContext.userCanAward;
 
     // ─────────────────────────────────────────────
@@ -128,7 +266,7 @@ export async function handleThanksEvent(
         user.id,
         commentTriggerContext,
         devvitContext,
-        settings,
+        settings
     );
 
     if (!hasPermission) {
@@ -146,74 +284,12 @@ export async function handleThanksEvent(
 
     const containsMod = await commentContainsModCommand(event, devvitContext);
     const containsUser = await commentContainsUserCommand(event, devvitContext);
-    const containsAlt = await commentContainsAltCommand(event, devvitContext);
 
     logger.debug("Checking values", {
         trigger: triggerUsed,
         containsMod,
         containsUser,
-        containsAlt,
     });
-
-    // ─────────────────────────────────────────────
-    // Alt command logic (with user or mod command)
-    // Runs regardless of whether the user has permission to use normal mod/user commands
-    // or not, and doesn't care who is being awarded
-    // ─────────────────────────────────────────────
-    if (containsAlt && (containsUser || containsMod)) {
-        if (isAltUser) {
-            const handled = await handleAltUserAction(event, devvitContext);
-            if (handled) {
-                // Trigger leaderboard update
-                await devvitContext.scheduler.runJob({
-                    name: "updateLeaderboard",
-                    runAt: new Date(),
-                    data: {
-                        reason: `Updated score for ${user.username}. Triggered by alternate command.`,
-                    },
-                });
-                logger.info("✅ Alternate command executed successfully");
-                return;
-            } else {
-                logger.debug("❌ Alternate command detected but not handled");
-                return;
-            }
-        }
-        const redisKey = `shouldComment:${parentComment.id}`;
-        const parentCommentRespondedTo =
-            await devvitContext.redis.exists(redisKey);
-
-        if (parentCommentRespondedTo) {
-            logger.info(`Alt response already sent, returning.`);
-            return;
-        }
-
-        logger.error(
-            `User tried to execute alt command and is not an alt user`,
-        );
-        const notifyOnAltFailMode = ((settings[
-            AppSetting.NotifyOnAlternateCommandFail
-        ] as string[]) ?? ["none"])[0];
-        if (!notifyOnAltFailMode) return;
-
-        const altAwardFailMsg = formatMessage(
-            event,
-            (settings[AppSetting.AlternateCommandFailMessage] as string) ??
-                TemplateDefaults.AlternateCommandFailMessage,
-            {
-                altCommand: triggerUsed,
-            },
-        );
-
-        await _replyToUser(
-            devvitContext,
-            awarder,
-            altAwardFailMsg,
-            event.comment.id,
-            notifyOnAltFailMode,
-        );
-        return;
-    }
 
     await unflairedPostLogic(event, devvitContext, awarder, settings);
 
@@ -223,24 +299,24 @@ export async function handleThanksEvent(
         awarder,
         commentBody,
         triggerUsed,
-        settings,
+        settings
     );
 
     await selfAwardAttemptLogic(
         event,
         devvitContext,
         awarder,
-        recipient,
-        settings,
+        awardee,
+        settings
     );
 
-    await recipientIsBot(event, devvitContext, awarder, recipient, settings);
+    await recipientIsBot(event, devvitContext, awarder, awardee, settings);
 
     // ─────────────────────────────────────────────
     // Normal user command logic
     // ─────────────────────────────────────────────
 
-    if (containsUser && !containsMod && !containsAlt) {
+    if (containsUser && !containsMod) {
         if (!userCanAward) {
             logger.debug("❌ User blocked from awarding points", { awarder });
             return;
@@ -266,7 +342,7 @@ export async function handleThanksEvent(
     // ─────────────────────────────────────────────
     // Mod command logic
     // ─────────────────────────────────────────────
-    if (containsMod && !containsUser && !containsAlt) {
+    if (containsMod && !containsUser) {
         if (isMod || isSuperUser) {
             const handled = await executeModCommand(event, devvitContext);
             // Trigger leaderboard update
@@ -291,9 +367,9 @@ export async function handleThanksEvent(
                     TemplateDefaults.ModAwardCommandFailMessage,
                 {
                     awarder,
-                    awardee: recipient,
+                    awardee,
                     command,
-                },
+                }
             );
 
             const notify = ((settings[
@@ -326,7 +402,6 @@ export async function handleThanksEvent(
     logger.error("Unexpected command flow detected", {
         containsMod,
         containsUser,
-        containsAlt,
         awarder,
         commentId: event.comment.id,
     });
@@ -336,7 +411,7 @@ export async function unflairedPostLogic(
     event: CommentSubmit | CommentUpdate,
     context: TriggerContext,
     awarder: string,
-    settings: SettingsValues,
+    settings: SettingsValues
 ) {
     if (!event.post || !event.comment || !event.author || !event.subreddit)
         return;
@@ -366,7 +441,7 @@ export async function unflairedPostLogic(
         // 🚫 Ignore bot’s own comments to prevent loops
         if (event.author.name === context.appSlug) {
             logger.debug(
-                "🤖 Bot-authored comment detected; skipping unflaired-post response",
+                "🤖 Bot-authored comment detected; skipping unflaired-post response"
             );
             return;
         }
@@ -405,14 +480,14 @@ export async function unflairedPostLogic(
                     {
                         id: event.comment.id,
                         text: unflairedMessage,
-                    },
+                    }
                 );
                 await unflairedPostMessage.distinguish();
             }
         } catch (err) {
             logger.error(
                 "❌ Failed to notify user about unflaired post restriction",
-                { awarder, commentId: event.comment.id, err },
+                { awarder, commentId: event.comment.id, err }
             );
         }
 
@@ -427,7 +502,7 @@ export async function flairTextNotAllowedLogic(
     awarder: string,
     commentBody: string,
     triggerUsed: string,
-    settings: SettingsValues,
+    settings: SettingsValues
 ) {
     if (!event.post || !event.comment || !event.author) return;
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
@@ -435,7 +510,7 @@ export async function flairTextNotAllowedLogic(
         event,
         (settings[AppSetting.DisallowedFlairMessage] as string) ??
             TemplateDefaults.DisallowedFlairMessage,
-        { name: pointName },
+        { name: pointName }
     );
     const postFlairText = event.post.linkFlair?.text?.trim();
 
@@ -449,12 +524,12 @@ export async function flairTextNotAllowedLogic(
 
     if (
         (settings[AppSetting.DisallowedFlairs] as string).includes(
-            postFlairText ?? "",
+            postFlairText ?? ""
         )
     ) {
         logger.error(
             `User attempted to award points on flair-disallowed post, but it's not allowed`,
-            { linkFlair: event.post.linkFlair },
+            { linkFlair: event.post.linkFlair }
         );
         return;
     }
@@ -486,7 +561,7 @@ export async function flairTextNotAllowedLogic(
         if (event.author.name === context.appSlug) {
             // 🚫 Ignore bot’s own comments to prevent loops
             logger.debug(
-                "🤖 Bot-authored comment detected; skipping disallowed flair response",
+                "🤖 Bot-authored comment detected; skipping disallowed flair response"
             );
             return;
         }
@@ -498,7 +573,7 @@ export async function flairTextNotAllowedLogic(
                 "♻️ Disallowed flair already handled for this comment",
                 {
                     commentId: event.comment.id,
-                },
+                }
             );
             return;
         }
@@ -537,7 +612,7 @@ export async function selfAwardAttemptLogic(
     context: TriggerContext,
     awarder: string,
     recipient: string,
-    settings: SettingsValues,
+    settings: SettingsValues
 ) {
     if (!event.comment || !event.author) return;
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
@@ -574,7 +649,7 @@ export async function replyToUser(
     notifyMode: string,
     recipient: string,
     message: string,
-    commentId: string,
+    commentId: string
 ) {
     if (!notifyMode || notifyMode === "none") {
         logger.debug("ℹ️ replyToUser: notifyMode is none — skipping reply");
@@ -646,7 +721,7 @@ export async function userHasPermission(
     awarderID: string,
     commentTriggerContext: CommentTriggerContext,
     devvitContext: TriggerContext,
-    settings: SettingsValues,
+    settings: SettingsValues
 ): Promise<boolean> {
     if (!event.post || !event.comment) return false;
 
@@ -654,7 +729,6 @@ export async function userHasPermission(
 
     const isMod = commentTriggerContext.isMod;
     const isSuperUser = commentTriggerContext.isSuperUser;
-    const isAltUser = commentTriggerContext.isAltUser;
     const isOP = awarderID === event.post.authorId;
 
     const accessControl = ((settings[AppSetting.AccessControl] as string[]) ?? [
@@ -668,7 +742,6 @@ export async function userHasPermission(
             (isMod || isSuperUser)) ||
         (accessControl === AccessControlOptions.ModsSuperusersAndPostAuthor &&
             (isMod || isSuperUser || isOP)) ||
-        (accessControl === AccessControlOptions.AltUsersOnly && isAltUser) ||
         (accessControl === AccessControlOptions.ModsAndPostAuthor &&
             (isMod || isOP));
 
@@ -676,7 +749,6 @@ export async function userHasPermission(
         accessControl,
         isMod,
         isSuperUser,
-        isAltUser,
         isOP,
         hasPermission,
     });
@@ -686,11 +758,6 @@ export async function userHasPermission(
         let notifyKey: AppSetting;
 
         switch (accessControl) {
-            case AccessControlOptions.AltUsersOnly:
-                msgKey = AppSetting.AlternateUsersOnlyDisallowedMessage;
-                notifyKey = AppSetting.NotifyOnAltUserDisallowed;
-                break;
-
             case AccessControlOptions.ModOnly:
                 msgKey = AppSetting.ModOnlyDisallowedMessage;
                 notifyKey = AppSetting.NotifyOnModOnlyDisallowed;
@@ -725,7 +792,7 @@ export async function userHasPermission(
             {
                 awarder: awarderID,
                 name: pointName,
-            },
+            }
         );
 
         const notifyMode = ((settings[notifyKey] as string[]) ?? ["none"])[0];
@@ -735,7 +802,7 @@ export async function userHasPermission(
             notifyMode ?? "none",
             awarderID,
             denyMsg,
-            event.comment.id,
+            event.comment.id
         );
 
         return false;
@@ -748,12 +815,12 @@ export async function awarderIsBot(
     event: CommentSubmit | CommentUpdate,
     devvitContext: TriggerContext,
     awarder: string,
-    settings: SettingsValues,
+    settings: SettingsValues
 ) {
     if (!event.comment) return;
     if (
         ["automoderator", devvitContext.appSlug.toLowerCase()].includes(
-            awarder.toLowerCase(),
+            awarder.toLowerCase()
         )
     ) {
         logger.debug("❌ System user attempted a command");
@@ -762,7 +829,7 @@ export async function awarderIsBot(
 
     const parentComment: Comment | undefined = await getParentComment(
         event,
-        devvitContext,
+        devvitContext
     );
     if (!parentComment) {
         logger.warn("❌ Parent comment not found", {
@@ -782,7 +849,7 @@ export async function awarderIsBot(
             event,
             (settings[AppSetting.BotAwardMessage] as string) ??
                 TemplateDefaults.BotAwardMessage,
-            { name: pointName, awardee: recipient },
+            { name: pointName, awardee: recipient }
         );
         const botAwardMessage = await devvitContext.reddit.submitComment({
             id: event.comment.id,
@@ -799,13 +866,13 @@ export async function recipientIsBot(
     devvitContext: TriggerContext,
     awarder: string,
     recipient: string,
-    settings: SettingsValues,
+    settings: SettingsValues
 ) {
     if (!event.comment) return;
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
     if (
         ["automoderator", devvitContext.appSlug.toLowerCase()].includes(
-            awarder.toLowerCase(),
+            awarder.toLowerCase()
         )
     ) {
         logger.debug("❌ System user attempted a command");
@@ -814,7 +881,7 @@ export async function recipientIsBot(
 
     if (
         ["automoderator", devvitContext.appSlug.toLowerCase()].includes(
-            recipient.toLowerCase(),
+            recipient.toLowerCase()
         )
     ) {
         // Prevent bot account or Automod granting points
@@ -822,14 +889,14 @@ export async function recipientIsBot(
             event,
             (settings[AppSetting.BotAwardMessage] as string) ??
                 TemplateDefaults.BotAwardMessage,
-            { name: pointName, awardee: recipient },
+            { name: pointName, awardee: recipient }
         );
 
         const awardGivenToBotMessage = await devvitContext.reddit.submitComment(
             {
                 id: event.comment.id,
                 text: botAwardMessage,
-            },
+            }
         );
         await awardGivenToBotMessage.distinguish();
         logger.debug("❌ Bot cannot award itself points");
@@ -840,7 +907,7 @@ export async function recipientIsBot(
 export async function handleIgnoredContext(
     event: CommentSubmit | CommentUpdate,
     context: TriggerContext,
-    trigger: string,
+    trigger: string
 ): Promise<void> {
     if (!event.comment || !event.author || !event.subreddit) return;
 
@@ -857,8 +924,8 @@ export async function handleIgnoredContext(
         ignoredType === "quote"
             ? "a quote block (`> text`)"
             : ignoredType === "alt"
-              ? "`alt text` (text surrounded by backticks (`))"
-              : "a spoiler block (`>!text!<`)";
+            ? "`alt text` (text surrounded by backticks (`))"
+            : "a spoiler block (`>!text!<`)";
 
     const initialTriggerInContextLabelNotification = `Hey u/${event.author.name}, I noticed you used the command **${trigger}** inside ${contextLabel}.\n\n`;
     const confirmInfo = `Edit [this comment](${event.comment.permalink}) with **CONFIRM** if you intended to use the command this way and don't wish to be warned about this in the future.`;
@@ -866,7 +933,7 @@ export async function handleIgnoredContext(
     const dmText = formatMessage(
         event,
         initialTriggerInContextLabelNotification + confirmInfo,
-        {},
+        {}
     );
 
     await context.reddit.sendPrivateMessage({
@@ -877,7 +944,7 @@ export async function handleIgnoredContext(
 
     await context.redis.set(
         `pendingConfirm:${event.author.name.toLowerCase()}`,
-        ignoredType,
+        ignoredType
     );
 
     logger.info("⚠️ Normal command ignored due to context", {
@@ -892,7 +959,7 @@ export async function handleIgnoredContext(
 export async function ignoredContextNeedsHandling(
     event: CommentSubmit | CommentUpdate,
     context: TriggerContext,
-    trigger: string,
+    trigger: string
 ): Promise<boolean> {
     if (!event.comment || !event.author || !event.subreddit) return false;
 

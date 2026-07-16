@@ -12,7 +12,7 @@ import {
     formatMessage,
     getTriggers,
     modCommandValue,
-    updateAwardeeFlair,
+    ScoreResult,
 } from "../../utils/common-utilities";
 import {
     CommentTriggerContext,
@@ -25,15 +25,17 @@ import {
     setModDupKey,
 } from "../../utils/redisKeys";
 import {
+    getCurrentScore,
     getUserIsSuperuser,
     handleAutoSuperuserPromotion,
 } from "../../utils/user-utilities";
 import { InitialUserWikiOptions, updateUserWiki } from "../../../leaderboard";
 import { isModerator, SafeWikiClient } from "../../../utility";
+import { setUserScore } from "../on-comment-trigger";
 
 export async function commentContainsModCommand(
     event: CommentSubmit | CommentUpdate,
-    context: TriggerContext,
+    context: TriggerContext
 ): Promise<boolean> {
     if (!event.comment) return false;
 
@@ -41,7 +43,9 @@ export async function commentContainsModCommand(
     const commentBody = event.comment.body ?? "";
     const modCommand = await modCommandValue(context);
 
-    const triggerUsed = allTriggers.find((t) => new RegExp(`${t}`, "g").test(commentBody));
+    const triggerUsed = allTriggers.find((t) =>
+        new RegExp(`${t}`, "g").test(commentBody)
+    );
     if (!triggerUsed) return false;
     const usedCommand = triggerUsed;
 
@@ -58,7 +62,7 @@ export async function commentContainsModCommand(
 
 export async function isSelfAwardModCommand(
     event: CommentSubmit | CommentUpdate,
-    context: TriggerContext,
+    context: TriggerContext
 ): Promise<boolean> {
     if (!event.author) return true;
 
@@ -70,7 +74,7 @@ export async function isSelfAwardModCommand(
 
 async function handleSelfAwardModCommand(
     event: CommentSubmit | CommentUpdate,
-    context: TriggerContext,
+    context: TriggerContext
 ) {
     const parentComment = await getParentComment(event, context);
     if (!event.author || !event.comment || !parentComment) return;
@@ -86,7 +90,7 @@ async function handleSelfAwardModCommand(
     const awarder = event.author.name;
     const recipient = parentComment.authorName;
     if (awarder === recipient) {
-        const selfText = formatMessage(event,selfMsgTemplate, {
+        const selfText = formatMessage(event, selfMsgTemplate, {
             awarder,
             name: pointName,
         });
@@ -112,7 +116,7 @@ async function handleSelfAwardModCommand(
 
 export async function isDuplicateModAward(
     event: CommentSubmit | CommentUpdate,
-    context: TriggerContext,
+    context: TriggerContext
 ): Promise<boolean> {
     const key = await getModDupKey(event, context);
     const exists = await context.redis.exists(key);
@@ -121,7 +125,7 @@ export async function isDuplicateModAward(
 
 export async function handleDuplicateModAward(
     event: CommentSubmit | CommentUpdate,
-    context: TriggerContext,
+    context: TriggerContext
 ) {
     const parentComment = await getParentComment(event, context);
     if (!parentComment || !event.author || !event.comment) return;
@@ -130,10 +134,11 @@ export async function handleDuplicateModAward(
     const awarder = event.author.name;
     const awardee = parentComment.authorName;
 
-    const msg = formatMessage(event,
+    const msg = formatMessage(
+        event,
         (settings[AppSetting.ModAwardAlreadyGiven] as string) ??
             TemplateDefaults.ModAwardAlreadyGivenMessage,
-        { awarder, awardee, name: pointName },
+        { awarder, awardee, name: pointName }
     );
 
     const notify = ((settings[AppSetting.NotifyOnModAwardFail] as string[]) ?? [
@@ -160,7 +165,7 @@ export async function handleDuplicateModAward(
 export async function handleUnauthorizedModCommand(
     event: CommentSubmit | CommentUpdate,
     context: TriggerContext,
-    trigger: string,
+    trigger: string
 ) {
     const ctx = new CommentTriggerContext();
     await ctx.init(event, context);
@@ -171,14 +176,15 @@ export async function handleUnauthorizedModCommand(
     const awarder = event.author!.name;
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
 
-    const failMsg = formatMessage(event,
+    const failMsg = formatMessage(
+        event,
         (settings[AppSetting.ModAwardCommandFail] as string) ??
             TemplateDefaults.ModAwardCommandFailMessage,
         {
             command: trigger,
             name: pointName,
             awarder,
-        },
+        }
     );
 
     const notify = ((settings[AppSetting.NotifyOnModAwardFail] as string[]) ?? [
@@ -204,7 +210,7 @@ export async function handleUnauthorizedModCommand(
 
 export async function awardPointToUserModCommand(
     event: CommentSubmit | CommentUpdate,
-    context: TriggerContext,
+    context: TriggerContext
 ) {
     if (!event.comment || !event.subreddit || !event.author || !event.post) {
         logger.warn("❌ Missing required event data", { event });
@@ -232,19 +238,42 @@ export async function awardPointToUserModCommand(
 
     if (!user) return;
 
-    // 🏆 Award point
-    const newScore = await context.redis.zIncrBy(
-        "thanksPointsStore",
-        awardee,
-        1,
-    );
+    let recipient: User | undefined;
+
+    try {
+        recipient = await context.reddit.getUserByUsername(awardee);
+    } catch {
+        recipient = undefined;
+    }
+
+    if (!recipient) return;
+
+    const existingScore = await getCurrentScore(recipient, context);
+
+    if (!existingScore) {
+        logger.warn("❌ Could not retrieve existing score for user", {
+            awardee,
+        });
+        return;
+    }
+
+    const newScore: ScoreResult = {
+        score: existingScore.score + 1,
+        userHasFlair: existingScore.userHasFlair,
+        flairIsNumber: existingScore.flairIsNumber,
+    };
 
     // 🔒 Prevent duplicates
     await setModDupKey(event, context, "1");
 
     // ⭐ Auto-superuser logic
     const modCommand = (settings[AppSetting.ModAwardCommand] as string) ?? "";
-    await handleAutoSuperuserPromotion(event, context, newScore, modCommand);
+    await handleAutoSuperuserPromotion(
+        event,
+        context,
+        newScore.score,
+        modCommand
+    );
 
     // 📣 Notify on success
     const modNotifyMode =
@@ -261,7 +290,7 @@ export async function awardPointToUserModCommand(
     const awarderIsModerator = await isModerator(
         context,
         event.subreddit.name,
-        awarder,
+        awarder
     );
     const awarderIsSuperUser = await getUserIsSuperuser(context, awarder);
 
@@ -274,7 +303,7 @@ export async function awardPointToUserModCommand(
 
     const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${awardee}`;
     const awarderPage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${awarder}`;
-    const modSuccessMessage = formatMessage(event,modSuccessTemplate, {
+    const modSuccessMessage = formatMessage(event, modSuccessTemplate, {
         awardee,
         awarder,
         total: newScore.toString(),
@@ -285,16 +314,20 @@ export async function awardPointToUserModCommand(
         awarderPage,
     });
 
-    const trustedUserMessage = formatMessage(event,trustedUserSuccessTemplate, {
-        awardee,
-        awarder,
-        total: newScore.toString(),
-        name: pointName,
-        symbol: (settings[AppSetting.PointSymbol] as string) ?? "",
-        leaderboard,
-        awardeePage,
-        awarderPage,
-    });
+    const trustedUserMessage = formatMessage(
+        event,
+        trustedUserSuccessTemplate,
+        {
+            awardee,
+            awarder,
+            total: newScore.toString(),
+            name: pointName,
+            symbol: (settings[AppSetting.PointSymbol] as string) ?? "",
+            leaderboard,
+            awardeePage,
+            awarderPage,
+        }
+    );
 
     if (
         modNotifyMode !== NotifyOnModAwardSuccessReplyOptions.NoReply &&
@@ -354,11 +387,11 @@ export async function awardPointToUserModCommand(
         const safeWiki = new SafeWikiClient(context.reddit);
         const awarderPage = await safeWiki.getWikiPage(
             subredditName,
-            `user/${awarder.toLowerCase()}`,
+            `user/${awarder.toLowerCase()}`
         );
         const recipientPage = await safeWiki.getWikiPage(
             subredditName,
-            `user/${awardee}`,
+            `user/${awardee}`
         );
 
         if (!awarderPage) {
@@ -405,24 +438,17 @@ export async function awardPointToUserModCommand(
 
     if (flairHandlingDisabled) {
         logger.info(
-            "Flair handling is disabled for this user, skipping flair update",
+            "Flair handling is disabled for this user, skipping flair update"
         );
         return;
     }
 
-    // 🎨 Update flair
-    await updateAwardeeFlair(
-        context,
-        event.subreddit.name,
-        awardee,
-        newScore,
-        settings,
-    );
+    setUserScore(context, awardee, newScore, settings);
 }
 
 export async function executeModCommand(
     event: CommentSubmit | CommentUpdate,
-    context: TriggerContext,
+    context: TriggerContext
 ): Promise<boolean> {
     if (!event.comment || !event.author || !event.post) {
         return false;
@@ -455,11 +481,7 @@ export async function executeModCommand(
         //     return false;
         // }
 
-        await handleUnauthorizedModCommand(
-            event,
-            context,
-            trigger,
-        );
+        await handleUnauthorizedModCommand(event, context, trigger);
 
         if (await isSelfAwardModCommand(event, context)) {
             await handleSelfAwardModCommand(event, context);

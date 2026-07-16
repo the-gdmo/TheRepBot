@@ -1,11 +1,15 @@
-import { SettingsValues, TriggerContext, User } from "@devvit/public-api";
+import { TriggerContext, User } from "@devvit/public-api";
 import {
     AppSetting,
     AutoSuperuserReplyOptions,
     TemplateDefaults,
 } from "../../settings";
 import { POINTS_STORE_KEY } from "./redisKeys";
-import { formatMessage, modCommandValue } from "./common-utilities";
+import {
+    formatMessage,
+    modCommandValue,
+    ScoreResult,
+} from "./common-utilities";
 import { getParentComment } from "../comment/comment-trigger-context";
 import { CommentSubmit, CommentUpdate } from "@devvit/protos";
 import { logger } from "../../logger";
@@ -73,8 +77,11 @@ export async function getUserIsSuperuser(
         if (!user) {
             return false;
         }
-        const { currentScore } = await getCurrentScore(user, context, settings);
-        return currentScore >= autoSuperuserThreshold;
+        const currentScore = await getCurrentScore(user, context);
+        if (!currentScore) {
+            return false;
+        }
+        return currentScore.score >= autoSuperuserThreshold;
     } else {
         return false;
     }
@@ -113,7 +120,8 @@ export async function handleAutoSuperuserPromotion(
 
     if (notifyMode === AutoSuperuserReplyOptions.NoReply) return;
 
-    const superUserNotification = formatMessage(event,
+    const superUserNotification = formatMessage(
+        event,
         (settings[AppSetting.AutoSuperuserTemplate] as string) ??
             TemplateDefaults.NotifyOnSuperuserTemplate,
         {
@@ -154,83 +162,60 @@ export async function handleAutoSuperuserPromotion(
 
 export async function getCurrentScore(
     user: User,
-    context: TriggerContext,
-    settings: SettingsValues
-): Promise<{
-    currentScore: number;
-    flairText: string;
-    flairSymbol: string;
-}> {
-    const subredditName = (await context.reddit.getCurrentSubreddit()).name;
-    const userFlair = await user.getUserFlairBySubreddit(subredditName);
-
-    let scoreFromRedis: number | undefined;
-    try {
-        scoreFromRedis =
-            (await context.redis.zScore(
-                `${POINTS_STORE_KEY}`,
-                user.username
-            )) ?? 0;
-    } catch {
-        scoreFromRedis = 0;
+    context: TriggerContext
+): Promise<ScoreResult | undefined> {
+    if (!context.subredditName) {
+        logger.error("❌ Subreddit name is not available in context.");
+        return;
     }
+    const userFlair = await user.getUserFlairBySubreddit(context.subredditName);
 
-    const flairTextRaw = userFlair?.flairText ?? "";
-    let scoreFromFlair: number;
-    const numberRegex = /^\d+$/;
+    const scoreFromRedis = await context.redis.zScore(
+        POINTS_STORE_KEY,
+        user.username
+    );
+    let scoreFromFlair: number | undefined;
+    let flairIsNumber = false;
 
-    if (!flairTextRaw || flairTextRaw === "-") {
-        scoreFromFlair = 0;
-    } else {
-        // Extract numeric part from start of flair text (e.g. "17⭐" -> "17")
-        const numericMatch = flairTextRaw.match(/^\d+/);
-        if (numericMatch && numberRegex.test(numericMatch[0])) {
-            scoreFromFlair = parseInt(numericMatch[0], 10);
-        } else {
-            scoreFromFlair = NaN;
+    if (userFlair?.flairText) {
+        const flairTextTemplate = "{{points}}";
+        const numberRegex = "(?:\\b|\\D)(\\d+)(?:\\b|\\D)";
+
+        const regex = new RegExp(
+            flairTextTemplate.replace("{{points}}", numberRegex)
+        );
+        const matches = regex.exec(userFlair.flairText);
+
+        const matchedPoints = matches?.[1];
+
+        scoreFromFlair = matchedPoints ? parseInt(matchedPoints) : undefined;
+
+        if (!scoreFromFlair) {
+            // Fallback and see if the user flair includes the number anywhere in the flair
+            const fallbackRegex = new RegExp(numberRegex);
+            const fallbackMatches = fallbackRegex.exec(userFlair.flairText);
+            const matchedPoints = fallbackMatches?.[1];
+            scoreFromFlair = matchedPoints
+                ? parseInt(matchedPoints)
+                : undefined;
         }
+
+        flairIsNumber = !isNaN(parseInt(userFlair.flairText));
     }
 
-    const flairScoreIsNaN = isNaN(scoreFromFlair);
+    const redisScore = await context.redis.zAdd(POINTS_STORE_KEY, {
+        score: scoreFromFlair ?? scoreFromRedis ?? 0,
+        member: user.username,
+    });
 
-    // Extract symbol by removing the numeric part from flair text, trim whitespace
-    const flairSymbol = flairTextRaw.replace(/^\d+/, "").trim();
-
-    if (settings[AppSetting.PrioritiseScoreFromFlair] && !flairScoreIsNaN) {
-        return {
-            currentScore: scoreFromFlair,
-            flairText: flairTextRaw,
-            flairSymbol,
-        };
-    }
-
+    logger.info("🔢 Values", {
+        score: scoreFromFlair ?? redisScore ?? 0,
+        userHasFlair: userFlair?.flairText !== undefined,
+        flairIsNumber,
+    });
     return {
-        currentScore:
-            !flairScoreIsNaN && scoreFromFlair > scoreFromRedis
-                ? scoreFromFlair
-                : scoreFromRedis,
-        flairText: flairTextRaw,
-        flairSymbol,
+        score: scoreFromFlair ?? redisScore ?? 0,
+        userHasFlair: userFlair?.flairText !== undefined,
+        flairIsNumber,
     };
-}
-
-export async function getUserIsAltUser(
-    context: TriggerContext,
-    awarder: string
-) {
-    const settings = await context.settings.getAll();
-
-    const altUserSetting =
-        (settings[AppSetting.AlternatePointCommandUsers] as
-            | string
-            | undefined) ?? "";
-    const altUsers = altUserSetting
-        .split(",")
-        .map((user) => user.trim().toLowerCase());
-
-    if (altUsers.includes(awarder.toLowerCase())) {
-        return true;
-    } else {
-        return false;
-    }
 }

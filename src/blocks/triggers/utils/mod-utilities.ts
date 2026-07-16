@@ -9,7 +9,6 @@ import {
 import { logger } from "../../logger";
 import {
     getAwardsRequiredKey,
-    POINTS_STORE_KEY,
     requiredKeyExists,
     restrictedKeyExists,
 } from "./redisKeys";
@@ -18,8 +17,9 @@ import {
     manualSetPointsForm,
 } from "../../main";
 import { AppSetting } from "../../settings";
-import { getCurrentScore } from "../comment/comment-trigger-context";
-import { updateAwardeeFlair } from "./common-utilities";
+import { getCurrentScore } from "./user-utilities";
+import { setUserScore } from "../comment/on-comment-trigger";
+import { ScoreResult } from "./common-utilities";
 
 export async function handleUserRestrictionCheck(
     event: MenuItemOnPressEvent,
@@ -233,14 +233,18 @@ export async function handleManualPointSetting(
         return;
     }
 
-    const settings = await context.settings.getAll();
-    const { currentScore } = await getCurrentScore(user, context, settings);
+    const currentScore = await getCurrentScore(user, context);
+
+    if (!currentScore) {
+        context.ui.showToast("Unable to retrieve current score for user.");
+        return;
+    }
 
     const fields = [
         {
             name: "newScore",
             type: "number",
-            defaultValue: currentScore,
+            defaultValue: currentScore.score,
             label: `Enter a new score for ${comment.authorName}`,
             helpText:
                 "Warning: This will overwrite the score that currently exists",
@@ -285,16 +289,18 @@ export async function manualSetPointsFormHandler(
         return;
     }
 
-    const settings = await context.settings.getAll();
-    const subreddit = await context.reddit.getCurrentSubredditName();
-
-    const redisKey = POINTS_STORE_KEY;
-
     // ✅ Overwrite the user's score directly
-    await context.redis.zAdd(redisKey, {
-        member: user.username,
+    const newScore: ScoreResult = {
         score: entry,
-    });
+        userHasFlair: false,
+        flairIsNumber: false,
+    };
+    setUserScore(
+        context,
+        user.username,
+        newScore,
+        await context.settings.getAll()
+    );
 
     // Trigger leaderboard update
     await context.scheduler.runJob({
@@ -306,15 +312,6 @@ export async function manualSetPointsFormHandler(
     });
 
     context.ui.showToast(`Score for ${user.username} is now ${entry}`);
-
-    // Update flair based on new score
-    await updateAwardeeFlair(
-        context,
-        subreddit,
-        user.username,
-        entry,
-        settings
-    );
 }
 
 export async function handleManualPostRestrictionRemoval(

@@ -34,19 +34,13 @@ export enum LeaderboardMode {
 }
 
 export enum AppSetting {
-    Digest = "dailyDigest",
-    DigestNewMessageEachDay = "dailyDigestNewMessageEachDay",
-    DigestFrequency = "dailyDigestFrequency",
-    DigestAsModNotification = "dailyDigestAsModNotification",
     UpgradeNotifier = "upgradeNotifier",
     EnablePostOfTheMonth = "enablePostOfTheMonth",
     NotifyOnPostAuthorAward = "notifyOnPostAuthorAward",
     PostAuthorAwardMessage = "postAuthorAwardMessage",
-    AlternatePointCommandUsers = "alternatePointCommandUsers",
     AwardsRequiredToCreateNewPosts = "awardsRequiredToCreateNewPosts",
     NotifyOnRestorePoints = "notifyOnRestorePoints",
     RestorePointsCommand = "restorePointsCommand",
-    PointsRestoredMessage = "pointsRestoredMessage",
     NotifyOnSelfAward = "notifyOnSelfAward",
     NotifyUsersWhenAPointIsAwarded = "notifyUsersWhenAPointIsAwarded",
     UsersWhoCannotAwardPointsMessage = "usersWhoCannotAwardPointsMessage",
@@ -62,7 +56,7 @@ export enum AppSetting {
     CSSClass = "thanksCSSClass",
     FlairTemplate = "thanksFlairTemplate",
     NotifyOnSuccess = "notifyOnSuccess",
-    NotifyOnSuccessTemplate = "notifyOnSuccessTemplate",
+    NotifyOnNormalAwardSuccessTemplate = "notifyOnNormalAwardSuccessTemplate",
     SetPostFlairOnThanks = "setPostFlairOnThanks",
     SetPostFlairText = "setPostFlairOnThanksText",
     SetPostFlairCSSClass = "setPostFlairOnThanksCSSClass",
@@ -80,7 +74,6 @@ export enum AppSetting {
     PointName = "pointName",
     DisallowedFlairs = "disallowedFlairs",
     DisallowedFlairMessage = "disallowedFlairMessage",
-    ApproveMessage = "approveMessage",
     PointSymbol = "pointSymbol",
     AccessControl = "accessControl",
     ModOnlyDisallowedMessage = "modOnlyDisallowedMessage",
@@ -98,10 +91,6 @@ export enum AppSetting {
     ModeratorsExempt = "moderatorsExempt",
     MessageToRestrictedUsers = "messageToRestrictedUsers",
     DiscordServerLink = "discordServerLink",
-    AlternateCommandSuccessMessage = "alternateCommandSuccessMessage",
-    AlternateCommandFailMessage = "AlternateCommandFailMessage",
-    NotifyOnAlternateCommandFail = "notifyOnAlternateCommandFail",
-    NotifyOnAlternateCommandSuccess = "notifyOnAlternateCommandSuccessMessage",
     NotifyOnPointAlreadyAwardedToUser = "notifyOnPointAlreadyAwardedToUser",
     PointAlreadyAwardedToUserMessage = "pointAlreadyAwardedToUserMessage",
     SubsequentPostRestrictionMessage = "subsequentPostRestrictionMessage",
@@ -110,12 +99,9 @@ export enum AppSetting {
     NotifyOnModAwardSuccess = "notifyOnModAwardSuccess",
     NotifyOnModAwardFail = "notifyOnModAwardFail",
     ModAwardAlreadyGiven = "modAwardAlreadyGiven",
-    UsernameLengthMessage = "usernameLengthMessage",
-    NoUsernameMentionMessage = "noUsernameMentionMessage",
     RestrictionLiftedMessage = "restrictionLiftedMessage",
     NotifyOnRestrictionLifted = "notifyOnRestrictionLifted",
     InvalidUsernameMessage = "invalidUsernameMessage",
-    AlternateUsersOnlyDisallowedMessage = "alternateUsersOnlyDisallowedMessage",
     NotifyOnAltUserDisallowed = "notifyOnAltUserDisallowed",
     PostOfTheMonthFlairText = "postOfTheMonthFlairText",
     PostOfTheMonthFlairTemplate = "postOfTheMonthFlairTemplate",
@@ -141,7 +127,7 @@ export enum TemplateDefaults {
     SelfAwardMessage = "You can't award yourself a {{name}}.",
     BotAwardMessage = "You can't award u/{{awardee}} {{name}}s.",
     SelfAwardTemplate = "Hello {{awarder}}, you cannot award a {{name}} to yourself.",
-    NotifyOnSuccessTemplate = "+1 {{name}} awarded to u/{{awardee}} by u/{{awarder}}. Total: {{total}}{{symbol}}. {{awardee}}'s user page is located [here]({{awardeePage}}). Leaderboard is located [here]({{leaderboard}}).",
+    NotifyOnNormalAwardSuccessTemplate = "+1 {{name}} awarded to u/{{awardee}} by u/{{awarder}}. Total: {{total}}{{symbol}}. {{awardee}}'s user page is located [here]({{awardeePage}}). Leaderboard is located [here]({{leaderboard}}).",
     NotifyOnSuperuserTemplate = "Hello {{awardee}},\n\nNow that you have reached {{threshold}} points you can now award points yourself, even if normal users do not have permission to. Please use the command `{{command}}` if you'd like to do this.",
     MessageToRestrictedUsers = "***ATTENTION to OP:*** You must award {{name}}s by replying to the successful comments. Valid command(s) are {{commandsWithAnd}}. Failure to do so may result in a ban.\n\n*^ To hide text, write it like this `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({{markdown_guide}})*.",
     AlternateCommandSuccessMessage = "+1 {{name}} awarded to u/{{awardee}} [{{total}}{{symbol}}]. {{awardee}}'s user page is located [here]({{awardeePage}}). Leaderboard is located [here]({{leaderboard}}).",
@@ -161,18 +147,6 @@ export enum TemplateDefaults {
 }
 
 export enum AutoSuperuserReplyOptions {
-    NoReply = "none",
-    ReplyByPM = "replybypm",
-    ReplyAsComment = "replybycomment",
-}
-
-export enum NotifyOnModApproveReplyOptions {
-    NoReply = "none",
-    ReplyByPM = "replybypm",
-    ReplyAsComment = "replybycomment",
-}
-
-export enum NotifyOnAltUserDisallowedReplyOptions {
     NoReply = "none",
     ReplyByPM = "replybypm",
     ReplyAsComment = "replybycomment",
@@ -242,18 +216,6 @@ export enum NotifyOnUnflairedPostReplyOptions {
 }
 
 export enum NotifyOnSuccessReplyOptions {
-    NoReply = "none",
-    ReplyByPM = "replybypm",
-    ReplyAsComment = "replybycomment",
-}
-
-export enum NotifyOnAlternateCommandFailReplyOptions {
-    NoReply = "none",
-    ReplyByPM = "replybypm",
-    ReplyAsComment = "replybycomment",
-}
-
-export enum NotifyOnAlternateCommandSuccessReplyOptions {
     NoReply = "none",
     ReplyByPM = "replybypm",
     ReplyAsComment = "replybycomment",
@@ -360,21 +322,6 @@ const NotifyOnBotAwardReplyOptionChoices = [
     },
 ];
 
-const NotifyOnAltUserDisallowedReplyOptionChoices = [
-    {
-        label: "No Notification",
-        value: NotifyOnAltUserDisallowedReplyOptions.NoReply,
-    },
-    {
-        label: "Send user a private message",
-        value: NotifyOnAltUserDisallowedReplyOptions.ReplyByPM,
-    },
-    {
-        label: "Reply as comment",
-        value: NotifyOnAltUserDisallowedReplyOptions.ReplyAsComment,
-    },
-];
-
 const NotifyOnModOnlyDisallowedReplyOptionChoices = [
     {
         label: "No Notification",
@@ -462,21 +409,6 @@ const NotifyOnSelfAwardReplyOptionChoices = [
     },
 ];
 
-const NotifyOnAlternateCommandSuccessReplyOptionChoices = [
-    {
-        label: "No Notification",
-        value: NotifyOnAlternateCommandSuccessReplyOptions.NoReply,
-    },
-    {
-        label: "Send user a private message",
-        value: NotifyOnAlternateCommandSuccessReplyOptions.ReplyByPM,
-    },
-    {
-        label: "Reply as comment",
-        value: NotifyOnAlternateCommandSuccessReplyOptions.ReplyAsComment,
-    },
-];
-
 const NotifyOnSuccessReplyOptionChoices = [
     { label: "No Notification", value: NotifyOnSuccessReplyOptions.NoReply },
     {
@@ -490,7 +422,6 @@ const NotifyOnSuccessReplyOptionChoices = [
 ];
 
 export enum AccessControlOptions {
-    AltUsersOnly = "alt-users-only",
     ModOnly = "moderators-only",
     ModsAndSuperusers = "moderators-and-superusers",
     ModsSuperusersAndPostAuthor = "moderators-superusers-and-op",
@@ -499,10 +430,6 @@ export enum AccessControlOptions {
 }
 
 const AccessControlOptionChoices = [
-    {
-        label: "Alternate Users Only",
-        value: AccessControlOptions.AltUsersOnly,
-    },
     {
         label: "Moderators Only",
         value: AccessControlOptions.ModOnly,
@@ -844,24 +771,6 @@ export const appSettings: SettingsFormField[] = [
             },
             {
                 type: "select",
-                name: AppSetting.NotifyOnAltUserDisallowed,
-                label: "Notify users when only alt-users can award points",
-                options: NotifyOnAltUserDisallowedReplyOptionChoices,
-                defaultValue: [NotifyOnAltUserDisallowedReplyOptions.NoReply],
-                onValidate: selectFieldHasOptionChosen,
-            },
-            {
-                type: "paragraph",
-                name: AppSetting.AlternateUsersOnlyDisallowedMessage,
-                label: "Alternate User Disallowed Message",
-                helpText:
-                    "Message shown when a user tries to award a point but only alternate users can award points",
-                defaultValue:
-                    TemplateDefaults.AlternateUsersOnlyDisallowedMessage,
-                onValidate: paragraphFieldContainsText,
-            },
-            {
-                type: "select",
                 name: AppSetting.NotifyOnModOnlyDisallowed,
                 label: "Notify users when only moderators can award points",
                 options: NotifyOnModOnlyDisallowedReplyOptionChoices,
@@ -1069,83 +978,6 @@ export const appSettings: SettingsFormField[] = [
     },
     {
         type: "group",
-        label: "Alternate Command Settings",
-        fields: [
-            {
-                name: AppSetting.AlternatePointCommandUsers,
-                type: "paragraph",
-                label: "Alternate Award Command users",
-                helpText:
-                    "List of users who can use the 'Alternate Award Command'. Each username should be on a new line",
-            },
-            {
-                name: AppSetting.InvalidUsernameMessage,
-                type: "paragraph",
-                label: "Message to send the user if a username contains invalid characters",
-                defaultValue: TemplateDefaults.InvalidUsernameMessage,
-                onValidate: paragraphFieldContainsText,
-            },
-            {
-                name: AppSetting.UsernameLengthMessage,
-                type: "paragraph",
-                label: "Message to send the user if a username is too short or long to be valid",
-                helpText: "Placeholders Supported: {{awarder}}, {{awardee}}",
-                defaultValue: TemplateDefaults.UsernameLengthMessage,
-                onValidate: paragraphFieldContainsText,
-            },
-            {
-                name: AppSetting.NoUsernameMentionMessage,
-                type: "paragraph",
-                label: "Message to send the user if there isn't a username mentioned (ie, contains a u/)",
-                helpText: "Placeholders Supported: {{awarder}}, {{awardee}}",
-                defaultValue: TemplateDefaults.NoUsernameMentionMessage,
-                onValidate: paragraphFieldContainsText,
-            },
-            {
-                name: AppSetting.NotifyOnAlternateCommandSuccess,
-                type: "select",
-                label: "Notify on alternate command success",
-                helpText:
-                    "How to notify users when they use the alternate command and it is successful",
-                options: NotifyOnAlternateCommandSuccessReplyOptionChoices,
-                defaultValue: [
-                    NotifyOnAlternateCommandSuccessReplyOptions.ReplyAsComment,
-                ],
-                onValidate: selectFieldHasOptionChosen,
-            },
-            {
-                name: AppSetting.AlternateCommandSuccessMessage,
-                type: "paragraph",
-                label: "Alternate Command Success Message",
-                helpText:
-                    "Message to send users when they use the Alternate Award Command and it is successful. Placeholders Supported: {{awardeePage}}, {{awarderPage}}, {{name}}, {{awardee}}, {{awarder}}, {{leaderboard}}, {{symbol}}, {{total}}",
-                defaultValue: TemplateDefaults.AlternateCommandSuccessMessage,
-                onValidate: paragraphFieldContainsText,
-            },
-            {
-                name: AppSetting.NotifyOnAlternateCommandFail,
-                type: "select",
-                label: "Notify on point already awarded to user",
-                helpText:
-                    "How to notify the user when they try to use the alternate command on a user who has already received a point for that post",
-                options: NotifyOnPointAlreadyAwardedToUserOptionChoices,
-                defaultValue: [PointAwardedReplyOptions.NoReply],
-                onValidate: selectFieldHasOptionChosen,
-            },
-            {
-                name: AppSetting.PointAlreadyAwardedToUserViaAltCommandMessage,
-                type: "paragraph",
-                label: "Message to send users when they use the Alternate Award Command, but the mentioned user has already received a point on the post",
-                helpText:
-                    "Placeholders Supported: {{awarder}}, {{awardee}}, {{name}}",
-                defaultValue:
-                    TemplateDefaults.PointAlreadyAwardedToUserViaAltCommandMessage,
-                onValidate: paragraphFieldContainsText,
-            },
-        ],
-    },
-    {
-        type: "group",
         label: "Points Setting Options",
         fields: [
             {
@@ -1207,10 +1039,10 @@ export const appSettings: SettingsFormField[] = [
             {
                 type: "paragraph",
                 name: AppSetting.SuccessMessage,
-                label: "Success Message",
+                label: "Normal Award Success Message",
                 helpText:
                     "Message when a point is awarded. Placeholders Supported: {{awardeePage}}, {{awarderPage}}, {{awardee}}, {{awarder}}, {{symbol}}, {{total}}, {{name}}, {{leaderboard}}",
-                defaultValue: TemplateDefaults.NotifyOnSuccessTemplate,
+                defaultValue: TemplateDefaults.NotifyOnNormalAwardSuccessTemplate,
                 onValidate: paragraphFieldContainsText,
             },
             {
@@ -1234,7 +1066,7 @@ export const appSettings: SettingsFormField[] = [
                 type: "select",
                 name: AppSetting.NotifyOnBlockedUser,
                 label: "How to notify users when they are blocked from awarding points",
-                options: NotifyOnAltUserDisallowedReplyOptionChoices,
+                options: NotifyOnBlockedUserReplyOptionChoices,
                 defaultValue: [NotifyOnBlockedUserReplyOptions.NoReply],
                 onValidate: selectFieldHasOptionChosen,
             },

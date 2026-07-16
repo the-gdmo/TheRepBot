@@ -5,6 +5,7 @@ import {
     JSONObject,
     WikiPage,
     TriggerContext,
+    User,
 } from "@devvit/public-api";
 import { AppSetting, LeaderboardMode } from "./settings";
 import { getSubredditName, SafeWikiClient } from "./utility";
@@ -40,7 +41,7 @@ export async function updateUserWiki(
         postTitle: string;
         postUrl: string;
         commentUrl: string;
-    },
+    }
 ) {
     awarder = awarder.toLowerCase();
     recipient = recipient.toLowerCase();
@@ -98,12 +99,12 @@ export async function updateUserWiki(
 
     const awarderGiven = await loadHistory(`userHistory:given:${awarder}`);
     const awarderReceived = await loadHistory(
-        `userHistory:received:${awarder}`,
+        `userHistory:received:${awarder}`
     );
 
     const recipientGiven = await loadHistory(`userHistory:given:${recipient}`);
     const recipientReceived = await loadHistory(
-        `userHistory:received:${recipient}`,
+        `userHistory:received:${recipient}`
     );
 
     //
@@ -123,7 +124,7 @@ ${list
         (e) =>
             `| ${formatDate(e.date)} | [${escapeTitle(e.postTitle)}](${
                 e.postUrl
-            })`,
+            })`
     )
     .join("\n")}
 `.trim();
@@ -140,7 +141,7 @@ ${list
         (e) =>
             `| ${formatDate(e.date)} | [${escapeTitle(e.postTitle)}](${
                 e.postUrl
-            }) | [Link](${e.commentUrl}) | /u/${e.recipient}`,
+            }) | [Link](${e.commentUrl}) | /u/${e.recipient}`
     )
     .join("\n")}
 `.trim();
@@ -161,7 +162,7 @@ ${list
     async function writePage(
         user: string,
         receivedTable: string,
-        givenTable: string,
+        givenTable: string
     ) {
         const content = `
 # ${capPoint} History for u/${user}
@@ -204,7 +205,7 @@ ${givenTable}
 
 export async function buildInitialUserWiki(
     context: TriggerContext,
-    username: string,
+    username: string
 ) {
     logger.info("📄 Building initial user wiki page…", { username });
 
@@ -259,7 +260,7 @@ u/${username} has given 0 ${plural}
 
 export async function InitialUserWikiOptions(
     context: TriggerContext,
-    username: string,
+    username: string
 ) {
     logger.info("📂 InitialUserWikiOptions invoked", { username });
 
@@ -344,7 +345,7 @@ export async function InitialUserWikiOptions(
 
 export async function updateLeaderboard(
     event: ScheduledJobEvent<JSONObject | undefined>,
-    context: JobContext,
+    context: JobContext
 ) {
     const settings = await context.settings.getAll();
 
@@ -363,7 +364,8 @@ export async function updateLeaderboard(
     const wikiPageName =
         (settings[AppSetting.LeaderboardName] as string | undefined) ??
         "leaderboard";
-    const leaderboardSize = settings[AppSetting.LeaderboardSize] as number | undefined ?? 50;
+    const leaderboardSize =
+        (settings[AppSetting.LeaderboardSize] as number | undefined) ?? 50;
 
     const subredditName = await getSubredditName(context);
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
@@ -376,15 +378,15 @@ export async function updateLeaderboard(
         POINTS_STORE_KEY,
         0,
         leaderboardSize - 1,
-        { by: "rank", reverse: true },
+        { by: "rank", reverse: true }
     );
 
     // ──────────────── Build markdown ────────────────
     let wikiContents = `# ${capitalize(
-        pointName,
+        pointName
     )}board for ${subredditName}\n\n`;
     if (helpPage) {
-        wikiContents += `[How to award ${pointName}s on /r/${subredditName}](https://old.reddit.com/r/${subredditName}/wiki/${helpPage})\n\n`;
+        wikiContents += `[How to award ${pointName}s on /r/${subredditName}](https://reddit.com/r/${subredditName}/wiki/${helpPage})\n\n`;
     }
 
     wikiContents += `User | ${capitalize(pointName)}s Earned\n-|-\n`;
@@ -394,10 +396,10 @@ export async function updateLeaderboard(
             .map(
                 (entry) =>
                     `[${markdownEscape(
-                        entry.member,
-                    )}](https://www.reddit.com/r/${subredditName}/wiki/user/${
                         entry.member
-                    })|${entry.score}`,
+                    )}](https://old.reddit.com/r/${subredditName}/wiki/user/${
+                        entry.member
+                    })|${entry.score}`
             )
             .join("\n");
     } else {
@@ -406,10 +408,10 @@ export async function updateLeaderboard(
 
     wikiContents += `\n\nThe leaderboard shows the top ${leaderboardSize} ${pluralize(
         "user",
-        leaderboardSize,
+        leaderboardSize
     )} who ${pluralize(
         "has",
-        leaderboardSize,
+        leaderboardSize
     )} been awarded at least one ${pointName}`;
 
     const installDateTimestamp = await context.redis.get("InstallDate");
@@ -424,7 +426,7 @@ export async function updateLeaderboard(
     try {
         wikiPage = await context.reddit.getWikiPage(
             subredditName,
-            wikiPageName,
+            wikiPageName
         );
     } catch {
         //
@@ -478,7 +480,7 @@ function modInfoTemplate(subredditName: string): string {
 
 export async function modLeaderboardInfoJob(
     _: ScheduledJobEvent<JSONObject | undefined>,
-    context: JobContext,
+    context: JobContext
 ) {
     const subreddit = await context.reddit.getCurrentSubreddit();
     const subredditName = subreddit.name;

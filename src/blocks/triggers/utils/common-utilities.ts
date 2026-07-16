@@ -1,8 +1,7 @@
-import { SettingsValues, TriggerContext, User } from "@devvit/public-api";
-import { AppSetting, ExistingFlairOverwriteHandling } from "../../settings";
+import { TriggerContext } from "@devvit/public-api";
+import { AppSetting } from "../../settings";
 import { logger } from "../../logger";
 import { CommentSubmit, CommentUpdate } from "@devvit/protos";
-import { flairToggleKeyExists } from "./redisKeys";
 
 export function formatMessage(
     event: CommentSubmit | CommentUpdate,

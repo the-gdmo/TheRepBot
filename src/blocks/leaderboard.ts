@@ -5,7 +5,6 @@ import {
     JSONObject,
     WikiPage,
     TriggerContext,
-    User,
 } from "@devvit/public-api";
 import { AppSetting, LeaderboardMode } from "./settings";
 import { getSubredditName, SafeWikiClient } from "./utility";

@@ -1,9 +1,7 @@
 import { CommentSubmit, CommentUpdate } from "@devvit/protos";
 import {
     Comment,
-    SettingsValues,
     TriggerContext,
-    User,
 } from "@devvit/public-api";
 import {
     getUserCanAward,
@@ -17,7 +15,6 @@ import {
     TemplateDefaults,
 } from "../../settings";
 import { formatMessage } from "../utils/common-utilities";
-import { POINTS_STORE_KEY } from "../utils/redisKeys";
 
 // src/triggers/comment/comment-trigger-context.ts
 export class CommentTriggerContext {

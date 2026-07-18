@@ -78,17 +78,22 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         .map((w) => w.trim())
         .filter(Boolean);
 
-    let commandList = "";
+    let commandListWithAnd = "";
+    let commandListWithOr = "";
 
     for (const [index, trigger] of triggers.entries()) {
         if (index === 0) {
-            commandList += `**${trigger}**`;
+            commandListWithAnd += `**${trigger}**`;
+            commandListWithOr += `**${trigger}**`;
         } else if (triggers.length === 2) {
-            commandList += ` and **${trigger}**`;
+            commandListWithAnd += ` and **${trigger}**`;
+            commandListWithOr += ` or **${trigger}**`;
         } else if (index === triggers.length - 1) {
-            commandList += `, or **${trigger}**`;
+            commandListWithAnd += `, and **${trigger}**`;
+            commandListWithOr += `, or **${trigger}**`;
         } else {
-            commandList += `, **${trigger}**`;
+            commandListWithAnd += `, **${trigger}**`;
+            commandListWithOr += `, **${trigger}**`;
         }
     }
 
@@ -108,7 +113,8 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
 
         let msg = subsequentTemplate
             .replace(/{{name}}/g, pointName)
-            .replace(/{{commands}}/g, commandList)
+            .replace(/{{commandsWithOr}}/g, commandListWithOr)
+            .replace(/{{commandsWithAnd}}/g, commandListWithAnd)
             .replace(
                 /{{markdown_guide}}/g,
                 "https://www.reddit.com/wiki/markdown",
@@ -157,7 +163,8 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
 
     let text = template
         .replace(/{{name}}/g, pointName)
-        .replace(/{{commands}}/g, commandList)
+        .replace(/{{commandsWithOr}}/g, commandListWithOr)
+        .replace(/{{commandsWithAnd}}/g, commandListWithAnd)
         .replace(/{{markdown_guide}}/g, "https://www.reddit.com/wiki/markdown")
         .replace(/{{subreddit}}/g, subredditName);
 

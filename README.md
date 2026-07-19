@@ -61,6 +61,8 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 ## Version History
+### 31.1.4
+* Fix {{awardeePage}} to properly link to the awardee wikipage in normal command
 ### 31.1.3
 * Readd {{commandsWithOr}} and {{commandsWithAnd}} placeholders
 * Update placeholders section to display the above placeholders

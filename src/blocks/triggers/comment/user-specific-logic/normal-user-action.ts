@@ -102,7 +102,7 @@ async function awardPointToUserNormalCommand(
         event.subreddit.name
     }/wiki/${settings[AppSetting.LeaderboardName] ?? "leaderboard"}`;
 
-    const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${recipient}`;
+    const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${recipient.username}`;
     const awarderPage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${awarder}`;
 
     const successMessage = formatMessage(

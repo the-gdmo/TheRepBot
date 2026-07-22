@@ -168,53 +168,104 @@ export async function getCurrentScore(
         logger.error("❌ Subreddit name is not available in context.");
         return;
     }
+
     const userFlair = await user.getUserFlairBySubreddit(context.subredditName);
 
     const scoreFromRedis = await context.redis.zScore(
         POINTS_STORE_KEY,
         user.username
     );
+
+    const rank = await context.redis.zRank(POINTS_STORE_KEY, user.username);
+
+    const place = rank !== undefined && rank !== null ? rank + 1 : undefined;
+
+    logger.info("🔢 Values", {
+        place,
+        rank,
+        scoreFromRedis,
+        userHasFlair: userFlair?.flairText !== undefined,
+    });
+
     let scoreFromFlair: number | undefined;
     let flairIsNumber = false;
 
     if (userFlair?.flairText) {
-        const flairTextTemplate = "{{points}}";
-        const numberRegex = "(?:\\b|\\D)(\\d+)(?:\\b|\\D)";
+        const flairTextTemplate =
+            ((await context.settings.get(AppSetting.FlairFormatting)) as
+                | string
+                | undefined) ?? TemplateDefaults.FlairFormatting;
 
-        const regex = new RegExp(
-            flairTextTemplate.replace("{{points}}", numberRegex)
-        );
+        const escapeRegex = (text: string): string =>
+            text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+        // Escape the template first.
+        let pattern = escapeRegex(flairTextTemplate);
+
+        // Replace placeholders with regex.
+        pattern = pattern.replace(escapeRegex("{{total}}"), "(\\d+)");
+
+        pattern = pattern.replace(escapeRegex("{{symbol}}"), ".*?");
+
+        pattern = pattern.replace(escapeRegex("{{place}}"), "\\d+");
+
+        const regex = new RegExp(`^${pattern}$`);
+
         const matches = regex.exec(userFlair.flairText);
 
         const matchedPoints = matches?.[1];
 
-        scoreFromFlair = matchedPoints ? parseInt(matchedPoints) : undefined;
+        scoreFromFlair = matchedPoints
+            ? parseInt(matchedPoints, 10)
+            : undefined;
 
-        if (!scoreFromFlair) {
-            // Fallback and see if the user flair includes the number anywhere in the flair
-            const fallbackRegex = new RegExp(numberRegex);
+        logger.debug("Checking flair values", {
+            place,
+            flairText: userFlair.flairText,
+            flairTemplate: flairTextTemplate,
+            regex: regex.toString(),
+            matches,
+            matchedPoints,
+            scoreFromFlair,
+        });
+
+        // Fallback: extract the first number found anywhere.
+        if (scoreFromFlair === undefined) {
+            const fallbackRegex = /(\d+)/;
             const fallbackMatches = fallbackRegex.exec(userFlair.flairText);
-            const matchedPoints = fallbackMatches?.[1];
-            scoreFromFlair = matchedPoints
-                ? parseInt(matchedPoints)
+
+            scoreFromFlair = fallbackMatches?.[1]
+                ? parseInt(fallbackMatches[1], 10)
                 : undefined;
+
+            logger.debug("Fallback flair parsing", {
+                fallbackMatches,
+                scoreFromFlair,
+            });
         }
 
-        flairIsNumber = !isNaN(parseInt(userFlair.flairText));
+        // We successfully parsed a score.
+        flairIsNumber = scoreFromFlair !== undefined;
     }
 
-    const redisScore = await context.redis.zAdd(POINTS_STORE_KEY, {
-        score: scoreFromFlair ?? scoreFromRedis ?? 0,
+    const finalScore = scoreFromFlair ?? scoreFromRedis ?? 0;
+
+    await context.redis.zAdd(POINTS_STORE_KEY, {
         member: user.username,
+        score: finalScore,
     });
 
     logger.info("🔢 Values", {
-        score: scoreFromFlair ?? redisScore ?? 0,
+        place,
+        score: finalScore,
+        scoreFromRedis,
+        scoreFromFlair,
         userHasFlair: userFlair?.flairText !== undefined,
         flairIsNumber,
     });
+
     return {
-        score: scoreFromFlair ?? redisScore ?? 0,
+        score: finalScore,
         userHasFlair: userFlair?.flairText !== undefined,
         flairIsNumber,
     };

@@ -41,6 +41,7 @@ I recommend testing settings out on a test subreddit before deploying to a real 
 * `{{subreddit}}`: Get the name of the subreddit. Will not contain 'r/'.
 * `{{awardeePage}}`: Link to a recipient's individual page. Logs all points received and given that are not alternate commands.
 * `{{awarderPage}}`: Link to an awarder's individual page. Logs all points received and given that are not alternate commands.
+* `{{place}}`: Display the placement of the user in their flair. Usable in 'Flair Formatting'.
 
 ## Data Stored
 
@@ -61,6 +62,8 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 ## Version History
+### 31.2.0
+* Make it so that a user's flair can display where they rank on the leaderboard even if they don't appear on the leaderboard wikipage
 ### 31.1.4
 * Fix {{awardeePage}} to properly link to the awardee wikipage in normal command
 ### 31.1.3

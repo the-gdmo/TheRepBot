@@ -38,6 +38,7 @@ import {
 } from "../utils/common-utilities";
 import { setCleanupForUsers } from "../../cleanupTasks";
 import { getCurrentScore } from "../utils/user-utilities";
+import { POINTS_STORE_KEY } from "../utils/redisKeys";
 
 export async function setUserScore(
     context: TriggerContext,
@@ -76,9 +77,7 @@ export async function setUserScore(
     ) {
         shouldSetUserFlair = false;
     } else {
-        shouldSetUserFlair =
-            !newScore.userHasFlair ||
-            newScore.flairIsNumber;
+        shouldSetUserFlair = !newScore.userHasFlair || newScore.flairIsNumber;
     }
 
     if (shouldSetUserFlair) {
@@ -129,26 +128,58 @@ export async function setUserScore(
             return;
         }
 
-        // symbol check
-        if ((appSettings[AppSetting.PointSymbol] as string) !== "") {
-            await context.reddit.setUserFlair({
-                subredditName: context.subredditName,
-                username,
-                cssClass,
-                flairTemplateId: flairTemplate,
-                text:
-                    newScore.score.toString() +
-                    (appSettings[AppSetting.PointSymbol] as string),
-            });
-        } else {
-            await context.reddit.setUserFlair({
-                subredditName: context.subredditName,
-                username,
-                cssClass,
-                flairTemplateId: flairTemplate,
-                text: newScore.score.toString(),
-            });
-        }
+        const flairFormatting =
+            (appSettings[AppSetting.FlairFormatting] as string) ??
+            TemplateDefaults.FlairFormatting;
+
+        const redisKey = POINTS_STORE_KEY;
+        const leaderboard = await context.redis.zRange(redisKey, 0, -1, {
+            by: "rank",
+            reverse: true,
+        });
+
+        const index = leaderboard.findIndex(
+            (member) => member.member === username
+        );
+
+        const userRank = index >= 0 ? index + 1 : undefined;
+
+        logger.debug("User leaderboard rank", {
+            username,
+            rank: userRank,
+            totalUsers: leaderboard.length,
+        });
+
+        const userScore = userRank ?? 0;
+
+        logger.debug("Checking values", {
+            userRank,
+            newScore: userScore,
+        });
+
+        const flairText = flairFormatting
+            .replaceAll("{{place}}", userScore > 0 ? `${userScore}` : "NaN")
+            .replaceAll("{{total}}", newScore.score.toString())
+            .replaceAll(
+                "{{symbol}}",
+                appSettings[AppSetting.PointSymbol] as string
+            );
+
+        logger.info("Setting user flair", {
+            username,
+            newScore: userScore,
+            cssClass,
+            flairTemplate,
+            flairText,
+            subreddit: context.subredditName,
+        });
+        await context.reddit.setUserFlair({
+            subredditName: context.subredditName,
+            username,
+            cssClass,
+            flairTemplateId: flairTemplate,
+            text: flairText,
+        });
     } else {
         console.log(
             `${username}: Flair not set (option disabled or flair in wrong state)`

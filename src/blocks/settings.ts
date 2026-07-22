@@ -112,9 +112,13 @@ export enum AppSetting {
     TrustedUserAwardSuccessMessage = "trustedUserAwardSuccessMessage",
     ModsAndPostAuthorDisallowedMessage = "modsAndPostAuthorDisallowedMessage",
     NotifyOnModsAndPostAuthorDisallowed = "notifyOnModsAndPostAuthorDisallowed",
+    FlairFormatting = "flairFormatting",
 }
 
+// Rank 1 | 10
+// #1 | 10
 export enum TemplateDefaults {
+    FlairFormatting = "{{total}}{{symbol}} | #{{place}}",
     AlternateUsersOnlyDisallowedMessage = "Only alternate users are allowed to award points (ie users who can successfully award points using `<pointsCommand) u/<userMention>`.",
     SubsequentPostRestrictionMessage = "***ATTENTION to OP:*** You must award {{name}}s by replying to the successful comments. Before you can create new posts, you must award **{{requirement}}** {{name}}s to users who respond on [{{title}}]({{permalink}}).",
     UnflairedPostMessage = "Points cannot be awarded on posts without flair. Please award only on flaired posts.",
@@ -684,6 +688,15 @@ export const appSettings: SettingsFormField[] = [
                     AccessControlOptions.ModsSuperusersAndPostAuthor,
                 ],
                 onValidate: selectFieldHasOptionChosen,
+            },
+            {
+                type: "string",
+                name: AppSetting.FlairFormatting,
+                label: "Flair Formatting",
+                helpText:
+                    "How the flair should be formatted. Placeholders Supported: {{place}}, {{total}}, {{symbol}}",
+                defaultValue: TemplateDefaults.FlairFormatting,
+                onValidate: paragraphFieldContainsText,
             },
             {
                 type: "paragraph",
@@ -1301,7 +1314,7 @@ export function numberFieldHasValidOption(
 function paragraphFieldContainsText(
     event: SettingsFormFieldValidatorEvent<string>,
     _context: TriggerContext,
-): string | void | Promise<string | void> {
+): string | void {
     if (typeof event.value !== "string") {
         return "Value must be a string.";
     }

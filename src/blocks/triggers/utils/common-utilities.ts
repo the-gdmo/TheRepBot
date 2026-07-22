@@ -100,80 +100,10 @@ export async function getTriggers(context: TriggerContext) {
 
 export interface ScoreResult {
     score: number;
+    place?: number;
     userHasFlair: boolean;
     flairIsNumber: boolean;
 }
-
-// export async function updateAwardeeFlair(
-//     context: TriggerContext,
-//     subredditName: string,
-//     commentAuthor: string,
-//     newScore: number,
-//     settings: SettingsValues
-// ) {
-
-//     let user: User | undefined;
-//     try {
-//         user = await context.reddit.getUserByUsername(commentAuthor);
-//     } catch {}
-
-//     if (!user) {
-//         logger.info("User may be shadowbanned.");
-//         return;
-//     }
-
-//     const shouldSetUserFlair = await flairToggleKeyExists(context, user);
-//     const pointSymbol = (settings[AppSetting.PointSymbol] as string) ?? "";
-//     const flairSetting = ((settings[AppSetting.ExistingFlairHandling] as
-//         | string[]
-//         | undefined) ?? [
-//         ExistingFlairOverwriteHandling.OverwriteNumeric,
-//     ])[0] as ExistingFlairOverwriteHandling;
-
-//     // Make sure newScore is a safe primitive
-//     const scoreValue =
-//         newScore !== undefined && newScore !== null ? Number(newScore) : 0;
-
-//     let flairText = "";
-//     switch (flairSetting) {
-//         case ExistingFlairOverwriteHandling.OverwriteNumericSymbol:
-//             flairText = `${scoreValue}${pointSymbol}`;
-//             break;
-//         case ExistingFlairOverwriteHandling.OverwriteNumeric:
-//         default:
-//             flairText = `${scoreValue}`;
-            
-//             break;
-//     }
-
-//     // CSS class + template logic
-//     let cssClass = settings[AppSetting.CSSClass] as string | undefined;
-//     let flairTemplate = settings[AppSetting.FlairTemplate] as
-//         | string
-//         | undefined;
-
-//     // If using a flair template, CSS class cannot be used
-//     if (flairTemplate) cssClass = undefined;
-
-//     try {
-//         await context.reddit.setUserFlair({
-//             subredditName,
-//             username: commentAuthor,
-//             cssClass,
-//             flairTemplateId: flairTemplate,
-//             text: flairText,
-//         });
-
-//         logger.info(
-//             `🧑‍🎨 Awardee flair updated: u/${commentAuthor} → (“${flairText}”)`
-//         );
-//     } catch (err) {
-//         logger.error("❌ Failed to update awardee flair", {
-//             user: commentAuthor,
-//             err,
-//         });
-//     }
-// }
 
 export function commandUsedInIgnoredContext(
     commentBody: string,

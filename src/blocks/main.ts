@@ -382,7 +382,7 @@ export async function manualSetFlairManagementFormHandler(
     }
     const enabled = /^enabled$/i;
     const disabled = /^disabled$/i;
-    if (disabled.test(value) && !enabled.test(value)) {
+    if (!disabled.test(value) && !enabled.test(value)) {
         context.ui.showToast(`You must enter "enabled" or "disabled"`);
         return;
     }

@@ -62,6 +62,8 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 ## Version History
+### 31.2.1
+* Make it so user flair management can actually be disabled
 ### 31.2.0
 * Make it so that a user's flair can display where they rank on the leaderboard even if they don't appear on the leaderboard wikipage
 ### 31.1.4

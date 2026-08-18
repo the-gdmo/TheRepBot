@@ -158,7 +158,7 @@ export async function setUserScore(
         });
 
         const flairText = flairFormatting
-            .replaceAll("{{place}}", userScore > 0 ? `${userScore}` : "NaN")
+            .replaceAll("{{place}}", userScore > 0 ? `${userScore}` : "0")
             .replaceAll("{{total}}", newScore.score.toString())
             .replaceAll(
                 "{{symbol}}",

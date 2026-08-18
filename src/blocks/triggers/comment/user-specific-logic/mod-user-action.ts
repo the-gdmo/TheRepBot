@@ -44,7 +44,7 @@ export async function commentContainsModCommand(
     const modCommand = await modCommandValue(context);
 
     const triggerUsed = allTriggers.find((t) =>
-        new RegExp(`${t}`, "g").test(commentBody)
+        new RegExp(`${t}`, "i").test(commentBody)
     );
     if (!triggerUsed) return false;
     const usedCommand = triggerUsed;
@@ -306,7 +306,7 @@ export async function awardPointToUserModCommand(
     const modSuccessMessage = formatMessage(event, modSuccessTemplate, {
         awardee,
         awarder,
-        total: newScore.toString(),
+        total: newScore.score.toString(),
         name: pointName,
         symbol: (settings[AppSetting.PointSymbol] as string) ?? "",
         leaderboard,
@@ -320,7 +320,7 @@ export async function awardPointToUserModCommand(
         {
             awardee,
             awarder,
-            total: newScore.toString(),
+            total: newScore.score.toString(),
             name: pointName,
             symbol: (settings[AppSetting.PointSymbol] as string) ?? "",
             leaderboard,
@@ -473,7 +473,7 @@ export async function executeModCommand(
     const triggers = await getTriggers(context);
 
     for (const trigger of triggers) {
-        if (!new RegExp(trigger, "g").test(body)) {
+        if (!new RegExp(trigger, "i").test(body)) {
             continue;
         }
 

@@ -44,7 +44,7 @@ export async function commentContainsUserCommand(
     const body = event.comment.body.toLowerCase();
 
     return userCommands.some((command) =>
-        new RegExp(`${command}`, "g").test(body)
+        new RegExp(`${command}`, "i").test(body)
     );
 }
 
@@ -388,7 +388,7 @@ export async function executeUserCommand(
     const allTriggers = await getTriggers(context);
 
     const triggerUsed = allTriggers.find((t) =>
-        new RegExp(`^${t}`, "g").test(commentBody)
+        new RegExp(`^${t}`, "i").test(commentBody)
     );
 
     if (!triggerUsed) return false;

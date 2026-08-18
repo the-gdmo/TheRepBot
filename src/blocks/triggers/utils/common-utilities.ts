@@ -11,7 +11,7 @@ export function formatMessage(
     if (!event.subreddit) return "";
     let result = template;
     for (const [key, value] of Object.entries(placeholders)) {
-        const regex = new RegExp(`{{${key}}}`, "g");
+        const regex = new RegExp(`{{${key}}}`, "i");
         result = result.replace(regex, value);
     }
 
@@ -115,13 +115,13 @@ export function commandUsedInIgnoredContext(
 
     const patterns = [
         // Quote block: > anything with command
-        new RegExp(`${quoteBlock}`, "g"),
+        new RegExp(`${quoteBlock}`, "i"),
 
         // Alt text: [anything including command using `grave accent`]
-        new RegExp(`${altText}`, "g"),
+        new RegExp(`${altText}`, "i"),
 
         // Spoiler block: >! anything with command !<
-        new RegExp(`${spoilerText}`, "g"),
+        new RegExp(`${spoilerText}`, "i"),
     ];
 
     return patterns.some((p) => p.test(commentBody));
@@ -136,9 +136,9 @@ export function getIgnoredContextType(
     const spoilerText = `>!.*${command}.*!<`;
 
     const patterns: { type: "quote" | "alt" | "spoiler"; regex: RegExp }[] = [
-        { type: "quote", regex: new RegExp(`${quoteBlock}`, "g") },
-        { type: "alt", regex: new RegExp(`${altText}`, "g") },
-        { type: "spoiler", regex: new RegExp(`${spoilerText}`, "g") },
+        { type: "quote", regex: new RegExp(`${quoteBlock}`, "i") },
+        { type: "alt", regex: new RegExp(`${altText}`, "i") },
+        { type: "spoiler", regex: new RegExp(`${spoilerText}`, "i") },
     ];
 
     for (const { type, regex } of patterns) {
@@ -154,7 +154,7 @@ export async function checkIgnoredContext(
 ) {
     // Check ignored contexts for each trigger in comment
     for (const trigger of await getTriggers(context)) {
-        if (!new RegExp(`${trigger}`, "g").test(comment))
+        if (!new RegExp(`${trigger}`, "i").test(comment))
             continue;
 
         if (!event.author) return;

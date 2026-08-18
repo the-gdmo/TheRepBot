@@ -112,29 +112,29 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
             0;
 
         let msg = subsequentTemplate
-            .replace(/{{name}}/g, pointName)
-            .replace(/{{commandsWithOr}}/g, commandListWithOr)
-            .replace(/{{commandsWithAnd}}/g, commandListWithAnd)
+            .replace(/{{name}}/i, pointName)
+            .replace(/{{commandsWithOr}}/i, commandListWithOr)
+            .replace(/{{commandsWithAnd}}/i, commandListWithAnd)
             .replace(
-                /{{markdown_guide}}/g,
+                /{{markdown_guide}}/i,
                 "https://www.reddit.com/wiki/markdown",
             )
             .replace(
-                /{{markdown_guide}}/g,
+                /{{markdown_guide}}/i,
                 "https://www.reddit.com/wiki/markdown",
             )
-            .replace(/{{requirement}}/g, requirement.toString())
-            .replace(/{{subreddit}}/g, subredditName);
+            .replace(/{{requirement}}/i, requirement.toString())
+            .replace(/{{subreddit}}/i, subredditName);
 
-        if (title) msg = msg.replace(/{{title}}/g, title);
-        if (lastValidPost) msg = msg.replace(/{{permalink}}/g, lastValidPost);
+        if (title) msg = msg.replace(/{{title}}/i, title);
+        if (lastValidPost) msg = msg.replace(/{{permalink}}/i, lastValidPost);
         if (helpPage) {
             msg = msg.replace(
-                /{{helpPage}}/g,
+                /{{helpPage}}/i,
                 `https://www.reddit.com/r/${subredditName}/wiki/${helpPage}`,
             );
         }
-        if (discordLink) msg = msg.replace(/{{discord}}/g, discordLink);
+        if (discordLink) msg = msg.replace(/{{discord}}/i, discordLink);
 
         const formattedMsg = formatMessage(event, msg, {});
         // Post restriction comment
@@ -154,28 +154,33 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         return;
     }
 
-    //user is not restricted send AppSetting.MessageToRestrictedUsers and allow initial post
+    //user is not restricted send AppSetting.InitialMessageToRestrictedUsers and allow initial post
     //also set rediskeys to supplement this
 
+    const requirement =
+        (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) ??
+        0;
     const template =
-        (settings[AppSetting.MessageToRestrictedUsers] as string) ??
-        TemplateDefaults.MessageToRestrictedUsers;
+        (settings[AppSetting.InitialMessageToRestrictedUsers] as string) ??
+        TemplateDefaults.InitialMessageToRestrictedUsers;
 
     let text = template
-        .replace(/{{name}}/g, pointName)
-        .replace(/{{commandsWithOr}}/g, commandListWithOr)
-        .replace(/{{commandsWithAnd}}/g, commandListWithAnd)
-        .replace(/{{markdown_guide}}/g, "https://www.reddit.com/wiki/markdown")
-        .replace(/{{subreddit}}/g, subredditName);
+        .replace(/{{name}}/i, pointName)
+        .replace(/{{commandsWithOr}}/i, commandListWithOr)
+        .replace(/{{commandsWithAnd}}/i, commandListWithAnd)
+        .replace(/{{markdown_guide}}/i, "https://www.reddit.com/wiki/markdown")
+        .replace(/{{subreddit}}/i, subredditName)
+        .replace(/{{requirement}}/i, requirement.toString())
+        ;
 
     if (helpPage) {
         text = text.replace(
-            /{{helpPage}}/g,
+            /{{helpPage}}/i,
             `https://www.reddit.com/r/${subredditName}/wiki/${helpPage}`,
         );
     }
     if (discordLink) {
-        text = text.replace(/{{discord}}/g, discordLink);
+        text = text.replace(/{{discord}}/i, discordLink);
     }
 
     const formattedText = formatMessage(event, text, {});

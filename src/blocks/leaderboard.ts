@@ -17,7 +17,7 @@ function capitalize(word: string): string {
 }
 
 function markdownEscape(input: string): string {
-    return input.replace(/([\\\`\*\_\{\}\[\]\(\)\#\+\.\!\-])/g, "\\$1");
+    return input.replace(/([\\\`\*\_\{\}\[\]\(\)\#\+\.\!\-])/i, "\\$1");
 }
 
 function formatDate(dateString: number): string {
@@ -27,9 +27,9 @@ function formatDate(dateString: number): string {
 
 function escapeTitle(title: string): string {
     return title
-        .replace(/\|/g, "\\|")
-        .replace(/\[/g, "\\[")
-        .replace(/\]/g, "\\]");
+        .replace(/\|/i, "\\|")
+        .replace(/\[/i, "\\[")
+        .replace(/\]/i, "\\]");
 }
 
 export async function updateUserWiki(

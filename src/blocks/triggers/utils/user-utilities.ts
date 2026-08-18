@@ -197,7 +197,7 @@ export async function getCurrentScore(
                 | undefined) ?? TemplateDefaults.FlairFormatting;
 
         const escapeRegex = (text: string): string =>
-            text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            text.replace(/[.*+?^${}()|[\]\\]/i, "\\$&");
 
         // Escape the template first.
         let pattern = escapeRegex(flairTextTemplate);

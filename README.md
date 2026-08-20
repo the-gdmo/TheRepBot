@@ -62,6 +62,8 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 ## Version History
+### 31.4.0
+* Fixed an issue where the bot wasn't sending responses to awarded points
 ### 31.3.0
 *  Make all placeholders be replaced if there are multiple copies (previously would only replace the first occurrance)
 ### 31.2.3

@@ -11,18 +11,12 @@ export function formatMessage(
     if (!event.subreddit) return "";
     let result = template;
     for (const [key, value] of Object.entries(placeholders)) {
-        const regex = new RegExp(`{{${key}}}`, "i");
+        const regex = new RegExp(`{{${key}}}`, "gi");
         result = result.replaceAll(regex, value);
     }
 
     const footer = `\n\n---\n\n^(I am a bot — [contact the mods of r/${event.subreddit.name}](https://reddit.com/message/compose?to=r/${event.subreddit.name}) with any questions or [r/TheRepBot](https://www.reddit.com/message/compose?to=r/TheRepBot) to talk directly with my developer)`;
-    if (
-        !result
-            .trim()
-            .endsWith(
-                `\n\n---\n\n^(I am a bot — [contact the mods of r/${event.subreddit.name}](https://reddit.com/message/compose?to=r/${event.subreddit.name}) with any questions or [r/TheRepBot](https://www.reddit.com/message/compose?to=r/TheRepBot) to talk directly with my developer)`
-            )
-    ) {
+    if (!result.trim().endsWith(footer)) {
         result = result.trim() + footer;
     }
 
@@ -72,7 +66,8 @@ export async function userCommandValues(context: TriggerContext) {
 export function escapeForRegex(string: string) {
     // String being replaced represents all symbols that
     // appear on the standard computer keyboard
-    const regex = /[\`\~\!\@\#\$\%\^\&\*\(\)\_\+\-\=\{\}\[\]\:\"\;\'\<\>\?\,\.\/\|\\a-z0-9\s]+/gi;
+    const regex =
+        /[\`\~\!\@\#\$\%\^\&\*\(\)\_\+\-\=\{\}\[\]\:\"\;\'\<\>\?\,\.\/\|\\a-z0-9\s]+/gi;
     return string.replace(regex, (match) => `${match}`);
 }
 
@@ -154,8 +149,7 @@ export async function checkIgnoredContext(
 ) {
     // Check ignored contexts for each trigger in comment
     for (const trigger of await getTriggers(context)) {
-        if (!new RegExp(`${trigger}`, "i").test(comment))
-            continue;
+        if (!new RegExp(`${trigger}`, "i").test(comment)) continue;
 
         if (!event.author) return;
         if (!event.comment) return;

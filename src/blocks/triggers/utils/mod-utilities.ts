@@ -20,7 +20,6 @@ import { AppSetting } from "../../settings";
 import { getCurrentScore } from "./user-utilities";
 import { setUserScore } from "../comment/on-comment-trigger";
 import { ScoreResult } from "./common-utilities";
-import { CommentSubmit, CommentUpdate } from "@devvit/protos";
 
 export async function handleUserRestrictionCheck(
     event: MenuItemOnPressEvent,

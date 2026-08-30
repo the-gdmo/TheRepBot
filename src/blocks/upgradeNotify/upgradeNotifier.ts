@@ -15,7 +15,7 @@ const UPDATE_WIKI_PAGE = "upgrade-notifier";
 
 //todo: Figure out how to run this to test if it works correctly
 export async function getNewVersionInfo(
-    context: JobContext,
+    context: JobContext
 ): Promise<AppUpdate | undefined> {
     logger.info("Update Checker: Checking for new version", {
         appSlug: context.appSlug,
@@ -28,7 +28,7 @@ export async function getNewVersionInfo(
     try {
         wikiPage = await context.reddit.getWikiPage(
             UPDATE_SUBREDDIT,
-            UPDATE_WIKI_PAGE,
+            UPDATE_WIKI_PAGE
         );
         if (!wikiPage) {
             const wikiPageOptions = {
@@ -67,7 +67,7 @@ export async function getNewVersionInfo(
     });
 
     const updatesForThisApp = updates.filter(
-        (update) => update.appname === context.appSlug,
+        (update) => update.appname === context.appSlug
     );
 
     logger.info("Update Checker: Filtered updates for app", {
@@ -135,119 +135,122 @@ export async function getNewVersionInfo(
 export async function checkForUpdates(_: unknown, context: JobContext) {
     try {
         logger.info("Update Checker: Scheduled check started", {
-        appSlug: context.appSlug,
-        appVersion: context.appVersion,
-        subredditId: context.subredditId,
-        subredditName: context.subredditName,
-    });
-
-    const notificationsEnabled = await context.settings.get<boolean>(
-        AppSetting.UpgradeNotifier,
-    );
-
-    logger.info("Update Checker: Upgrade notifier setting", {
-        enabled: notificationsEnabled,
-    });
-
-    if (!notificationsEnabled) {
-        logger.info("Update Checker: Notifications are disabled");
-        return;
-    }
-
-    const subredditName =
-        context.subredditName ??
-        (await context.reddit.getCurrentSubredditName());
-
-    logger.info("Update Checker: Resolved subreddit", {
-        subredditName,
-    });
-
-    const update = await getNewVersionInfo(context);
-
-    logger.info("Update Checker: getNewVersionInfo return value", {
-        update,
-        version: update?.version,
-    });
-
-    if (!update) {
-        logger.info("Update Checker: Update doesn't exist");
-        return;
-    }
-
-    if (!update.version) {
-        logger.error("Update Checker: Update has no version", {
-            update,
+            appSlug: context.appSlug,
+            appVersion: context.appVersion,
+            subredditId: context.subredditId,
+            subredditName: context.subredditName,
         });
-        return;
-    }
-    if (!update.whatsNewBullets) {
-        logger.error("Update Checker: Update has no whats new bullets option", {
-            update,
+
+        const notificationsEnabled = await context.settings.get<boolean>(
+            AppSetting.UpgradeNotifier
+        );
+
+        logger.info("Update Checker: Upgrade notifier setting", {
+            enabled: notificationsEnabled,
         });
-        return;
-    }
 
-    const redisKey = "update-notification-sent";
+        if (!notificationsEnabled) {
+            logger.info("Update Checker: Notifications are disabled");
+            return;
+        }
 
-    const notificationSent = await context.redis.get(redisKey);
+        const subredditName =
+            context.subredditName ??
+            (await context.reddit.getCurrentSubredditName());
 
-    logger.info("Update Checker: Redis notification status", {
-        redisKey,
-        notificationSent,
-        updateVersion: update.version,
-    });
+        logger.info("Update Checker: Resolved subreddit", {
+            subredditName,
+        });
 
-    if (notificationSent === update.version) {
-        logger.info("Update Checker: Notification already sent", {
+        const update = await getNewVersionInfo(context);
+
+        logger.info("Update Checker: getNewVersionInfo return value", {
+            update,
+            version: update?.version,
+        });
+
+        if (!update) {
+            logger.info("Update Checker: Update doesn't exist");
+            return;
+        }
+
+        if (!update.version) {
+            logger.error("Update Checker: Update has no version", {
+                update,
+            });
+            return;
+        }
+        if (!update.whatsNewBullets) {
+            logger.error(
+                "Update Checker: Update has no whats new bullets option",
+                {
+                    update,
+                }
+            );
+            return;
+        }
+
+        const redisKey = "update-notification-sent";
+
+        const notificationSent = await context.redis.get(redisKey);
+
+        logger.info("Update Checker: Redis notification status", {
+            redisKey,
+            notificationSent,
+            updateVersion: update.version,
+        });
+
+        if (notificationSent === update.version) {
+            logger.info("Update Checker: Notification already sent", {
+                version: update.version,
+            });
+            return;
+        }
+
+        const message: json2md.DataObject[] = [
+            { p: `A new version of RepBot is available to install.` },
+        ];
+
+        if (update.whatsNewBullets.length > 0) {
+            message.push({ p: "Here's what's new:" });
+            message.push({ ul: update.whatsNewBullets });
+        }
+
+        message.push({
+            p: `To install this update, or to disable these notifications, visit the [**RepBot Configuration Page**](https://developers.reddit.com/r/${subredditName}/apps/${context.appSlug}) for /r/${subredditName}.`,
+        });
+
+        logger.info("Update Checker: Sending mod notification", {
+            subredditId: context.subredditId,
+            version: update.version,
+            subject: `New RepBot Update Available: v${update.version}`,
+            body: json2md(message),
+        });
+
+        await context.reddit.modMail.createModNotification({
+            subredditId: context.subredditId as `t5_${string}`,
+            subject: `New RepBot Update Available: v${update.version}`,
+            bodyMarkdown: json2md(message),
+        });
+
+        logger.info("Update Checker: Notification sent", {
             version: update.version,
         });
-        return;
+
+        await context.redis.set(redisKey, update.version);
+
+        logger.info("Update Checker: Redis updated", {
+            redisKey,
+            version: update.version,
+        });
+    } catch (error) {
+        await context.reddit.modMail.createModNotification({
+            subredditId: context.subredditId as `t5_${string}`,
+            subject: `RepBot Update Error`,
+            bodyMarkdown: `An error occurred while checking for RepBot updates: ${error}`,
+        });
+        logger.error("Update Checker: Error occurred during scheduled check", {
+            error,
+        });
     }
-
-    const message: json2md.DataObject[] = [
-        { p: `A new version of RepBot is available to install.` },
-    ];
-
-    if (update.whatsNewBullets.length > 0) {
-        message.push({ p: "Here's what's new:" });
-        message.push({ ul: update.whatsNewBullets });
-    }
-
-    message.push({
-        p: `To install this update, or to disable these notifications, visit the [**RepBot Configuration Page**](https://developers.reddit.com/r/${subredditName}/apps/${context.appSlug}) for /r/${subredditName}.`,
-    });
-
-    logger.info("Update Checker: Sending mod notification", {
-        subredditId: context.subredditId,
-        version: update.version,
-        subject: `New RepBot Update Available: v${update.version}`,
-        body: json2md(message),
-    });
-
-    await context.reddit.modMail.createModNotification({
-        subredditId: context.subredditId,
-        subject: `New RepBot Update Available: v${update.version}`,
-        bodyMarkdown: json2md(message),
-    });
-
-    logger.info("Update Checker: Notification sent", {
-        version: update.version,
-    });
-
-    await context.redis.set(redisKey, update.version);
-
-    logger.info("Update Checker: Redis updated", {
-        redisKey,
-        version: update.version,
-    });
-} catch (error) {
-    await context.reddit.modMail.createModNotification({
-        subredditId: context.subredditId,
-        subject: `RepBot Update Error`,
-        bodyMarkdown: `An error occurred while checking for RepBot updates: ${error}`,
-    });
-    logger.error("Update Checker: Error occurred during scheduled check", {
-        error,
-    });
-}
 }

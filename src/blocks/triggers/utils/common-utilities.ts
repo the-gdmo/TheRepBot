@@ -11,8 +11,10 @@ export function formatMessage(
     if (!event.subreddit) return "";
     let result = template;
     for (const [key, value] of Object.entries(placeholders)) {
-        const regex = new RegExp(`{{${key}}}`, "gi");
-        result = result.replaceAll(regex, value);
+        const singleRegex = new RegExp(`{${key}}`, "gi");
+        const doubleRegex = new RegExp(`{{${key}}}`, "gi");
+        result = result.replaceAll(singleRegex, value);
+        result = result.replaceAll(doubleRegex, value);
     }
 
     const footer = `\n\n---\n\n^(I am a bot — [contact the mods of r/${event.subreddit.name}](https://reddit.com/message/compose?to=r/${event.subreddit.name}) with any questions or [r/TheRepBot](https://www.reddit.com/message/compose?to=r/TheRepBot) to talk directly with my developer)`;

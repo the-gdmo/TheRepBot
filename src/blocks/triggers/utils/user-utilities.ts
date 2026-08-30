@@ -7,7 +7,6 @@ import {
 import { POINTS_STORE_KEY } from "./redisKeys";
 import {
     formatMessage,
-    modCommandValue,
     ScoreResult,
 } from "./common-utilities";
 import { getParentComment } from "../comment/comment-trigger-context";
@@ -129,7 +128,7 @@ export async function handleAutoSuperuserPromotion(
             awarder,
             name: pointName,
             threshold: threshold.toString(),
-            command: await modCommandValue(context),
+            command: (settings[AppSetting.ModAwardCommand] as string) ?? "",
         }
     );
 
@@ -197,17 +196,17 @@ export async function getCurrentScore(
                 | undefined) ?? TemplateDefaults.FlairFormatting;
 
         const escapeRegex = (text: string): string =>
-            text.replace(/[.*+?^${}()|[\]\\]/i, "\\$&");
+            text.replaceAll(/[.*+?^${}()|[\]\\]/gi, "\\$&");
 
         // Escape the template first.
         let pattern = escapeRegex(flairTextTemplate);
 
         // Replace placeholders with regex.
-        pattern = pattern.replace(escapeRegex("{{total}}"), "(\\d+)");
+        pattern = pattern.replaceAll(escapeRegex("{{total}}"), "(\\d+)");
 
-        pattern = pattern.replace(escapeRegex("{{symbol}}"), ".*?");
+        pattern = pattern.replaceAll(escapeRegex("{{symbol}}"), ".*?");
 
-        pattern = pattern.replace(escapeRegex("{{place}}"), "\\d+");
+        pattern = pattern.replaceAll(escapeRegex("{{place}}"), "\\d+");
 
         const regex = new RegExp(`^${pattern}$`);
 

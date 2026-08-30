@@ -1,7 +1,6 @@
 import {
     ScheduledJobEvent,
     JobContext,
-    WikiPagePermissionLevel,
     JSONObject,
     WikiPage,
     TriggerContext,
@@ -17,7 +16,7 @@ function capitalize(word: string): string {
 }
 
 function markdownEscape(input: string): string {
-    return input.replace(/([\\\`\*\_\{\}\[\]\(\)\#\+\.\!\-])/i, "\\$1");
+    return input.replaceAll(/([\\\`\*\_\{\}\[\]\(\)\#\+\.\!\-])/gi, "\\$1");
 }
 
 function formatDate(dateString: number): string {
@@ -27,9 +26,9 @@ function formatDate(dateString: number): string {
 
 function escapeTitle(title: string): string {
     return title
-        .replace(/\|/i, "\\|")
-        .replace(/\[/i, "\\[")
-        .replace(/\]/i, "\\]");
+        .replaceAll(/\|/gi, "\\|")
+        .replaceAll(/\[/gi, "\\[")
+        .replaceAll(/\]/gi, "\\]");
 }
 
 export async function updateUserWiki(
@@ -448,10 +447,30 @@ export async function updateLeaderboard(
         console.log("Leaderboard: Leaderboard created.");
     }
 
-    const correctPermissionLevel =
-        (leaderboardMode[0] as LeaderboardMode) === LeaderboardMode.Public
-            ? WikiPagePermissionLevel.SUBREDDIT_PERMISSIONS
-            : WikiPagePermissionLevel.MODS_ONLY;
+    const mode = leaderboardMode[0];
+
+    let correctPermissionLevel: number;
+
+    switch (mode) {
+        case LeaderboardMode.SubredditPermissions:
+            correctPermissionLevel = 0;
+            break;
+
+        case LeaderboardMode.ApprovedContributorsOnly:
+            correctPermissionLevel = 1;
+            break;
+
+        case LeaderboardMode.ModOnly:
+            correctPermissionLevel = 2;
+            break;
+
+        default:
+            logger.warn("⚠️ Unknown leaderboard mode, defaulting to mod only", {
+                mode,
+            });
+            correctPermissionLevel = 2;
+            break;
+    }
 
     const wikiPageSettings = await wikiPage.getSettings();
     if (wikiPageSettings.permLevel !== correctPermissionLevel) {
@@ -462,6 +481,13 @@ export async function updateLeaderboard(
             permLevel: correctPermissionLevel,
         });
     }
+
+    logger.info("🔐 Checking leaderboard wiki page permissions", {
+        leaderboardMode,
+        mode,
+        correctPermissionLevel,
+        wikiPermLevel: wikiPageSettings.permLevel,
+    });
 }
 
 function modInfoTemplate(subredditName: string): string {

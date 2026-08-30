@@ -96,7 +96,7 @@ export async function userBecomesSuperUser(
         );
         (settings[AppSetting.AutoSuperuserTemplate] as string | undefined) ??
             TemplateDefaults.NotifyOnSuperuserTemplate;
-        const message = formatMessage(event,
+        const autoSuperUserMessage = formatMessage(event,
             (settings[AppSetting.AutoSuperuserTemplate] as string) ??
                 TemplateDefaults.NotifyOnSuperuserTemplate,
             {
@@ -110,7 +110,7 @@ export async function userBecomesSuperUser(
         await _replyToUser(
             context,
             recipient,
-            message,
+            autoSuperUserMessage,
             parentComment.id,
             notifyOnAutoSuperuserMode,
         );

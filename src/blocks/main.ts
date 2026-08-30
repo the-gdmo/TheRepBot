@@ -380,8 +380,8 @@ export async function manualSetFlairManagementFormHandler(
         context.ui.showToast("Your entry must contain a value.");
         return;
     }
-    const enabled = /^enabled$/i;
-    const disabled = /^disabled$/i;
+    const enabled = /^enabled$/gi;
+    const disabled = /^disabled$/gi;
     if (!disabled.test(value) && !enabled.test(value)) {
         context.ui.showToast(`You must enter "enabled" or "disabled"`);
         return;
@@ -486,15 +486,15 @@ export async function manualSetFlairManagementForUserFormHandler(
         return;
     }
 
-    const enabled = /^enabled$/i;
-    const disabled = /^disabled$/i;
+    const enabled = /^enabled$/gi;
+    const disabled = /^disabled$/gi;
 
     if (!disabled.test(isEnabled) && !enabled.test(isEnabled)) {
         context.ui.showToast(`You must enter "enabled" or "disabled"`);
         return;
     }
 
-    const userRegex = /^[a-z0-9\_\-]{3,21}$/i;
+    const userRegex = /^[a-z0-9\_\-]{3,21}$/gi;
 
     if (!userRegex.test(target)) {
         context.ui.showToast(

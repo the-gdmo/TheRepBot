@@ -134,7 +134,7 @@ export async function handleDuplicateModAward(
     const awarder = event.author.name;
     const awardee = parentComment.authorName;
 
-    const msg = formatMessage(
+    const modAwardAlreadyGivenMessage = formatMessage(
         event,
         (settings[AppSetting.ModAwardAlreadyGiven] as string) ??
             TemplateDefaults.ModAwardAlreadyGivenMessage,
@@ -148,14 +148,14 @@ export async function handleDuplicateModAward(
     if (notify === NotifyOnModAwardFailReplyOptions.ReplyAsComment) {
         const modAwardDupeMessage = await context.reddit.submitComment({
             id: event.comment!.id,
-            text: msg,
+            text: modAwardAlreadyGivenMessage,
         });
         await modAwardDupeMessage.distinguish();
     } else if (notify === NotifyOnModAwardFailReplyOptions.ReplyByPM) {
         await context.reddit.sendPrivateMessage({
             to: awarder,
             subject: "Mod award already given",
-            text: msg,
+            text: modAwardAlreadyGivenMessage,
         });
     }
 

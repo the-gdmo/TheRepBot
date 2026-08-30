@@ -35,12 +35,10 @@ I recommend testing settings out on a test subreddit before deploying to a real 
 * `{{command}}`: Notifies the user who has reached the threshold of a special command they can use. Specified in 'Superuser/Mod award command'.
 * `{{commandsWithOr}}`: Lists all valid non-superuser/non-mod command(s) specified in 'Trigger Words'. (comma-separated list (if more than 1) (eg "!award, ?award, or /award", "!award or /award")).
 * `{{commandsWithAnd}}`: Lists all valid non-superuser/non-mod command(s) specified in 'Trigger Words'. (comma-separated list (if more than 1) (eg "!award, ?award, and /award", "!award and /award")). 
-* `{{markdown_guide}}`: Link to Reddit's Markdown Guide.
-* `{{user}}`: The username of the person being awarded. Used in 'Alternate Award Command'.
-* `{{altCommand}}`: Alternate command to directly award users. Used in 'Alternate Command Success/Fail Message'.
+* `{{markdownGuide}}`: Link to Reddit's Markdown Guide.
 * `{{subreddit}}`: Get the name of the subreddit. Will not contain 'r/'.
-* `{{awardeePage}}`: Link to a recipient's individual page. Logs all points received and given that are not alternate commands.
-* `{{awarderPage}}`: Link to an awarder's individual page. Logs all points received and given that are not alternate commands.
+* `{{awardeePage}}`: Link to a recipient's individual page. Logs all points received and given.
+* `{{awarderPage}}`: Link to an awarder's individual page. Logs all points received and given.
 * `{{place}}`: Display the placement of the user in their flair. Usable in 'Flair Formatting'.
 
 ## Data Stored
@@ -62,6 +60,13 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 ## Version History
+### 31.5.0
+* Make upgrade notifier check for updates every 60 seconds
+* Allow single or double curly braces for all placeholders
+* Make every regex check replace all occurrences of the placeholder with the value of the placeholder
+* Make wiki page permission levels be properly adjusted based on the "Wiki Leaderboard Mode" setting
+* If "Wiki Leaderboard Mode" is set to off, skip leaderboard updates
+* Remove all alternate command logic (couldn't figure out how to fix it)
 ### 31.4.0
 * Fixed an issue where the bot wasn't sending responses to awarded points
 ### 31.3.0

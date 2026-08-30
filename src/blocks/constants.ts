@@ -10,4 +10,4 @@ export const UPGRADE_NOTIFIER_JOB = "upgradeNotifier";
 export const CLEANUP_JOB_CRON = "0 23 * * *";
 export const POST_OF_THE_MONTH_CRON = "0 0 1 * *";
 export const MODINFO_CRON = "0 * * * *";
-export const UPGRADE_NOTIFIER_CRON = "0 0 * * *";
+export const UPGRADE_NOTIFIER_CRON = "* * * * *";

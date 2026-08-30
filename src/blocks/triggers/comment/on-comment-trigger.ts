@@ -104,7 +104,7 @@ export async function setUserScore(
             cssClass = undefined;
         }
 
-        const flairTextTemplate = "{{points}}";
+        const flairTextTemplate = "{points}";
 
         if (!context.subredditName) {
             logger.error(
@@ -158,10 +158,10 @@ export async function setUserScore(
         });
 
         const flairText = flairFormatting
-            .replaceAll("{{place}}", userScore > 0 ? `${userScore}` : "0")
-            .replaceAll("{{total}}", newScore.score.toString())
+            .replaceAll("{place}", userScore > 0 ? `${userScore}` : "0")
+            .replaceAll("{total}", newScore.score.toString())
             .replaceAll(
-                "{{symbol}}",
+                "{symbol}",
                 appSettings[AppSetting.PointSymbol] as string
             );
 

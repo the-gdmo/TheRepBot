@@ -50,7 +50,7 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
 
     if (isMod && modsExempt) {
         logger.info(
-            `✅ ${author.username} is a moderator and is exempt from restrictions`,
+            `✅ ${author.username} is a moderator and is exempt from restrictions`
         );
         return;
     }
@@ -65,7 +65,7 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
     const lastValidPostTitleKey = await getLastValidPostTitleKey(author);
     const restrictedFlagExists = await restrictedKeyExists(
         context,
-        author.username,
+        author.username
     );
 
     //check if user is restricted, if they are, remove post and send notification with AppSetting.SubsequentPostRestrictionMessage
@@ -111,40 +111,30 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
             (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) ??
             0;
 
-        let msg = subsequentTemplate
-            .replace(/{{name}}/i, pointName)
-            .replace(/{{commandsWithOr}}/i, commandListWithOr)
-            .replace(/{{commandsWithAnd}}/i, commandListWithAnd)
-            .replace(
-                /{{markdown_guide}}/i,
-                "https://www.reddit.com/wiki/markdown",
-            )
-            .replace(
-                /{{markdown_guide}}/i,
-                "https://www.reddit.com/wiki/markdown",
-            )
-            .replace(/{{requirement}}/i, requirement.toString())
-            .replace(/{{subreddit}}/i, subredditName);
-
-        if (title) msg = msg.replace(/{{title}}/i, title);
-        if (lastValidPost) msg = msg.replace(/{{permalink}}/i, lastValidPost);
-        if (helpPage) {
-            msg = msg.replace(
-                /{{helpPage}}/i,
-                `https://www.reddit.com/r/${subredditName}/wiki/${helpPage}`,
-            );
-        }
-        if (discordLink) msg = msg.replace(/{{discord}}/i, discordLink);
-
-        const formattedMsg = formatMessage(event, msg, {});
+        const subsequentRestrictionMsg = formatMessage(
+            event,
+            subsequentTemplate,
+            {
+                discord: discordLink,
+                helpPage: helpPage,
+                title: title ?? "",
+                permalink: lastValidPost ?? "",
+                requirement: requirement.toString(),
+                subreddit: subredditName,
+                name: pointName,
+                commandsWithOr: commandListWithOr,
+                commandsWithAnd: commandListWithAnd,
+            }
+        );
         // Post restriction comment
-        const subsequentPostRestrictionMessage =
-            await context.reddit.submitComment({
+        const subsequentPostRestrictionMsg = await context.reddit.submitComment(
+            {
                 id: event.post.id,
-                text: formattedMsg,
-            });
+                text: subsequentRestrictionMsg,
+            }
+        );
 
-        await subsequentPostRestrictionMessage.distinguish(true);
+        await subsequentPostRestrictionMsg.distinguish(true);
         await context.reddit.remove(event.post.id, false);
 
         logger.info("🚫 Removed post from restricted user", {
@@ -158,32 +148,22 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
     //also set rediskeys to supplement this
 
     const requirement =
-        (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) ??
-        0;
-    const template =
+        (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) ?? 0;
+    const initialMessageToRestrictedUsers =
         (settings[AppSetting.InitialMessageToRestrictedUsers] as string) ??
         TemplateDefaults.InitialMessageToRestrictedUsers;
 
-    let text = template
-        .replace(/{{name}}/i, pointName)
-        .replace(/{{commandsWithOr}}/i, commandListWithOr)
-        .replace(/{{commandsWithAnd}}/i, commandListWithAnd)
-        .replace(/{{markdown_guide}}/i, "https://www.reddit.com/wiki/markdown")
-        .replace(/{{subreddit}}/i, subredditName)
-        .replace(/{{requirement}}/i, requirement.toString())
-        ;
 
-    if (helpPage) {
-        text = text.replace(
-            /{{helpPage}}/i,
-            `https://www.reddit.com/r/${subredditName}/wiki/${helpPage}`,
-        );
-    }
-    if (discordLink) {
-        text = text.replace(/{{discord}}/i, discordLink);
-    }
-
-    const formattedText = formatMessage(event, text, {});
+    const formattedText = formatMessage(event, initialMessageToRestrictedUsers, {
+        discordLink,
+        helpPage,
+        requirement: requirement.toString(),
+        subreddit: subredditName,
+        name: pointName,
+        commandsWithOr: commandListWithOr,
+        commandsWithAnd: commandListWithAnd,
+        markdownGuide: "https://www.reddit.com/wiki/markdown",
+    });
     const initialPostRestrictionMessage = await context.reddit.submitComment({
         id: event.post.id,
         text: formattedText,

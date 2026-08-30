@@ -28,9 +28,10 @@ export enum ExistingFlairOverwriteHandling {
 }
 
 export enum LeaderboardMode {
-    Off = "off",
+    SubredditPermissions = "subredditpermissions",
     ModOnly = "modonly",
-    Public = "public",
+    ApprovedContributorsOnly = "approvedcontributorsonly",
+    Off = "off",
 }
 
 export enum AppSetting {
@@ -106,7 +107,6 @@ export enum AppSetting {
     PostOfTheMonthFlairText = "postOfTheMonthFlairText",
     PostOfTheMonthFlairTemplate = "postOfTheMonthFlairTemplate",
     PostOfTheMonthFlairCSSClass = "postOfTheMonthFlairCSSClass",
-    PointAlreadyAwardedToUserViaAltCommandMessage = "pointAlreadyAwardedToUserViaAltCommandMessage",
     NotifyOnBlockedUser = "notifyOnBlockedUser",
     NotifyOnTrustedUserAwardSuccess = "notifyOnTrustedUserAwardSuccess",
     TrustedUserAwardSuccessMessage = "trustedUserAwardSuccessMessage",
@@ -119,23 +119,20 @@ export enum AppSetting {
 // #1 | 10
 export enum TemplateDefaults {
     FlairFormatting = "{{total}}{{symbol}} | #{{place}}",
-    AlternateUsersOnlyDisallowedMessage = "Only alternate users are allowed to award points (ie users who can successfully award points using `<pointsCommand) u/<userMention>`.",
     SubsequentPostRestrictionMessage = "***ATTENTION to OP:*** You must award {{name}}s by replying to the successful comments. Before you can create new posts, you must award **{{requirement}}** {{name}}s to users who respond on [{{title}}]({{permalink}}).",
     UnflairedPostMessage = "Points cannot be awarded on posts without flair. Please award only on flaired posts.",
     OPOnlyDisallowedMessage = "Only moderators, approved users, and Post Authors (OPs) can award {{name}}s.",
     LeaderboardHelpPageMessage = "[How to award points with RepBot.]({{helpPage}})",
     DisallowedFlairMessage = "Points cannot be awarded on posts with this flair. Please choose another post.",
     UsersWhoCannotAwardPointsMessage = "Hello u/{{awarder}}, you do not have permission to award {{name}}s in r/{{subreddit}}.",
-    ModOnlyDisallowedMessage = "Only moderators are allowed to award points.",
+    ModOnlyDisallowedMessage = "Only moderators allowed to award points.",
     ApprovedOnlyDisallowedMessage = "Only moderators and approved users can award points.",
     SelfAwardMessage = "You can't award yourself a {{name}}.",
     BotAwardMessage = "You can't award u/{{awardee}} {{name}}s.",
     SelfAwardTemplate = "Hello {{awarder}}, you cannot award a {{name}} to yourself.",
     NotifyOnNormalAwardSuccessTemplate = "+1 {{name}} awarded to u/{{awardee}} by u/{{awarder}}. Total: {{total}}{{symbol}}. {{awardee}}'s user page is located [here]({{awardeePage}}). Leaderboard is located [here]({{leaderboard}}).",
     NotifyOnSuperuserTemplate = "Hello {{awardee}},\n\nNow that you have reached {{threshold}} points you can now award points yourself, even if normal users do not have permission to. Please use the command `{{command}}` if you'd like to do this.",
-    InitialMessageToRestrictedUsers = "***ATTENTION to OP:*** You must award at least {{requirement}} {{name}}s by replying to the successful comments. Valid command(s) are {{commandsWithAnd}}. Failure to do so may result in a ban.\n\n*^ To hide text, write it like this `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({{markdown_guide}})*.",
-    AlternateCommandSuccessMessage = "+1 {{name}} awarded to u/{{awardee}} [{{total}}{{symbol}}]. {{awardee}}'s user page is located [here]({{awardeePage}}). Leaderboard is located [here]({{leaderboard}}).",
-    AlternateCommandFailMessage = "You do not have permission to use **{{altCommand}}** on specific users.",
+    InitialMessageToRestrictedUsers = "***ATTENTION to OP:*** You must award at least {{requirement}} {{name}}s by replying to the successful comments. Valid command(s) are {{commandsWithAnd}}. Failure to do so may result in a ban.\n\n*^ To hide text, write it like this `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({{markdownGuide}})*.",
     PointAlreadyAwardedToUserMessage = "{{awardee}} has already received a {{name}} for this post.",
     ModAwardCommandSuccessMessage = "Moderator u/{{awarder}} gave an award! u/{{awardee}} now has {{total}}{{symbol}} {{name}}s. {{awardee}}'s user page is located [here]({{awardeePage}}). Leaderboard is located [here]({{leaderboard}}).",
     ModAwardCommandFailMessage = "Hello {{awarder}}. You must be a moderator or trusted user to use {{command}}.",
@@ -145,7 +142,6 @@ export enum TemplateDefaults {
     NoUsernameMentionMessage = "You must mention a user (eg u/{{awardee}}) to award specific users.",
     RestrictionLiftedMessage = "Your posting restriction has been removed. You now have permission to make a post again in r/{{subreddit}}!",
     PostAuthorAwardMessage = "OPs cannot be awarded points.",
-    PointAlreadyAwardedToUserViaAltCommandMessage = "{{awardee}} has already received a {{name}} for this post.",
     TrustedUserAwardSuccessMessage = "Superuser u/{{awarder}} gave an award! u/{{awardee}} now has {{total}}{{symbol}} {{name}}s. {{awardee}}'s user page is located [here]({{awardeePage}}). Leaderboard is located [here]({{leaderboard}}).",
     ModsAndPostAuthorDisallowedMessage = "Only moderators and Post Authors (OPs) can award {{name}}s.",
 }
@@ -460,8 +456,12 @@ const LeaderboardModeOptionChoices = [
     { label: "Off", value: LeaderboardMode.Off },
     { label: "Mod Only", value: LeaderboardMode.ModOnly },
     {
+        label: "Approved Contributors Only",
+        value: LeaderboardMode.ApprovedContributorsOnly,
+    },
+    {
         label: "Default settings for wiki",
-        value: LeaderboardMode.Public,
+        value: LeaderboardMode.SubredditPermissions,
     },
 ];
 
@@ -604,18 +604,18 @@ export const appSettings: SettingsFormField[] = [
             {
                 type: "paragraph",
                 name: AppSetting.InitialMessageToRestrictedUsers,
-                label: "Initial Post Restriction Message",
+                label: "Initial Post Restriction Message (All placeholders allow single or double curly braces)",
                 helpText:
-                    "Sent on initial post. Required even if not used. Placeholders Supported: {{requirement}}, {{name}}, {{commandsWithOr}}, {{commandsWithAnd}}, {{markdown_guide}}, {{subreddit}}, {{helpPage}}, {{discord}}",
+                    "Sent on initial post. Required even if not used. Placeholders Supported: requirement, name, commandsWithOr, commandsWithAnd, markdownGuide, subreddit, helpPage, discord",
                 defaultValue: TemplateDefaults.InitialMessageToRestrictedUsers,
                 onValidate: paragraphFieldContainsText,
             },
             {
                 name: AppSetting.SubsequentPostRestrictionMessage,
                 type: "paragraph",
-                label: "Subsequent Post Restriction Message",
+                label: "Subsequent Post Restriction Message (All placeholders allow single or double curly braces)",
                 helpText:
-                    "Required even if not used. Message to send users when they try to post while restricted from posting. Placeholders supported: {{permalink}}, {{title}}, {{name}}, {{commandsWithOr}}, {{commandsWithAnd}}, {{helpPage}}",
+                    "Required even if not used. Message to send users when they try to post while restricted from posting. Placeholders supported: permalink, title, name, commandsWithOr, commandsWithAnd, helpPage",
                 defaultValue: TemplateDefaults.SubsequentPostRestrictionMessage,
                 onValidate: paragraphFieldContainsText,
             },
@@ -633,9 +633,9 @@ export const appSettings: SettingsFormField[] = [
             {
                 name: AppSetting.RestrictionLiftedMessage,
                 type: "paragraph",
-                label: "Message to send the user when their restriction is removed",
+                label: "Message to send the user when their restriction is removed (All placeholders allow single or double curly braces)",
                 helpText:
-                    "Required even if not used. Placeholders Supported: {{awarder}}, {{subreddit}}, {{requirement}}, {{name}}, {{helpPage}}, {{discord}}",
+                    "Required even if not used. Placeholders Supported: awarder, subreddit, requirement, name, helpPage, discord",
                 defaultValue: TemplateDefaults.RestrictionLiftedMessage,
                 onValidate: paragraphFieldContainsText,
             },
@@ -692,9 +692,9 @@ export const appSettings: SettingsFormField[] = [
             {
                 type: "string",
                 name: AppSetting.FlairFormatting,
-                label: "Flair Formatting",
+                label: "Flair Formatting (All placeholders allow single or double curly braces)",
                 helpText:
-                    "How the flair should be formatted. Placeholders Supported: {{place}}, {{total}}, {{symbol}}",
+                    "How the flair should be formatted. Placeholders Supported: place, total, symbol",
                 defaultValue: TemplateDefaults.FlairFormatting,
                 onValidate: paragraphFieldContainsText,
             },
@@ -703,7 +703,7 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.PointTriggerWords,
                 label: "Trigger Words",
                 helpText:
-                    "List of trigger words users can type to award points (e.g., !award, .point). Each command should be on a new line. If you want to use regex, enable the option below",
+                    "List of trigger words users can type to award points (e.g., !award, .point). Each command should be on a new line.",
                 defaultValue: "!award\n.award",
                 onValidate: validateTriggerWords,
             },
@@ -724,9 +724,9 @@ export const appSettings: SettingsFormField[] = [
             {
                 type: "paragraph",
                 name: AppSetting.UnflairedPostMessage,
-                label: "Unflaired post message",
+                label: "Unflaired post message (All placeholders allow single or double curly braces)",
                 helpText:
-                    "Message shown when a user tries to award points on a post without flair. Placeholders Supported: {{name}}",
+                    "Message shown when a user tries to award points on a post without flair. Placeholders Supported: name",
                 defaultValue: TemplateDefaults.UnflairedPostMessage,
                 onValidate: paragraphFieldContainsText,
             },
@@ -744,9 +744,8 @@ export const appSettings: SettingsFormField[] = [
             {
                 name: AppSetting.PointAlreadyAwardedToUserMessage,
                 type: "paragraph",
-                label: "Message to send users when they use the Normal Award Command, but the comment author has already received a point for the comment",
-                helpText:
-                    "Placeholders Supported: {{awarder}}, {{awardee}}, {{name}}",
+                label: "Message to send users when they use the Normal Award Command, but the comment author has already received a point for the comment (All placeholders allow single or double curly braces)",
+                helpText: "Placeholders Supported: awarder, awardee, name",
                 defaultValue: TemplateDefaults.PointAlreadyAwardedToUserMessage,
                 onValidate: paragraphFieldContainsText,
             },
@@ -920,9 +919,8 @@ export const appSettings: SettingsFormField[] = [
             {
                 type: "paragraph",
                 name: AppSetting.AutoSuperuserTemplate,
-                label: "Message sent when a user reaches the trusted user threshold",
-                helpText:
-                    "Placeholders Supported: {{name}}, {{threshold}}, {{command}}",
+                label: "Message sent when a user reaches the trusted user threshold (All placeholders allow single or double curly braces)",
+                helpText: "Placeholders Supported: name, threshold, command",
                 defaultValue: TemplateDefaults.NotifyOnSuperuserTemplate,
                 onValidate: paragraphFieldContainsText,
             },
@@ -939,8 +937,8 @@ export const appSettings: SettingsFormField[] = [
             {
                 type: "paragraph",
                 name: AppSetting.TrustedUserAwardSuccessMessage,
-                label: "Trusted User Award Success Message",
-                helpText: `Optional. Message to send users when a trusted user awards a point. Placeholders Supported: {{awardeePage}}, {{awarderPage}}, {{awardee}}, {{awarder}}, {{symbol}}, {{total}}, {{name}}, {{leaderboard}}`,
+                label: "Trusted User Award Success Message (All placeholders allow single or double curly braces)",
+                helpText: `Optional. Message to send users when a trusted user awards a point. Placeholders Supported: awardeePage, awarderPage, awardee, awarder, symbol, total, name, leaderboard`,
                 defaultValue: TemplateDefaults.TrustedUserAwardSuccessMessage,
                 onValidate: paragraphFieldContainsText,
             },
@@ -957,8 +955,8 @@ export const appSettings: SettingsFormField[] = [
             {
                 name: AppSetting.ModAwardCommandSuccess,
                 type: "paragraph",
-                label: "Mod Award Success Message",
-                helpText: `Optional. Message to send users when they successfully award a message with the "Trusted User/Mod award command". Placeholders Supported: {{awardeePage}}, {{awarderPage}}, {{awardee}}, {{awarder}}, {{symbol}}, {{total}}, {{name}}, {{leaderboard}}`,
+                label: "Mod Award Success Message (All placeholders allow single or double curly braces)",
+                helpText: `Optional. Message to send users when they successfully award a message with the "Trusted User/Mod award command". Placeholders Supported: awardeePage, awarderPage, awardee, awarder, symbol, total, name, leaderboard`,
                 defaultValue: TemplateDefaults.ModAwardCommandSuccessMessage,
                 onValidate: paragraphFieldContainsText,
             },
@@ -973,17 +971,17 @@ export const appSettings: SettingsFormField[] = [
             {
                 name: AppSetting.ModAwardCommandFail,
                 type: "paragraph",
-                label: "Mod Award Fail Message",
-                helpText: `Optional. Message to send users when they aren't allowed to use the "Trusted User/Mod award command". Placeholders Supported: {{command}}, {{name}}, {{awarder}}, {{awardee}}`,
+                label: "Mod Award Fail Message (All placeholders allow single or double curly braces)",
+                helpText: `Optional. Message to send users when they aren't allowed to use the "Trusted User/Mod award command". Placeholders Supported: command, name, awarder, awardee`,
                 defaultValue: TemplateDefaults.ModAwardCommandFailMessage,
                 onValidate: paragraphFieldContainsText,
             },
             {
                 name: AppSetting.ModAwardAlreadyGiven,
                 type: "paragraph",
-                label: `Message to send user when the "Trusted User/Mod award command" has already been used on the comment.`,
+                label: `Message to send user when the "Trusted User/Mod award command" has already been used on the comment (All placeholders allow single or double curly braces)`,
                 helpText:
-                    "Optional. Placeholders Supported: {{awarder}}, {{awardee}}, {{name}}",
+                    "Optional. Placeholders Supported: awarder, awardee, name",
                 defaultValue: TemplateDefaults.ModAwardAlreadyGivenMessage,
                 onValidate: paragraphFieldContainsText,
             },
@@ -1035,9 +1033,9 @@ export const appSettings: SettingsFormField[] = [
             {
                 type: "paragraph",
                 name: AppSetting.SelfAwardMessage,
-                label: "Self Award Message",
+                label: "Self Award Message (All placeholders allow single or double curly braces)",
                 helpText:
-                    "Shown when someone tries to award themselves. Placeholders Supported: {{name}}, {{awarder}}",
+                    "Shown when someone tries to award themselves. Placeholders Supported: name, awarder",
                 defaultValue: TemplateDefaults.SelfAwardTemplate,
                 onValidate: paragraphFieldContainsText,
             },
@@ -1052,10 +1050,11 @@ export const appSettings: SettingsFormField[] = [
             {
                 type: "paragraph",
                 name: AppSetting.SuccessMessage,
-                label: "Normal Award Success Message",
+                label: "Normal Award Success Message (All placeholders allow single or double curly braces)",
                 helpText:
-                    "Message when a point is awarded. Placeholders Supported: {{awardeePage}}, {{awarderPage}}, {{awardee}}, {{awarder}}, {{symbol}}, {{total}}, {{name}}, {{leaderboard}}",
-                defaultValue: TemplateDefaults.NotifyOnNormalAwardSuccessTemplate,
+                    "Message when a point is awarded. Placeholders Supported: awardeePage, awarderPage, awardee, awarder, symbol, total, name, leaderboard",
+                defaultValue:
+                    TemplateDefaults.NotifyOnNormalAwardSuccessTemplate,
                 onValidate: paragraphFieldContainsText,
             },
             {
@@ -1086,8 +1085,8 @@ export const appSettings: SettingsFormField[] = [
             {
                 type: "paragraph",
                 name: AppSetting.UsersWhoCannotAwardPointsMessage,
-                label: "User Cannot Award Points Message",
-                helpText: `Message shown when a user specified in the "Users Who Cannot Award Points" setting tries to award points but is not allowed to. Placeholders Supported: {{name}}`,
+                label: "User Cannot Award Points Message (All placeholders allow single or double curly braces)",
+                helpText: `Message shown when a user specified in the "Users Who Cannot Award Points" setting tries to award points but is not allowed to. Placeholders Supported: name`,
                 defaultValue: TemplateDefaults.UsersWhoCannotAwardPointsMessage,
                 onValidate: paragraphFieldContainsText,
             },
@@ -1102,9 +1101,9 @@ export const appSettings: SettingsFormField[] = [
             {
                 type: "paragraph",
                 name: AppSetting.BotAwardMessage,
-                label: "Bot Award Message",
+                label: "Bot Award Message (All placeholders allow single or double curly braces)",
                 helpText:
-                    "Message shown when someone tries to award the bot. Placeholders Supported: {{name}}, {{awardee}}",
+                    "Message shown when someone tries to award the bot. Placeholders Supported: name, awardee",
                 defaultValue: TemplateDefaults.BotAwardMessage,
                 onValidate: paragraphFieldContainsText,
             },
@@ -1153,10 +1152,10 @@ export const appSettings: SettingsFormField[] = [
             {
                 name: AppSetting.LeaderboardMode,
                 type: "select",
-                options: LeaderboardModeOptionChoices,
                 label: "Wiki Leaderboard Mode",
+                options: LeaderboardModeOptionChoices,
                 multiSelect: false,
-                defaultValue: [LeaderboardMode.Off],
+                defaultValue: [LeaderboardMode.ModOnly],
                 onValidate: selectFieldHasOptionChosen,
             },
             {
@@ -1259,14 +1258,14 @@ export const appSettings: SettingsFormField[] = [
 ];
 
 function isFlairTemplateValid(event: SettingsFormFieldValidatorEvent<string>) {
-    const flairTemplateRegex = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){4}[0-9a-f]{8}$/i;
+    const flairTemplateRegex = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){4}[0-9a-f]{8}$/gi;
     if (event.value && !flairTemplateRegex.test(event.value)) {
         return "Invalid flair template ID";
     }
 }
 
 function selectFieldHasOptionChosen(
-    event: SettingsFormFieldValidatorEvent<string[]>,
+    event: SettingsFormFieldValidatorEvent<string[]>
 ) {
     if (!event.value || event.value.length !== 1) {
         return "You must choose an option (even if this is an irrelevant setting)";
@@ -1282,25 +1281,25 @@ function validateTriggerWords(event: SettingsFormFieldValidatorEvent<string>) {
         return "You must specify at least one trigger word";
     }
 
-    if (!lines.some((line) => line.match(/^[\x20-\x7E]+$/im))) {
+    if (!lines.some((line) => line.match(/^[\x20-\x7E]+$/gim))) {
         return "Trigger words may only contain characters that exist on a standard computer keyboard";
     }
 }
 
 function validateModTriggerCommand(
-    event: SettingsFormFieldValidatorEvent<string>,
+    event: SettingsFormFieldValidatorEvent<string>
 ) {
     if (!event.value || event.value.trim() === "") {
         return "You must specify a command (even if you don't intend to use it)";
     }
-    if (!event.value.match(/^[\x20-\x7E]+$/i)) {
+    if (!event.value.match(/^[\x20-\x7E]+$/gi)) {
         return "Command may only contain characters that exist on a standard computer keyboard";
     }
 }
 
 // 🧮 Validate "Awards Required To Create New Posts"
 export function numberFieldHasValidOption(
-    event: SettingsFormFieldValidatorEvent<number>,
+    event: SettingsFormFieldValidatorEvent<number>
 ) {
     if (typeof event.value !== "number" || isNaN(event.value)) {
         return "Value must be a number.";
@@ -1313,7 +1312,7 @@ export function numberFieldHasValidOption(
 
 function paragraphFieldContainsText(
     event: SettingsFormFieldValidatorEvent<string>,
-    _context: TriggerContext,
+    _context: TriggerContext
 ): string | void {
     if (typeof event.value !== "string") {
         return "Value must be a string.";

@@ -20,6 +20,7 @@ import { AppSetting } from "../../settings";
 import { getCurrentScore } from "./user-utilities";
 import { setUserScore } from "../comment/on-comment-trigger";
 import { ScoreResult } from "./common-utilities";
+import { CommentSubmit, CommentUpdate } from "@devvit/protos";
 
 export async function handleUserRestrictionCheck(
     event: MenuItemOnPressEvent,
@@ -366,7 +367,7 @@ export async function manualPostRestrictionRemovalHandler(
     )?.trim();
     if (!confirmText) return;
 
-    const confirm = /^confirm$/i;
+    const confirm = /^confirm$/gi;
     if (!confirm.test(confirmText)) {
         context.ui.showToast(`⚠️ You must type "confirm" (case insensitive).`);
         logger.warn("⚠️ Moderator failed confirmation input.", { confirmText });

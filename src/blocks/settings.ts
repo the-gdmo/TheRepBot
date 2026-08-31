@@ -35,7 +35,7 @@ export enum LeaderboardMode {
 }
 
 export enum AppSetting {
-    UpgradeNotifier = "upgradeNotifier",
+    // UpgradeNotifier = "upgradeNotifier",
     EnablePostOfTheMonth = "enablePostOfTheMonth",
     NotifyOnPostAuthorAward = "notifyOnPostAuthorAward",
     PostAuthorAwardMessage = "postAuthorAwardMessage",
@@ -1240,21 +1240,21 @@ export const appSettings: SettingsFormField[] = [
     //         },
     //     ],
     // },
-    {
-        type: "group",
-        label: "Upgrade Notification Settings",
-        fields: [
-            {
-                type: "boolean",
-                label: "Upgrade notifications",
-                name: AppSetting.UpgradeNotifier,
-                helpText:
-                    "Receive a message when a new version of RepBot is released",
-                defaultValue: true,
-            },
-        ],
-        // },
-    },
+    // {
+    //     type: "group",
+    //     label: "Upgrade Notification Settings",
+    //     fields: [
+    //         {
+    //             type: "boolean",
+    //             label: "Upgrade notifications",
+    //             name: AppSetting.UpgradeNotifier,
+    //             helpText:
+    //                 "Receive a message when a new version of RepBot is released",
+    //             defaultValue: true,
+    //         },
+    //     ],
+    //     // },
+    // },
 ];
 
 function isFlairTemplateValid(event: SettingsFormFieldValidatorEvent<string>) {

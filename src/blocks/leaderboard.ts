@@ -451,43 +451,53 @@ export async function updateLeaderboard(
 
     let correctPermissionLevel: number;
 
-    switch (mode) {
-        case LeaderboardMode.SubredditPermissions:
-            correctPermissionLevel = 0;
-            break;
+    if (!LeaderboardMode.CurrentWikiSettings) {
+        switch (mode) {
+            case LeaderboardMode.SubredditPermissions:
+                correctPermissionLevel = 0;
+                break;
 
-        case LeaderboardMode.ApprovedContributorsOnly:
-            correctPermissionLevel = 1;
-            break;
+            case LeaderboardMode.ApprovedContributorsOnly:
+                correctPermissionLevel = 1;
+                break;
 
-        case LeaderboardMode.ModOnly:
-            correctPermissionLevel = 2;
-            break;
+            case LeaderboardMode.ModOnly:
+                correctPermissionLevel = 2;
+                break;
 
-        default:
-            logger.warn("⚠️ Unknown leaderboard mode, defaulting to mod only", {
-                mode,
+            default:
+                logger.warn(
+                    "⚠️ Unknown leaderboard mode, defaulting to mod only",
+                    {
+                        mode,
+                    }
+                );
+                correctPermissionLevel = 2;
+                break;
+        }
+
+        const wikiPageSettings = await wikiPage.getSettings();
+        if (wikiPageSettings.permLevel !== correctPermissionLevel) {
+            await context.reddit.updateWikiPageSettings({
+                subredditName,
+                page: wikiPageName,
+                listed: true,
+                permLevel: correctPermissionLevel,
             });
-            correctPermissionLevel = 2;
-            break;
-    }
+        }
 
-    const wikiPageSettings = await wikiPage.getSettings();
-    if (wikiPageSettings.permLevel !== correctPermissionLevel) {
-        await context.reddit.updateWikiPageSettings({
-            subredditName,
-            page: wikiPageName,
-            listed: true,
-            permLevel: correctPermissionLevel,
+        logger.info("🔐 Checking leaderboard wiki page permissions", {
+            leaderboardMode,
+            mode,
+            correctPermissionLevel,
+            wikiPermLevel: wikiPageSettings.permLevel,
+        });
+    } else {
+        logger.info("🔐 Leaderboard wiki page permissions set to current wiki settings, no changes made", {
+            leaderboardMode,
+            mode,
         });
     }
-
-    logger.info("🔐 Checking leaderboard wiki page permissions", {
-        leaderboardMode,
-        mode,
-        correctPermissionLevel,
-        wikiPermLevel: wikiPageSettings.permLevel,
-    });
 }
 
 function modInfoTemplate(subredditName: string): string {

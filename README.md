@@ -62,6 +62,7 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 ## Version History
 ### 31.5.1
 * Comment out all upgrade notifier code (not working as expected)
+* Make it so that if the "Wiki Leaderboard Mode" is set to "Current Wiki Settings", the leaderboard page's settings won't be changed by the bot
 ### 31.5.0
 * Make upgrade notifier check for updates every 60 seconds
 * Allow single or double curly braces for all placeholders

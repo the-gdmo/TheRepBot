@@ -32,6 +32,7 @@ export enum LeaderboardMode {
     ModOnly = "modonly",
     ApprovedContributorsOnly = "approvedcontributorsonly",
     Off = "off",
+    CurrentWikiSettings = "currentwikisettings",
 }
 
 export enum AppSetting {
@@ -454,6 +455,10 @@ const AccessControlOptionChoices = [
 
 const LeaderboardModeOptionChoices = [
     { label: "Off", value: LeaderboardMode.Off },
+    {
+        label: "Current Wiki Settings",
+        value: LeaderboardMode.CurrentWikiSettings,
+    },
     { label: "Mod Only", value: LeaderboardMode.ModOnly },
     {
         label: "Approved Contributors Only",
@@ -1155,7 +1160,7 @@ export const appSettings: SettingsFormField[] = [
                 label: "Wiki Leaderboard Mode",
                 options: LeaderboardModeOptionChoices,
                 multiSelect: false,
-                defaultValue: [LeaderboardMode.ModOnly],
+                defaultValue: [LeaderboardMode.CurrentWikiSettings],
                 onValidate: selectFieldHasOptionChosen,
             },
             {

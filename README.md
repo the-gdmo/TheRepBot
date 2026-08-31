@@ -60,6 +60,8 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 ## Version History
+### 31.5.1
+* Comment out all upgrade notifier code (not working as expected)
 ### 31.5.0
 * Make upgrade notifier check for updates every 60 seconds
 * Allow single or double curly braces for all placeholders

@@ -119,32 +119,32 @@ export enum AppSetting {
 // Rank 1 | 10
 // #1 | 10
 export enum TemplateDefaults {
-    FlairFormatting = "{{total}}{{symbol}} | #{{place}}",
-    SubsequentPostRestrictionMessage = "***ATTENTION to OP:*** You must award {{name}}s by replying to the successful comments. Before you can create new posts, you must award **{{requirement}}** {{name}}s to users who respond on [{{title}}]({{permalink}}).",
+    FlairFormatting = "{total}{symbol} | #{place}",
+    SubsequentPostRestrictionMessage = "***ATTENTION to OP:*** You must award {name}s by replying to the successful comments. Before you can create new posts, you must award **{requirement}** {name}s to users who respond on [{title}]({permalink}).",
     UnflairedPostMessage = "Points cannot be awarded on posts without flair. Please award only on flaired posts.",
-    OPOnlyDisallowedMessage = "Only moderators, approved users, and Post Authors (OPs) can award {{name}}s.",
-    LeaderboardHelpPageMessage = "[How to award points with RepBot.]({{helpPage}})",
+    OPOnlyDisallowedMessage = "Only moderators, approved users, and Post Authors (OPs) can award {name}s.",
+    LeaderboardHelpPageMessage = "[How to award points with RepBot.]({helpPage})",
     DisallowedFlairMessage = "Points cannot be awarded on posts with this flair. Please choose another post.",
-    UsersWhoCannotAwardPointsMessage = "Hello u/{{awarder}}, you do not have permission to award {{name}}s in r/{{subreddit}}.",
+    UsersWhoCannotAwardPointsMessage = "Hello u/{awarder}, you do not have permission to award {name}s in r/{subreddit}.",
     ModOnlyDisallowedMessage = "Only moderators allowed to award points.",
     ApprovedOnlyDisallowedMessage = "Only moderators and approved users can award points.",
-    SelfAwardMessage = "You can't award yourself a {{name}}.",
-    BotAwardMessage = "You can't award u/{{awardee}} {{name}}s.",
-    SelfAwardTemplate = "Hello {{awarder}}, you cannot award a {{name}} to yourself.",
-    NotifyOnNormalAwardSuccessTemplate = "+1 {{name}} awarded to u/{{awardee}} by u/{{awarder}}. Total: {{total}}{{symbol}}. {{awardee}}'s user page is located [here]({{awardeePage}}). Leaderboard is located [here]({{leaderboard}}).",
-    NotifyOnSuperuserTemplate = "Hello {{awardee}},\n\nNow that you have reached {{threshold}} points you can now award points yourself, even if normal users do not have permission to. Please use the command `{{command}}` if you'd like to do this.",
-    InitialMessageToRestrictedUsers = "***ATTENTION to OP:*** You must award at least {{requirement}} {{name}}s by replying to the successful comments. Valid command(s) are {{commandsWithAnd}}. Failure to do so may result in a ban.\n\n*^ To hide text, write it like this `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({{markdownGuide}})*.",
-    PointAlreadyAwardedToUserMessage = "{{awardee}} has already received a {{name}} for this post.",
-    ModAwardCommandSuccessMessage = "Moderator u/{{awarder}} gave an award! u/{{awardee}} now has {{total}}{{symbol}} {{name}}s. {{awardee}}'s user page is located [here]({{awardeePage}}). Leaderboard is located [here]({{leaderboard}}).",
-    ModAwardCommandFailMessage = "Hello {{awarder}}. You must be a moderator or trusted user to use {{command}}.",
-    ModAwardAlreadyGivenMessage = "{{awardee}} has already received a mod award for this comment.",
-    UsernameLengthMessage = "u/{{awardee}} is not valid. Reddit usernames are between 3 and 21 characters long.",
+    SelfAwardMessage = "You can't award yourself a {name}.",
+    BotAwardMessage = "You can't award u/{awardee} {name}s.",
+    SelfAwardTemplate = "Hello {awarder}, you cannot award a {name} to yourself.",
+    NotifyOnNormalAwardSuccessTemplate = "+1 {name} awarded to u/{awardee} by u/{awarder}. Total: {total}{symbol}. {awardee}'s user page is located [here]({awardeePage}). Leaderboard is located [here]({leaderboard}).",
+    NotifyOnSuperuserTemplate = "Hello {awardee},\n\nNow that you have reached {threshold} points you can now award points yourself, even if normal users do not have permission to. Please use the command `{command}` if you'd like to do this.",
+    InitialMessageToRestrictedUsers = "***ATTENTION to OP:*** You must award at least {requirement} {name}s by replying to the successful comments. Valid command(s) are {commandsWithAnd}. Failure to do so may result in a ban.\n\n*^ To hide text, write it like this `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({markdownGuide})*.",
+    PointAlreadyAwardedToUserMessage = "{awardee} has already received a {name} for this post.",
+    ModAwardCommandSuccessMessage = "Moderator u/{awarder} gave an award! u/{awardee} now has {total}{symbol} {name}s. {awardee}'s user page is located [here]({awardeePage}). Leaderboard is located [here]({leaderboard}).",
+    ModAwardCommandFailMessage = "Hello {awarder}. You must be a moderator or trusted user to use {command}.",
+    ModAwardAlreadyGivenMessage = "{awardee} has already received a mod award for this comment.",
+    UsernameLengthMessage = "u/{awardee} is not valid. Reddit usernames are between 3 and 21 characters long.",
     InvalidUsernameMessage = "Your target is not valid. Reddit usernames contain only letters, numbers, hyphens, and underscores.",
-    NoUsernameMentionMessage = "You must mention a user (eg u/{{awardee}}) to award specific users.",
-    RestrictionLiftedMessage = "Your posting restriction has been removed. You now have permission to make a post again in r/{{subreddit}}!",
+    NoUsernameMentionMessage = "You must mention a user (eg u/{awardee}) to award specific users.",
+    RestrictionLiftedMessage = "Your posting restriction has been removed. You now have permission to make a post again in r/{subreddit}!",
     PostAuthorAwardMessage = "OPs cannot be awarded points.",
-    TrustedUserAwardSuccessMessage = "Superuser u/{{awarder}} gave an award! u/{{awardee}} now has {{total}}{{symbol}} {{name}}s. {{awardee}}'s user page is located [here]({{awardeePage}}). Leaderboard is located [here]({{leaderboard}}).",
-    ModsAndPostAuthorDisallowedMessage = "Only moderators and Post Authors (OPs) can award {{name}}s.",
+    TrustedUserAwardSuccessMessage = "Superuser u/{awarder} gave an award! u/{awardee} now has {total}{symbol} {name}s. {awardee}'s user page is located [here]({awardeePage}). Leaderboard is located [here]({leaderboard}).",
+    ModsAndPostAuthorDisallowedMessage = "Only moderators and Post Authors (OPs) can award {name}s.",
 }
 
 export enum AutoSuperuserReplyOptions {
@@ -501,7 +501,7 @@ export enum NotifyOnTrustedUserAwardSuccessReplyOptions {
     NoReply = "none",
     ReplyByPM = "replybypm",
     ReplyAsComment = "replybycomment",
-}
+} 
 
 const NotifyOnTrustedUserAwardSuccessOptionChoices = [
     {

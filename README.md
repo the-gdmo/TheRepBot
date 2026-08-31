@@ -20,26 +20,26 @@ I strongly recommend using a command that is not going to be used in "normal" co
 I recommend testing settings out on a test subreddit before deploying to a real subreddit for the first time.
 
 ## Supported Placeholders
-* `{{author}}`: The username of the poster. Will not contain 'u/'.
-* `{{requirement}}`: The amount of points required before a posting restriction is lifted.
-* `{{name}}`: The name of points. Specified in 'Point Name'.
-* `{{permalink}}`: Link to the most recent valid post by the poster.
-* `{{title}}`: The title of the most recent valid post by the poster.
-* `{{symbol}}`: The symbol associated with your subreddit installation. Specified in 'Point Symbol'.
-* `{{awardee}}`: The user being awarded. Will not contain 'u/'.
-* `{{awarder}}`: The user giving the award. Will not contain 'u/'.
-* `{{total}}`: The total amount of points a user has.
-* `{{helpPage}}`: Link to a page explaining how to use the bot. Uses the Old Reddit version of this page.
-* `{{leaderboard}}`: Link to a page of the subreddit's leaderboard. Uses the Old Reddit version of this page.
-* `{{threshold}}`: Threshold to become a superuser. Specified in 'Auto Superuser Threshold'.
-* `{{command}}`: Notifies the user who has reached the threshold of a special command they can use. Specified in 'Superuser/Mod award command'.
-* `{{commandsWithOr}}`: Lists all valid non-superuser/non-mod command(s) specified in 'Trigger Words'. (comma-separated list (if more than 1) (eg "!award, ?award, or /award", "!award or /award")).
-* `{{commandsWithAnd}}`: Lists all valid non-superuser/non-mod command(s) specified in 'Trigger Words'. (comma-separated list (if more than 1) (eg "!award, ?award, and /award", "!award and /award")). 
-* `{{markdownGuide}}`: Link to Reddit's Markdown Guide.
-* `{{subreddit}}`: Get the name of the subreddit. Will not contain 'r/'.
-* `{{awardeePage}}`: Link to a recipient's individual page. Logs all points received and given.
-* `{{awarderPage}}`: Link to an awarder's individual page. Logs all points received and given.
-* `{{place}}`: Display the placement of the user in their flair. Usable in 'Flair Formatting'.
+* `{author}`: The username of the poster. Will not contain 'u/'.
+* `{requirement}`: The amount of points required before a posting restriction is lifted.
+* `{name}`: The name of points. Specified in 'Point Name'.
+* `{permalink}`: Link to the most recent valid post by the poster.
+* `{title}`: The title of the most recent valid post by the poster.
+* `{symbol}`: The symbol associated with your subreddit installation. Specified in 'Point Symbol'.
+* `{awardee}`: The user being awarded. Will not contain 'u/'.
+* `{awarder}`: The user giving the award. Will not contain 'u/'.
+* `{total}`: The total amount of points a user has.
+* `{helpPage}`: Link to a page explaining how to use the bot. Uses the Old Reddit version of this page.
+* `{leaderboard}`: Link to a page of the subreddit's leaderboard. Uses the Old Reddit version of this page.
+* `{threshold}`: Threshold to become a superuser. Specified in 'Auto Superuser Threshold'.
+* `{command}`: Notifies the user who has reached the threshold of a special command they can use. Specified in 'Superuser/Mod award command'.
+* `{commandsWithOr}`: Lists all valid non-superuser/non-mod command(s) specified in 'Trigger Words'. (comma-separated list (if more than 1) (eg "!award, ?award, or /award", "!award or /award")).
+* `{commandsWithAnd}`: Lists all valid non-superuser/non-mod command(s) specified in 'Trigger Words'. (comma-separated list (if more than 1) (eg "!award, ?award, and /award", "!award and /award")). 
+* `{markdownGuide}`: Link to Reddit's Markdown Guide.
+* `{subreddit}`: Get the name of the subreddit. Will not contain 'r/'.
+* `{awardeePage}`: Link to a recipient's individual page. Logs all points received and given.
+* `{awarderPage}`: Link to an awarder's individual page. Logs all points received and given.
+* `{place}`: Display the placement of the user in their flair. Usable in 'Flair Formatting'.
 
 ## Data Stored
 
@@ -60,6 +60,8 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 ## Version History
+### 31.5.2
+* Make all template defaults and placeholders use single curly braces
 ### 31.5.1
 * Comment out all upgrade notifier code (not working as expected)
 * Make it so that if the "Wiki Leaderboard Mode" is set to "Current Wiki Settings", the leaderboard page's settings won't be changed by the bot

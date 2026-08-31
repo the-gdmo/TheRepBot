@@ -202,11 +202,11 @@ export async function getCurrentScore(
         let pattern = escapeRegex(flairTextTemplate);
 
         // Replace placeholders with regex.
-        pattern = pattern.replaceAll(escapeRegex("{{total}}"), "(\\d+)");
+        pattern = pattern.replaceAll(escapeRegex("{total}"), "(\\d+)");
 
-        pattern = pattern.replaceAll(escapeRegex("{{symbol}}"), ".*?");
+        pattern = pattern.replaceAll(escapeRegex("{symbol}"), ".*?");
 
-        pattern = pattern.replaceAll(escapeRegex("{{place}}"), "\\d+");
+        pattern = pattern.replaceAll(escapeRegex("{place}"), "\\d+");
 
         const regex = new RegExp(`^${pattern}$`);
 

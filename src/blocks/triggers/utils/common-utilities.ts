@@ -11,7 +11,7 @@ export function formatMessage(
     if (!event.subreddit) return "";
     let result = template;
     for (const [key, value] of Object.entries(placeholders)) {
-        const singleRegex = new RegExp(`{${key}`, "gi");
+        const singleRegex = new RegExp(`{${key}}`, "gi");
         result = result.replaceAll(singleRegex, value);
     }
 

@@ -60,6 +60,9 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 ## Version History
+### 31.5.4
+* Fix formatting on placeholder replacements
+* Fix formatting appearance in settings page for "Supported Placeholders"
 ### 31.5.3
 * Remove all references to upgrade notifier jobs/crons
 ### 31.5.2

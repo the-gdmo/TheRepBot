@@ -12,7 +12,14 @@ export function formatMessage(
     let result = template;
     for (const [key, value] of Object.entries(placeholders)) {
         const singleRegex = new RegExp(`{${key}}`, "gi");
-        result = result.replaceAll(singleRegex, value);
+        const doubleRegex = new RegExp(`{{${key}}}`, "gi");
+        if (doubleRegex.test(result)) {
+            logger.debug(`Replacing {{${key}}} with ${value}`);
+            result = result.replaceAll(doubleRegex, value);
+        } else if (singleRegex.test(result)) {
+            logger.debug(`Replacing {${key}} with ${value}`);
+            result = result.replaceAll(singleRegex, value);
+        }
     }
 
     const footer = `\n\n---\n\n^(I am a bot — [contact the mods of r/${event.subreddit.name}](https://reddit.com/message/compose?to=r/${event.subreddit.name}) with any questions or [r/TheRepBot](https://www.reddit.com/message/compose?to=r/TheRepBot) to talk directly with my developer)`;

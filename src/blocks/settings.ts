@@ -411,7 +411,7 @@ const NotifyOnSuccessReplyOptionChoices = [
 ];
 
 export enum AccessControlOptions {
-    ModOnly = "moderators-only",
+    ModsOnly = "moderators-only",
     ModsAndSuperusers = "moderators-and-superusers",
     ModsSuperusersAndPostAuthor = "moderators-superusers-and-op",
     ModsAndPostAuthor = "moderators-and-op",
@@ -421,7 +421,7 @@ export enum AccessControlOptions {
 const AccessControlOptionChoices = [
     {
         label: "Moderators Only",
-        value: AccessControlOptions.ModOnly,
+        value: AccessControlOptions.ModsOnly,
     },
     {
         label: "Moderators and Superusers",

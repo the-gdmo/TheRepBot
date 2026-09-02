@@ -249,7 +249,6 @@ export async function getModDupKey(
         return "";
     }
     if (!parentComment) {
-        logger.warn("❌ Parent comment not found.");
         return "";
     }
     return `modAward:${parentComment.id}:${event.post.id}:${event.subreddit.name}`;

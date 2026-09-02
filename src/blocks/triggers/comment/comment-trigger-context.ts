@@ -181,7 +181,6 @@ export async function getParentComment(
         parentComment = undefined;
     }
     if (!parentComment) {
-        logger.warn("❌ Parent comment not found.");
         return undefined;
     }
 }

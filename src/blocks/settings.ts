@@ -582,7 +582,7 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.AwardsRequiredToCreateNewPosts,
                 label: "Awards required to create new posts",
                 helpText:
-                    "Amount of awarded points required before a user can make a new post. Set to 0 to disable. Making this too big can potentially cause issues",
+                    "Amount of awarded points required before a user can make a new post. Set to 0 to disable",
                 defaultValue: 0,
                 onValidate: numberFieldHasValidOption,
             },
@@ -1156,15 +1156,15 @@ export const appSettings: SettingsFormField[] = [
                 type: "number",
                 label: "Leaderboard Size",
                 helpText:
-                    "Number of users to show on the leaderboard",
+                    "Number of users to show on the leaderboard (1-10,000)",
                 defaultValue: 50,
                 onValidate: ({ value }) => {
                     if (value === undefined || value === null || isNaN(value)) {
                         return "You must enter a number";
                     }
 
-                    if (value !== undefined && (value < 1)) {
-                        return "Value must be greater than 0";
+                    if (value !== undefined && (value < 1 || value > 10_000)) {
+                        return "Value should be between 1 and 10,000";
                     }
                 },
             },

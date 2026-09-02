@@ -397,14 +397,14 @@ export async function updateLeaderboard(
                         entry.member
                     )}](https://old.reddit.com/r/${subredditName}/wiki/user/${
                         entry.member
-                    })|${entry.score}`
+                    })|${entry.score.toLocaleString('en')}`
             )
             .join("\n");
     } else {
         wikiContents += "No users have been awarded yet.";
     }
 
-    wikiContents += `\n\nThe leaderboard shows the top ${leaderboardSize} ${pluralize(
+    wikiContents += `\n\nThe leaderboard shows the top ${leaderboardSize.toLocaleString('en')} ${pluralize(
         "user",
         leaderboardSize
     )} who ${pluralize(

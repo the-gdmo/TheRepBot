@@ -1,6 +1,5 @@
 import { CommentCreate, CommentUpdate } from "@devvit/protos";
 import { Comment, TriggerContext, User } from "@devvit/public-api";
-import { logger } from "../../logger";
 import { getTriggers } from "./common-utilities";
 
 export const POINTS_STORE_KEY = `thanksPointsStore`;

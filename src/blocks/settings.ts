@@ -582,7 +582,7 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.AwardsRequiredToCreateNewPosts,
                 label: "Awards required to create new posts",
                 helpText:
-                    "Amount of awarded points required before a user can make a new post. Set to 0 to disable.",
+                    "Amount of awarded points required before a user can make a new post. Set to 0 to disable. Making this too big can potentially cause issues",
                 defaultValue: 0,
                 onValidate: numberFieldHasValidOption,
             },

@@ -768,7 +768,7 @@ export async function userHasPermission(
 
     const hasPermission =
         accessControl === AccessControlOptions.Everyone ||
-        (accessControl === AccessControlOptions.ModOnly && isMod) ||
+        (accessControl === AccessControlOptions.ModsOnly && isMod) ||
         (accessControl === AccessControlOptions.ModsAndSuperusers &&
             (isMod || isSuperUser)) ||
         (accessControl === AccessControlOptions.ModsSuperusersAndPostAuthor &&
@@ -789,7 +789,7 @@ export async function userHasPermission(
         let notifyKey: AppSetting;
 
         switch (accessControl) {
-            case AccessControlOptions.ModOnly:
+            case AccessControlOptions.ModsOnly:
                 msgKey = AppSetting.ModOnlyDisallowedMessage;
                 notifyKey = AppSetting.NotifyOnModOnlyDisallowed;
                 break;

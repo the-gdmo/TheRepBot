@@ -61,6 +61,8 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 ## Version History
+### 31.5.6
+* Make it so all number fields only have to be larger than 0
 ### 31.5.5
 * Make double and single curly braces work properly for all placeholders
 * Update settings page to show all placeholders without curly braces

@@ -1156,15 +1156,15 @@ export const appSettings: SettingsFormField[] = [
                 type: "number",
                 label: "Leaderboard Size",
                 helpText:
-                    "Number of users to show on the leaderboard (1-10,000)",
+                    "Number of users to show on the leaderboard (1-1,000)",
                 defaultValue: 50,
                 onValidate: ({ value }) => {
                     if (value === undefined || value === null || isNaN(value)) {
                         return "You must enter a number";
                     }
 
-                    if (value !== undefined && (value < 1 || value > 10_000)) {
-                        return "Value should be between 1 and 10,000";
+                    if (value !== undefined && (value < 1 || value > 1_000)) {
+                        return "Value should be between 1 and 1,000";
                     }
                 },
             },

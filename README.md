@@ -61,6 +61,8 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 ## Version History
+### 31.5.13
+* Add placeholders to help text of "Unrestricted Posting Message"
 ### 31.5.12
 * Add message for if a user makes a post while post restriction is disabled
 * Update to latest devvit version

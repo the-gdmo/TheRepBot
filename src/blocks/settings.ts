@@ -1019,7 +1019,7 @@ export const appSettings: SettingsFormField[] = [
                 type: "paragraph",
                 name: AppSetting.UnrestrictedPostingMessage,
                 label: "Unrestricted Posting Message",
-                helpText: `Message sent on all new posts if "Awards required to create new posts" is set to 0`,
+                helpText: `Message sent on all new posts if "Awards required to create new posts" is set to 0. Placeholders supported: name, markdownGuide, commandsWithOr, commandsWithAnd`,
                 defaultValue: TemplateDefaults.UnrestrictedPostingMessage,
                 onValidate: paragraphFieldContainsText,
             },

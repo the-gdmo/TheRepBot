@@ -1,7 +1,7 @@
 {
   "private": true,
   "name": "therepbot",
-  "version": "31.5.14",
+  "version": "31.5.15",
   "license": "BSD-3-Clause",
   "type": "module",
   "scripts": {

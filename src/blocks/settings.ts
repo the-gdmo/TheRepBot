@@ -132,7 +132,7 @@ export enum TemplateDefaults {
     PostAuthorAwardMessage = "OPs cannot be awarded points.",
     TrustedUserAwardSuccessMessage = "Superuser u/{awarder} gave an award! u/{awardee} now has {total}{symbol} {name}s. {awardee}'s user page is located [here]({awardeePage}). Leaderboard is located [here]({leaderboard}).",
     ModsAndPostAuthorDisallowedMessage = "Only moderators and Post Authors (OPs) can award {name}s.",
-    UnrestrictedPostingMessage = "***ATTENTION to OP:*** Please award {name}s by replying to successful comments. Valid command(s) are {commandsWithAnd}.\n\nIf you do not know where something is, we kindly ask that you remove your post.\n\nFailure to do so may result in a ban.\n*^ To hide text, write it like this `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({markdownGuide})*.",
+    UnrestrictedPostingMessage = "***ATTENTION to OP:*** Please award {name}s by replying to successful comments. Valid command(s) are {commandsWithAnd}.\n\nIf you do not know where something is, we kindly ask that you remove your post.\n\nFailure to do so may result in a ban.\n\n*^ To hide text, write it like this `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({markdownGuide})*.",
 }
 
 export enum AutoSuperuserReplyOptions {

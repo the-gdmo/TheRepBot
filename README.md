@@ -61,7 +61,7 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 ## Version History
-### 31.5.14
+### 31.5.15
 * Fix typo in default "Unrestricted Posting Message" template
 ### 31.5.13
 * Add placeholders to help text of "Unrestricted Posting Message"

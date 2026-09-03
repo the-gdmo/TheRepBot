@@ -1,10 +1,10 @@
 import { TriggerContext } from "@devvit/public-api";
 import { AppSetting } from "../../settings";
 import { logger } from "../../logger";
-import { CommentSubmit, CommentUpdate } from "@devvit/protos";
+import { CommentSubmit, CommentUpdate, PostSubmit } from "@devvit/protos";
 
 export function formatMessage(
-    event: CommentSubmit | CommentUpdate,
+    event: CommentSubmit | CommentUpdate | PostSubmit,
     template: string,
     placeholders: Record<string, string>
 ): string {

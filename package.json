@@ -21,12 +21,12 @@
     "update": "npx devvit update app"
   },
   "dependencies": {
-    "@devvit/cli": "0.14.1",
-    "@devvit/protos": "0.14.1",
-    "@devvit/public-api": "0.14.1",
-    "@devvit/shared-types": "0.14.1",
-    "@devvit/start": "0.14.1",
-    "@devvit/web": "0.14.1",
+    "@devvit/cli": "0.14.2",
+    "@devvit/protos": "0.14.2",
+    "@devvit/public-api": "0.14.2",
+    "@devvit/shared-types": "0.14.2",
+    "@devvit/start": "0.14.2",
+    "@devvit/web": "0.14.2",
     "@hono/node-server": "^1.19.9",
     "@tailwindcss/vite": "^4.3.3",
     "@types/markdown-escape": "^1.1.3",

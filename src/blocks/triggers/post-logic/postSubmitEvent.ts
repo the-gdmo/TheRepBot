@@ -22,8 +22,58 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
     const awardsRequired =
         (settings[AppSetting.AwardsRequiredToCreateNewPosts] as number) ?? 0;
 
+    const pointName = (settings[AppSetting.PointName] as string) ?? "point";
+    const triggers = (
+        (settings[AppSetting.PointTriggerWords] as string) ?? "!award\n.award"
+    )
+        .split(/\r?\n/)
+        .map((w) => w.trim())
+        .filter(Boolean);
+
+    let commandListWithAnd = "";
+    let commandListWithOr = "";
+
+    for (const [index, trigger] of triggers.entries()) {
+        if (index === 0) {
+            commandListWithAnd += `**${trigger}**`;
+            commandListWithOr += `**${trigger}**`;
+        } else if (triggers.length === 2) {
+            commandListWithAnd += ` and **${trigger}**`;
+            commandListWithOr += ` or **${trigger}**`;
+        } else if (index === triggers.length - 1) {
+            commandListWithAnd += `, and **${trigger}**`;
+            commandListWithOr += `, or **${trigger}**`;
+        } else {
+            commandListWithAnd += `, **${trigger}**`;
+            commandListWithOr += `, **${trigger}**`;
+        }
+    }
+
+    const helpPage = (settings[AppSetting.PointSystemHelpPage] as string) ?? "";
+    const discordLink =
+        (settings[AppSetting.DiscordServerLink] as string) ?? "";
+
     if (awardsRequired === 0) {
-        logger.info(`Awarding not required, returning.`);
+        const unrestrictedPostingMessage = formatMessage(
+            event,
+            (settings[AppSetting.UnrestrictedPostingMessage] as string) ??
+                TemplateDefaults.UnrestrictedPostingMessage,
+            {
+                name: pointName,
+                commandsWithAnd: commandListWithAnd,
+                commandsWithOr: commandListWithOr,
+                markdownGuide: "https://www.reddit.com/wiki/markdown",
+            }
+        );
+
+        const unrestrictedPostingComment = await context.reddit.submitComment({
+            id: event.post.id,
+            text: unrestrictedPostingMessage,
+        });
+
+        unrestrictedPostingComment.distinguish(true);
+
+        logger.info(`Awarding not required, sending comment and returning.`);
         return;
     }
 
@@ -70,36 +120,6 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
 
     //check if user is restricted, if they are, remove post and send notification with AppSetting.SubsequentPostRestrictionMessage
     //and return
-    const pointName = (settings[AppSetting.PointName] as string) ?? "point";
-    const triggers = (
-        (settings[AppSetting.PointTriggerWords] as string) ?? "!award\n.award"
-    )
-        .split(/\r?\n/)
-        .map((w) => w.trim())
-        .filter(Boolean);
-
-    let commandListWithAnd = "";
-    let commandListWithOr = "";
-
-    for (const [index, trigger] of triggers.entries()) {
-        if (index === 0) {
-            commandListWithAnd += `**${trigger}**`;
-            commandListWithOr += `**${trigger}**`;
-        } else if (triggers.length === 2) {
-            commandListWithAnd += ` and **${trigger}**`;
-            commandListWithOr += ` or **${trigger}**`;
-        } else if (index === triggers.length - 1) {
-            commandListWithAnd += `, and **${trigger}**`;
-            commandListWithOr += `, or **${trigger}**`;
-        } else {
-            commandListWithAnd += `, **${trigger}**`;
-            commandListWithOr += `, **${trigger}**`;
-        }
-    }
-
-    const helpPage = (settings[AppSetting.PointSystemHelpPage] as string) ?? "";
-    const discordLink =
-        (settings[AppSetting.DiscordServerLink] as string) ?? "";
     if (restrictedFlagExists) {
         const subsequentTemplate =
             (settings[AppSetting.SubsequentPostRestrictionMessage] as string) ??
@@ -153,17 +173,20 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         (settings[AppSetting.InitialMessageToRestrictedUsers] as string) ??
         TemplateDefaults.InitialMessageToRestrictedUsers;
 
-
-    const formattedText = formatMessage(event, initialMessageToRestrictedUsers, {
-        discordLink,
-        helpPage,
-        requirement: requirement.toString(),
-        subreddit: subredditName,
-        name: pointName,
-        commandsWithOr: commandListWithOr,
-        commandsWithAnd: commandListWithAnd,
-        markdownGuide: "https://www.reddit.com/wiki/markdown",
-    });
+    const formattedText = formatMessage(
+        event,
+        initialMessageToRestrictedUsers,
+        {
+            discordLink,
+            helpPage,
+            requirement: requirement.toString(),
+            subreddit: subredditName,
+            name: pointName,
+            commandsWithOr: commandListWithOr,
+            commandsWithAnd: commandListWithAnd,
+            markdownGuide: "https://www.reddit.com/wiki/markdown",
+        }
+    );
     const initialPostRestrictionMessage = await context.reddit.submitComment({
         id: event.post.id,
         text: formattedText,

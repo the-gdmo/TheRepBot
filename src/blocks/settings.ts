@@ -102,10 +102,9 @@ export enum AppSetting {
     ModsAndPostAuthorDisallowedMessage = "modsAndPostAuthorDisallowedMessage",
     NotifyOnModsAndPostAuthorDisallowed = "notifyOnModsAndPostAuthorDisallowed",
     FlairFormatting = "flairFormatting",
+    UnrestrictedPostingMessage = "UnrestrictedPostingMessage",
 }
 
-// Rank 1 | 10
-// #1 | 10
 export enum TemplateDefaults {
     FlairFormatting = "{total}{symbol} | #{place}",
     SubsequentPostRestrictionMessage = "***ATTENTION to OP:*** You must award {name}s by replying to the successful comments. Before you can create new posts, you must award **{requirement}** {name}s to users who respond on [{title}]({permalink}).",
@@ -133,6 +132,7 @@ export enum TemplateDefaults {
     PostAuthorAwardMessage = "OPs cannot be awarded points.",
     TrustedUserAwardSuccessMessage = "Superuser u/{awarder} gave an award! u/{awardee} now has {total}{symbol} {name}s. {awardee}'s user page is located [here]({awardeePage}). Leaderboard is located [here]({leaderboard}).",
     ModsAndPostAuthorDisallowedMessage = "Only moderators and Post Authors (OPs) can award {name}s.",
+    UnrestrictedPostingMessage = "***ATTENTION to OP:*** Please award {name}s by replying to successful comments. Valid command(s) are {commandsWithAnd}.\n\nIf you do not know where something is, we kindly ask that you remove your post.\n\nFailure to do so may result in a ban.n\n*^ To hide text, write it like this `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({markdownGuide})*.",
 }
 
 export enum AutoSuperuserReplyOptions {
@@ -1015,6 +1015,14 @@ export const appSettings: SettingsFormField[] = [
         type: "group",
         label: "Notification Settings",
         fields: [
+            {
+                type: "paragraph",
+                name: AppSetting.UnrestrictedPostingMessage,
+                label: "Unrestricted Posting Message",
+                helpText: `Message sent on all new posts if "Awards required to create new posts" is set to 0`,
+                defaultValue: TemplateDefaults.UnrestrictedPostingMessage,
+                onValidate: paragraphFieldContainsText,
+            },
             {
                 type: "select",
                 name: AppSetting.NotifyOnSelfAward,

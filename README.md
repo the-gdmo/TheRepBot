@@ -61,6 +61,9 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 ## Version History
+### 31.5.9
+* Add message for if a user makes a post while post restriction is disabled
+* Update to latest devvit version
 ### 31.5.8
 * Make it so all number fields only have to be larger than 0 (excludes leaderboard size)
 * Format leaderboard wiki page with commas separating values in the thousand, million, etc. range

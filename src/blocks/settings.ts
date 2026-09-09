@@ -120,7 +120,7 @@ export enum TemplateDefaults {
     SelfAwardTemplate = "Hello {awarder}, you cannot award a {name} to yourself.",
     NotifyOnNormalAwardSuccessTemplate = "+1 {name} awarded to u/{awardee} by u/{awarder}. Total: {total}{symbol}. {awardee}'s user page is located [here]({awardeePage}). Leaderboard is located [here]({leaderboard}).",
     NotifyOnSuperuserTemplate = "Hello {awardee},\n\nNow that you have reached {threshold} points you can now award points yourself, even if normal users do not have permission to. Please use the command `{command}` if you'd like to do this.",
-    InitialMessageToRestrictedUsers = "***ATTENTION to OP:*** You must award at least {requirement} {name}s by replying to the successful comments. Valid command(s) are {commandsWithAnd}. Failure to do so may result in a ban.\n\n*^ To hide text, write it like this `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({markdownGuide})*.",
+    InitialMessageToRestrictedUsers = "***ATTENTION to OP:*** You must award at least {requirement} {name}s by replying to the successful comments. Valid command(s) are {commandsWithAnd}. Failure to do so may result in a ban.\n\n*To hide text, write it like this: `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({markdownGuide})*.",
     PointAlreadyAwardedToUserMessage = "{awardee} has already received a {name} for this post.",
     ModAwardCommandSuccessMessage = "Moderator u/{awarder} gave an award! u/{awardee} now has {total}{symbol} {name}s. {awardee}'s user page is located [here]({awardeePage}). Leaderboard is located [here]({leaderboard}).",
     ModAwardCommandFailMessage = "Hello {awarder}. You must be a moderator or trusted user to use {command}.",
@@ -132,7 +132,7 @@ export enum TemplateDefaults {
     PostAuthorAwardMessage = "OPs cannot be awarded points.",
     TrustedUserAwardSuccessMessage = "Superuser u/{awarder} gave an award! u/{awardee} now has {total}{symbol} {name}s. {awardee}'s user page is located [here]({awardeePage}). Leaderboard is located [here]({leaderboard}).",
     ModsAndPostAuthorDisallowedMessage = "Only moderators and Post Authors (OPs) can award {name}s.",
-    UnrestrictedPostingMessage = "***ATTENTION to OP:*** Please award {name}s by replying to successful comments. Valid command(s) are {commandsWithAnd}.\n\nIf you do not know where something is, we kindly ask that you remove your post.\n\nFailure to do so may result in a ban.\n\n*^ To hide text, write it like this `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({markdownGuide})*.",
+    UnrestrictedPostingMessage = "***ATTENTION to OP:*** Please award {name}s by replying to successful comments. Valid command(s) are {commandsWithAnd}.\n\nIf you do not know where something is, we kindly ask that you remove your post.\n\nFailure to do so may result in a ban.\n\n*To hide text, write it like this: `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({markdownGuide})*.",
 }
 
 export enum AutoSuperuserReplyOptions {
@@ -1018,7 +1018,7 @@ export const appSettings: SettingsFormField[] = [
             {
                 type: "paragraph",
                 name: AppSetting.UnrestrictedPostingMessage,
-                label: "Unrestricted Posting Message",
+                label: "Unrestricted Posting Message (All placeholders allow single or double curly braces)",
                 helpText: `Message sent on all new posts if "Awards required to create new posts" is set to 0. Placeholders supported: name, markdownGuide, commandsWithOr, commandsWithAnd`,
                 defaultValue: TemplateDefaults.UnrestrictedPostingMessage,
                 onValidate: paragraphFieldContainsText,

@@ -45,8 +45,25 @@ export async function setUserScore(
     username: string,
     newScore: ScoreResult,
     appSettings: SettingsValues
-) {
-    // Queue user for cleanup checks in 24 hours, overwriting existing value.
+): Promise<void> {
+    /**
+     * POINTS_STORE_KEY is the single source of truth.
+     *
+     * member = username
+     * score  = user's point total
+     */
+    await context.redis.zAdd(POINTS_STORE_KEY, {
+        member: username,
+        score: newScore.score,
+    });
+
+    logger.debug("Saved user score", {
+        username,
+        score: newScore.score,
+    });
+
+    // Queue user for cleanup checks in 24 hours,
+    // overwriting any existing cleanup time.
     await setCleanupForUsers([username], context);
 
     // Queue a leaderboard update.
@@ -54,7 +71,7 @@ export async function setUserScore(
         name: "updateLeaderboard",
         runAt: new Date(),
         data: {
-            reason: `Awarded a point to ${username}. New score: ${newScore.score}`,
+            reason: `Updated score for ${username}. New score: ${newScore.score}`,
         },
     });
 
@@ -64,6 +81,7 @@ export async function setUserScore(
             | undefined) ?? ExistingFlairOverwriteHandling.OverwriteNumeric;
 
     let shouldSetUserFlair: boolean;
+
     if (
         existingFlairOverwriteHandling ===
             ExistingFlairOverwriteHandling.OverwriteNumericSymbol ||
@@ -77,114 +95,126 @@ export async function setUserScore(
     ) {
         shouldSetUserFlair = false;
     } else {
-        shouldSetUserFlair = !newScore.userHasFlair || newScore.flairIsNumber;
+        shouldSetUserFlair =
+            !newScore.userHasFlair ||
+            newScore.flairIsNumber ||
+            newScore.flairShouldBeManaged;
     }
 
-    if (shouldSetUserFlair) {
-        console.log(
-            `Setting points flair for ${username}. New score: ${newScore.score}`
-        );
-
-        let cssClass = appSettings[AppSetting.CSSClass] as string | undefined;
-        // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
-        if (!cssClass) {
-            cssClass = undefined;
-        }
-
-        let flairTemplate = appSettings[AppSetting.FlairTemplate] as
-            | string
-            | undefined;
-        // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
-        if (!flairTemplate) {
-            flairTemplate = undefined;
-        }
-
-        if (flairTemplate && cssClass) {
-            // Prioritise flair templates over CSS classes.
-            cssClass = undefined;
-        }
-
-        const flairTextTemplate = "{points}";
-
-        if (!context.subredditName) {
-            logger.error(
-                "❌ No subreddit name found in context, cannot set user flair"
-            );
-            return;
-        }
-
-        const key = `flairToggle:${username}`;
-        const exists = await context.redis.exists(key);
-
-        if (exists) {
-            logger.debug("❌ Flair should not be set, skipping", {
+    if (!shouldSetUserFlair) {
+        logger.debug(
+            `${username}: Flair not set because existing flair should be preserved`,
+            {
                 username,
-                newScore: newScore.score,
-                cssClass,
-                flairTemplate,
-                flairTextTemplate,
-                subreddit: context.subredditName,
-            });
-            return;
-        }
-
-        const flairFormatting =
-            (appSettings[AppSetting.FlairFormatting] as string) ??
-            TemplateDefaults.FlairFormatting;
-
-        const redisKey = POINTS_STORE_KEY;
-        const leaderboard = await context.redis.zRange(redisKey, 0, -1, {
-            by: "rank",
-            reverse: true,
-        });
-
-        const index = leaderboard.findIndex(
-            (member) => member.member === username
+                score: newScore.score,
+                userHasFlair: newScore.userHasFlair,
+                flairIsNumber: newScore.flairIsNumber,
+                existingFlairOverwriteHandling,
+                shouldSetUserFlair,
+            }
         );
 
-        const userRank = index >= 0 ? index + 1 : undefined;
+        return;
+    }
 
-        logger.debug("User leaderboard rank", {
+    if (!context.subredditName) {
+        logger.error(
+            "❌ No subreddit name found in context, cannot set user flair"
+        );
+        return;
+    }
+
+    /**
+     * A flair toggle prevents the bot from changing this user's flair.
+     */
+    const flairToggleKey = `flairToggle:${username}`;
+    const flairDisabled = await context.redis.exists(flairToggleKey);
+
+    if (flairDisabled) {
+        logger.debug("❌ Flair should not be set, skipping", {
             username,
-            rank: userRank,
-            totalUsers: leaderboard.length,
-        });
-
-        const userScore = userRank ?? 0;
-
-        logger.debug("Checking values", {
-            userRank,
-            newScore: userScore,
-        });
-
-        const flairText = flairFormatting
-            .replaceAll("{place}", userScore > 0 ? `${userScore}` : "0")
-            .replaceAll("{total}", newScore.score.toString())
-            .replaceAll(
-                "{symbol}",
-                appSettings[AppSetting.PointSymbol] as string
-            );
-
-        logger.info("Setting user flair", {
-            username,
-            newScore: userScore,
-            cssClass,
-            flairTemplate,
-            flairText,
+            score: newScore.score,
             subreddit: context.subredditName,
         });
-        await context.reddit.setUserFlair({
-            subredditName: context.subredditName,
-            username,
-            cssClass,
-            flairTemplateId: flairTemplate,
-            text: flairText,
-        });
-    } else {
-        console.log(
-            `${username}: Flair not set (option disabled or flair in wrong state)`
-        );
+
+        return;
     }
+
+    let cssClass = appSettings[AppSetting.CSSClass] as string | undefined;
+
+    if (!cssClass) {
+        cssClass = undefined;
+    }
+
+    let flairTemplate = appSettings[AppSetting.FlairTemplate] as
+        | string
+        | undefined;
+
+    if (!flairTemplate) {
+        flairTemplate = undefined;
+    }
+
+    /**
+     * Flair templates take priority over old Reddit CSS classes.
+     */
+    if (flairTemplate && cssClass) {
+        cssClass = undefined;
+    }
+
+    const flairFormatting =
+        (appSettings[AppSetting.FlairFormatting] as string | undefined) ??
+        TemplateDefaults.FlairFormatting;
+
+    const pointSymbol =
+        (appSettings[AppSetting.PointSymbol] as string | undefined) ?? "";
+
+    /**
+     * Get the leaderboard in DESCENDING score order.
+     *
+     * zRank() is not used here because zRank() ranks the LOWEST
+     * score as rank 0.
+     */
+    const leaderboard = await context.redis.zRange(POINTS_STORE_KEY, 0, -1, {
+        by: "rank",
+        reverse: true,
+    });
+
+    const index = leaderboard.findIndex((member) => member.member === username);
+
+    const userRank = index >= 0 ? index + 1 : undefined;
+
+    logger.debug("User leaderboard rank", {
+        username,
+        rank: userRank,
+        score: newScore.score,
+        totalUsers: leaderboard.length,
+    });
+
+    const flairText = flairFormatting
+        .replaceAll(
+            "{place}",
+            userRank !== undefined ? userRank.toString() : "0"
+        )
+        .replaceAll("{total}", newScore.score.toString())
+        .replaceAll("{symbol}", pointSymbol);
+
+    logger.info("Setting user flair", {
+        username,
+        score: newScore.score,
+        rank: userRank,
+        cssClass,
+        flairTemplate,
+        flairText,
+        subreddit: context.subredditName,
+    });
+
+    await context.reddit.setUserFlair({
+        subredditName: context.subredditName,
+        username,
+        cssClass,
+        flairTemplateId: flairTemplate,
+        text: flairText,
+    });
 }
 
 export async function handleThanksEvent(

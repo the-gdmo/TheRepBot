@@ -257,10 +257,22 @@ export async function awardPointToUserModCommand(
         return;
     }
 
+    let flairShouldBeManaged: boolean;
+
+    const key = `flairToggle:${recipient.username}`;
+    const exists = await context.redis.exists(key);
+
+    if (exists) {
+        flairShouldBeManaged = false;
+    } else {
+        flairShouldBeManaged = true;
+    }
+
     const newScore: ScoreResult = {
         score: existingScore.score + 1,
         userHasFlair: existingScore.userHasFlair,
         flairIsNumber: existingScore.flairIsNumber,
+        flairShouldBeManaged,
     };
 
     // 🔒 Prevent duplicates

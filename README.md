@@ -61,6 +61,8 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 ## Version History
+### 31.5.17
+* Make it so that user score will properly be managed if the user's flair is managed, but they don't have a numeric flair
 ### 31.5.16
 * Fix formatting in default "Unrestricted Posting Message" and "Initial Post Restriction Message" templates
 * Inform users that all placeholders support single and double curly braces on "Unrestricted Posting Message"

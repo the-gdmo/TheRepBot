@@ -289,11 +289,23 @@ export async function manualSetPointsFormHandler(
         return;
     }
 
+    let flairShouldBeManaged: boolean;
+
+    const key = `flairToggle:${user.username}`;
+    const exists = await context.redis.exists(key);
+
+    if (exists) {
+        flairShouldBeManaged = false;
+    } else {
+        flairShouldBeManaged = true;
+    }
+    
     // ✅ Overwrite the user's score directly
     const newScore: ScoreResult = {
         score: entry,
         userHasFlair: false,
         flairIsNumber: false,
+        flairShouldBeManaged,
     };
     setUserScore(
         context,

@@ -86,10 +86,22 @@ async function awardPointToUserNormalCommand(
         return;
     }
 
+    let flairShouldBeManaged: boolean;
+
+    const key = `flairToggle:${recipient.username}`;
+    const exists = await context.redis.exists(key);
+
+    if (exists) {
+        flairShouldBeManaged = false;
+    } else {
+        flairShouldBeManaged = true;
+    }
+
     const newScore: ScoreResult = {
         score: existingScore.score + 1,
         userHasFlair: existingScore.userHasFlair,
         flairIsNumber: existingScore.flairIsNumber,
+        flairShouldBeManaged,
     };
 
     const pointName = (settings[AppSetting.PointName] as string) ?? "point";
@@ -166,7 +178,9 @@ async function awardPointToUserNormalCommand(
     } catch {}
 
     if (!userObj) {
-        logger.error("Failed to fetch user for flair update after normal award");
+        logger.error(
+            "Failed to fetch user for flair update after normal award"
+        );
         return;
     }
 
@@ -579,14 +593,14 @@ export async function executeUserCommand(
     }
 
     let awardee: User | undefined;
-    
-        try {
-            awardee = await context.reddit.getUserByUsername(recipient);
-        } catch {
-            awardee = undefined;
-        }
-    
-        if (!awardee) return false;
+
+    try {
+        awardee = await context.reddit.getUserByUsername(recipient);
+    } catch {
+        awardee = undefined;
+    }
+
+    if (!awardee) return false;
 
     // 🏆 Award point + side effects
     await awardPointToUserNormalCommand(event, context, awarder, awardee);

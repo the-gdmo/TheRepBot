@@ -105,6 +105,7 @@ export interface ScoreResult {
     place?: number;
     userHasFlair: boolean;
     flairIsNumber: boolean;
+    flairShouldBeManaged: boolean;
 }
 
 export function commandUsedInIgnoredContext(

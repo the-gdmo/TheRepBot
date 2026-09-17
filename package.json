@@ -1,7 +1,7 @@
 {
   "private": true,
   "name": "therepbot",
-  "version": "31.5.16",
+  "version": "31.5.17",
   "license": "BSD-3-Clause",
   "type": "module",
   "scripts": {
@@ -10,7 +10,7 @@
     "patch": "npm run type-check && devvit publish --public --bump patch",
     "minor": "npm run type-check && devvit publish --public --bump minor",
     "major": "npm run type-check && devvit publish --public --bump major",
-    "dev": "devvit playtest therepbot",
+    "dev": "npm run type-check && devvit playtest therepbot",
     "launch": "npm run deploy && devvit publish",
     "lint": "eslint 'src/**/*.{ts,tsx}'",
     "login": "devvit login",

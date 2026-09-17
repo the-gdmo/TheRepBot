@@ -61,6 +61,8 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 # Latest Changes
+## 31.5.19
+* Make it so that user score will properly be managed if the user's flair is not managed
 ## 31.5.18
 * Add changelog
 * Change version formatting (`##` instead of `###`)
@@ -69,12 +71,5 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 ## 31.5.16
 * Fix formatting in default "Unrestricted Posting Message" and "Initial Post Restriction Message" templates
 * Inform users that all placeholders support single and double curly braces on "Unrestricted Posting Message"
-## 31.5.15
-* Fix typo in default "Unrestricted Posting Message" template
-## 31.5.13
-* Add placeholders to help text of "Unrestricted Posting Message"
-## 31.5.12
-* Add message for if a user makes a post while post restriction is disabled
-* Update to latest devvit version
 
 For older versions, please see the [full changelog](https://github.com/the-gdmo/therepbot/blob/main/changelog.md).

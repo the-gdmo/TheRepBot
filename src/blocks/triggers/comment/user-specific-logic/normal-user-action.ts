@@ -97,8 +97,22 @@ async function awardPointToUserNormalCommand(
         flairShouldBeManaged = true;
     }
 
+    const username = recipient.username;
+
+    const scoreFromRedis = await context.redis.zScore(
+        POINTS_STORE_KEY,
+        username
+    );
+
+    if (!scoreFromRedis) return;
+
+    await context.redis.zAdd(POINTS_STORE_KEY, {
+        member: username,
+        score: scoreFromRedis ? scoreFromRedis + 1 : existingScore.score + 1,
+    });
+
     const newScore: ScoreResult = {
-        score: existingScore.score + 1,
+        score: scoreFromRedis ? scoreFromRedis + 1 : existingScore.score + 1,
         userHasFlair: existingScore.userHasFlair,
         flairIsNumber: existingScore.flairIsNumber,
         flairShouldBeManaged,
@@ -117,6 +131,15 @@ async function awardPointToUserNormalCommand(
     const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${recipient.username}`;
     const awarderPage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${awarder}`;
 
+    const totalScore = await getCurrentScore(recipient, context);
+
+    if (!totalScore) {
+        logger.warn("❌ Could not retrieve existing score for user", {
+            awardee,
+        });
+        return;
+    }
+
     const successMessage = formatMessage(
         event,
         (settings[AppSetting.SuccessMessage] as string) ??
@@ -124,7 +147,7 @@ async function awardPointToUserNormalCommand(
         {
             awardee,
             awarder,
-            total: newScore.score.toString(),
+            total: totalScore.score.toString(),
             name: pointName,
             symbol: pointSymbol,
             leaderboard,

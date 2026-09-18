@@ -328,6 +328,26 @@ export async function awardPointToUserModCommand(
         (settings[AppSetting.TrustedUserAwardSuccessMessage] as string) ??
         TemplateDefaults.TrustedUserAwardSuccessMessage;
 
+    const totalScore = await getCurrentScore(recipient, context);
+
+    if (!totalScore) {
+        logger.warn("❌ Could not retrieve existing score for user", {
+            awardee,
+        });
+        return;
+    }
+
+    setUserScore(context, awardee, totalScore, settings);
+
+    await context.scheduler.runJob({
+        name: "updateLeaderboard",
+        runAt: new Date(),
+        data: {
+            reason: `Updated score for ${recipient.username}. Triggered by mod command.`,
+        },
+    });
+
+    await setUserScore(context, recipient.username, newScore, settings);
     const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${awardee}`;
     const awarderPage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${awarder}`;
     const modSuccessMessage = formatMessage(event, modSuccessTemplate, {

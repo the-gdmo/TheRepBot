@@ -61,6 +61,9 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 # Latest Changes
+## 31.5.20
+* Make an award receiver's wikipage be updated even if flair management is disabled for them
+* Update to latest devvit version
 ## 31.5.19
 * Make it so that user score will properly be managed if the user's flair is not managed
 ## 31.5.18
@@ -68,8 +71,5 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * Change version formatting (`##` instead of `###`)
 ## 31.5.17
 * Make it so that user score will properly be managed if the user's flair is managed, but they don't have a numeric flair
-## 31.5.16
-* Fix formatting in default "Unrestricted Posting Message" and "Initial Post Restriction Message" templates
-* Inform users that all placeholders support single and double curly braces on "Unrestricted Posting Message"
 
 For older versions, please see the [full changelog](https://github.com/the-gdmo/therepbot/blob/main/changelog.md).

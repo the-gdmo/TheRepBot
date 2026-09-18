@@ -7,6 +7,7 @@ import {
 } from "../../utils/common-utilities";
 import {
     AppSetting,
+    appSettings,
     NotifyOnBlockedUserReplyOptions,
     NotifyOnPointAlreadyAwardedToUserReplyOptions,
     NotifyOnSelfAwardReplyOptions,
@@ -139,6 +140,16 @@ async function awardPointToUserNormalCommand(
         });
         return;
     }
+
+    await context.scheduler.runJob({
+        name: "updateLeaderboard",
+        runAt: new Date(),
+        data: {
+            reason: `Updated score for ${recipient.username}. Triggered by normal command.`,
+        },
+    });
+
+    await setUserScore(context, recipient.username, newScore, settings);
 
     const successMessage = formatMessage(
         event,

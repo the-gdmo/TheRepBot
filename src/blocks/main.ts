@@ -9,7 +9,7 @@ import {
 } from "@devvit/public-api";
 import { appSettings } from "./settings";
 import { onAppFirstInstall, onAppInstallOrUpgrade } from "./installEvents";
-import { modLeaderboardInfoJob, updateLeaderboard } from "./leaderboard";
+import { modInfoJob, updateLeaderboard } from "./leaderboard";
 import { cleanupDeletedAccounts } from "./cleanupTasks";
 import {
     ADHOC_CLEANUP_JOB,
@@ -69,7 +69,7 @@ Devvit.addTrigger({
 
 Devvit.addSchedulerJob({
     name: UPDATE_MODINFO_JOB,
-    onRun: modLeaderboardInfoJob,
+    onRun: modInfoJob,
 });
 Devvit.addSchedulerJob({
     name: UPDATE_LEADERBOARD_JOB,
@@ -93,21 +93,21 @@ Devvit.addSchedulerJob({
 
 export const manualSetPointsForm = Devvit.createForm(
     (data) => ({ fields: data.fields as FormField[] }),
-    manualSetPointsFormHandler,
+    manualSetPointsFormHandler
 );
 
 export const manualSetFlairManagementForm = Devvit.createForm(
     (data) => ({ fields: data.fields as FormField[] }),
-    manualSetFlairManagementFormHandler,
+    manualSetFlairManagementFormHandler
 );
 export const manualSetFlairManagementForUserForm = Devvit.createForm(
     (data) => ({ fields: data.fields as FormField[] }),
-    manualSetFlairManagementForUserFormHandler,
+    manualSetFlairManagementForUserFormHandler
 );
 
 export const manualPostRestrictionRemovalForm = Devvit.createForm(
     (data) => ({ fields: data.fields as FormField[] }),
-    manualPostRestrictionRemovalHandler,
+    manualPostRestrictionRemovalHandler
 );
 
 Devvit.addMenuItem({
@@ -188,11 +188,11 @@ Devvit.addMenuItem({
 
 export async function handleCommentPin(
     event: MenuItemOnPressEvent,
-    context: Context,
+    context: Context
 ): Promise<void> {
     if (event.location !== "comment" || !event.targetId) {
         context.ui.showToast({
-            text: "Invalid comment target.",
+            text: "Invalid comment target",
         });
         return;
     }
@@ -201,7 +201,7 @@ export async function handleCommentPin(
         const comment = await context.reddit.getCommentById(event.targetId);
         if (!comment) {
             context.ui.showToast({
-                text: "Comment not found.",
+                text: "Comment not found",
             });
             return;
         }
@@ -210,7 +210,7 @@ export async function handleCommentPin(
 
         if (comment.authorName !== appUser.username) {
             context.ui.showToast({
-                text: "Only comments created by u/therepbot can be pinned.",
+                text: "Only comments created by u/therepbot can be pinned",
             });
             logger.warn("❌ Attempted to pin non-bot comment", {
                 commentAuthor: comment.authorName,
@@ -222,20 +222,20 @@ export async function handleCommentPin(
         // 🔒 Must be a top-level comment (parent is the post)
         if (!comment.parentId?.startsWith("t3_")) {
             context.ui.showToast({
-                text: "Only top-level comments can be pinned.",
+                text: "Only top-level comments can be pinned",
             });
             await logger.error(
-                `❌ Attempted to pin comment that isn't top-level`,
+                `❌ Attempted to pin comment that isn't top-level`
             );
             return;
         }
 
         if (comment.isStickied()) {
             context.ui.showToast({
-                text: "This comment is already pinned.",
+                text: "This comment is already pinned",
             });
             await logger.error(
-                `❌ Attempted to pin comment that is already stickied`,
+                `❌ Attempted to pin comment that is already stickied`
             );
             return;
         }
@@ -255,42 +255,33 @@ export async function handleCommentPin(
         });
 
         context.ui.showToast({
-            text: "Failed to pin comment.",
+            text: "Failed to pin comment",
         });
     }
 }
 
 export async function handleFlairToggle(
     event: MenuItemOnPressEvent,
-    context: Context,
+    context: Context
 ) {
     try {
         if (!event.targetId || !event.location) {
-            context.ui.showToast("Invalid target.");
-            return;
-        }
-
-        let username: string | null = null;
-
-        if (event.location === "comment") {
-            const comment = await context.reddit.getCommentById(event.targetId);
-            username = comment?.authorName ?? null;
-        } else if (event.location === "post") {
-            const post = await context.reddit.getPostById(event.targetId);
-            username = post?.authorName ?? null;
-        }
-
-        if (!username) {
-            context.ui.showToast(
-                "Cannot toggle flair. User may be shadowbanned.",
-            );
+            context.ui.showToast("Invalid target");
             return;
         }
 
         let currentValue = "";
 
+        const username = await getAuthorFromTarget(context, event.targetId);
         const key = `flairToggle:${username}`;
         const exists = await context.redis.exists(key);
+
+        if (!username) {
+            context.ui.showToast(
+                "Cannot toggle flair. User may be shadowbanned"
+            );
+            return;
+        }
 
         if (exists) {
             currentValue = "disabled";
@@ -317,24 +308,24 @@ export async function handleFlairToggle(
         });
 
         context.ui.showToast(
-            "An error occurred while toggling flair management.",
+            "An error occurred while toggling flair management"
         );
     }
 }
 
 export async function checkFlairToggle(
     event: MenuItemOnPressEvent,
-    context: Context,
+    context: Context
 ): Promise<void> {
     if (!event.targetId) {
-        context.ui.showToast("Invalid target.");
+        context.ui.showToast("Invalid target");
         return;
     }
 
     const username = await getAuthorFromTarget(context, event.targetId);
 
     if (!username) {
-        context.ui.showToast("Could not resolve user.");
+        context.ui.showToast("Could not resolve user");
         return;
     }
 
@@ -343,19 +334,20 @@ export async function checkFlairToggle(
 
     if (exists) {
         context.ui.showToast(
-            `Flair management is currently disabled for u/${username}`,
+            `Flair management is currently disabled for u/${username}`
         );
     } else {
         context.ui.showToast(
-            `Flair management is currently enabled for u/${username}`,
+            `Flair management is currently enabled for u/${username}`
         );
     }
 }
 
 export async function getAuthorFromTarget(
     context: Context,
-    targetId: string,
+    targetId: string
 ): Promise<string | null> {
+    if (!targetId) return null;
     try {
         // Try comment first
         const comment = await context.reddit.getCommentById(targetId);
@@ -373,67 +365,71 @@ export async function getAuthorFromTarget(
 
 export async function manualSetFlairManagementFormHandler(
     event: FormOnSubmitEvent<JSONObject>,
-    context: Context,
+    context: Context
 ) {
     const value = event.values.isEnabled as string | undefined;
     if (!value) {
-        context.ui.showToast("Your entry must contain a value.");
+        context.ui.showToast("Your entry must contain a value");
         return;
     }
-    const enabled = /^enabled$/gi;
-    const disabled = /^disabled$/gi;
+    const enabled = /^enabled$/i;
+    const disabled = /^disabled$/i;
     if (!disabled.test(value) && !enabled.test(value)) {
         context.ui.showToast(`You must enter "enabled" or "disabled"`);
         return;
     }
 
-    // 🔍 Resolve user from target
-    let username: string | null = null;
-
-    try {
-        if (context.commentId) {
-            const comment = await context.reddit.getCommentById(
-                context.commentId,
-            );
-            username = comment?.authorName ?? null;
-        } else if (context.postId) {
-            const post = await context.reddit.getPostById(context.postId);
-            username = post?.authorName ?? null;
-        }
-    } catch {}
-
-    if (!username) {
-        context.ui.showToast("Could not resolve user.");
-        return;
-    }
+    if (!context.commentId) return;
+    const comment = await context.reddit.getCommentById(context.commentId);
 
     let user: User | undefined;
     try {
-        user = await context.reddit.getUserByUsername(username);
-    } catch {}
+        user = await context.reddit.getUserByUsername(comment.authorName);
+    } catch {
+        //
+    }
 
     if (!user) {
-        context.ui.showToast("User may be shadowbanned.");
+        context.ui.showToast("Cannot set points. User may be shadowbanned");
         return;
     }
 
-    const key = `flairToggle:${user.username}`;
+    let targetId: string | undefined;
+
+    if (context.commentId) {
+        targetId = context.commentId;
+    } else if (context.postId) {
+        targetId = context.postId;
+    }
+
+    if (!targetId) {
+        context.ui.showToast(`Could not resolve user`);
+        return;
+    }
+
+    const username = await getAuthorFromTarget(context, targetId);
+    const key = `flairToggle:${username}`;
+
+    if (!username) {
+        context.ui.showToast("Cannot toggle flair. User may be shadowbanned");
+        return;
+    }
 
     // enabled = no key
     if (enabled.test(value)) {
         await context.redis.del(key);
-    } else {
+    } else if (disabled.test(value)) {
         await context.redis.set(key, "disabled");
     }
 
     context.ui.showToast(
-        `Flair management for u/${user.username} is now ${value}`,
+        `Flair management for u/${user.username} is now ${value}`
     );
 }
 
 export async function handleFlairToggleForUser(
     _: MenuItemOnPressEvent,
-    context: Context,
+    context: Context
 ) {
     try {
         const fields = [
@@ -464,41 +460,41 @@ export async function handleFlairToggleForUser(
         });
 
         context.ui.showToast(
-            "An error occurred while toggling flair management.",
+            "An error occurred while toggling flair management"
         );
     }
 }
 
 export async function manualSetFlairManagementForUserFormHandler(
     event: FormOnSubmitEvent<JSONObject>,
-    context: Context,
+    context: Context
 ) {
     const isEnabled = event.values.isEnabled as string | undefined;
     const target = event.values.target as string | undefined;
 
     if (!isEnabled) {
-        context.ui.showToast("Enablement status is required.");
+        context.ui.showToast("Enablement status is required");
         return;
     }
 
     if (!target) {
-        context.ui.showToast("Target user is required.");
+        context.ui.showToast("Target user is required");
         return;
     }
 
-    const enabled = /^enabled$/gi;
-    const disabled = /^disabled$/gi;
+    const enabled = /^enabled$/i;
+    const disabled = /^disabled$/i;
 
     if (!disabled.test(isEnabled) && !enabled.test(isEnabled)) {
         context.ui.showToast(`You must enter "enabled" or "disabled"`);
         return;
     }
 
-    const userRegex = /^[a-z0-9\_\-]{3,21}$/gi;
+    const userRegex = /^[a-z0-9\_\-]{3,21}$/i;
 
     if (!userRegex.test(target)) {
         context.ui.showToast(
-            "Username must be between 3 and 21 characters long and contain only letters, numbers, underscores, or hyphens.",
+            "Username must be between 3 and 21 characters long and contain only letters, numbers, underscores, or hyphens"
         );
         return;
     }
@@ -509,12 +505,12 @@ export async function manualSetFlairManagementForUserFormHandler(
     // enabled = no key
     if (enabled.test(isEnabled)) {
         await context.redis.del(key);
-    } else {
+    } else if (disabled.test(isEnabled)) {
         await context.redis.set(key, "disabled");
     }
 
     context.ui.showToast(
-        `Flair management for u/${target} is now ${isEnabled}`,
+        `Flair management for u/${target} is now ${isEnabled}`
     );
 }
 

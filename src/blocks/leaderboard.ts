@@ -15,8 +15,35 @@ function capitalize(word: string): string {
     return word.charAt(0).toUpperCase() + word.slice(1);
 }
 
+/**
+ * Escapes text that will be inserted into Reddit/CommonMark markdown.
+ *
+ * This deliberately includes backslash itself in the same single pass as every
+ * ASCII punctuation character that CommonMark allows to be backslash-escaped.
+ * That is important for strings such as `\\[` or `\\*`: both the existing
+ * backslash and the following markdown character must be escaped independently.
+ *
+ * Newlines/tabs are collapsed so user-controlled text cannot create a new wiki
+ * table row/cell or otherwise change the surrounding markdown structure.
+ */
+function escapeMarkdownText(input: string): string {
+    return String(input)
+        .replace(/[\r\n\t]+/g, " ")
+        .replace(/[\x20-\x2F\x3A-\x40\x5B-\x60\x7B-\x7E]/g, "\\$&");
+}
+
+/**
+ * Escapes a URL used as a markdown link destination. Reddit permalinks are
+ * normally already safe, but encoding the destination also protects against
+ * parentheses, whitespace, backslashes, and other characters that can terminate
+ * or corrupt markdown link syntax.
+ */
+function escapeMarkdownUrl(input: string): string {
+    return encodeURI(String(input)).replace(/\(/g, "%28").replace(/\)/g, "%29");
+}
+
 function markdownEscape(input: string): string {
-    return input.replaceAll(/([\\\`\*\_\{\}\[\]\(\)\#\+\.\!\-])/gi, "\\$1");
+    return escapeMarkdownText(input);
 }
 
 function formatDate(dateString: number): string {
@@ -25,10 +52,7 @@ function formatDate(dateString: number): string {
 }
 
 function escapeTitle(title: string): string {
-    return title
-        .replaceAll(/\|/gi, "\\|")
-        .replaceAll(/\[/gi, "\\[")
-        .replaceAll(/\]/gi, "\\]");
+    return escapeMarkdownText(title);
 }
 
 export async function updateUserWiki(
@@ -50,9 +74,10 @@ export async function updateUserWiki(
         context.subredditName ??
         (await context.reddit.getCurrentSubreddit()).name;
 
-    const capPoint = capitalize(pointName);
     const plural = pluralize(pointName);
-    const capPlural = capitalize(plural);
+    const capPoint = escapeMarkdownText(capitalize(pointName));
+    const escapedPlural = escapeMarkdownText(plural);
+    const capPlural = escapeMarkdownText(capitalize(plural));
 
     //
     // ──────────────────────────────────────────────────────────────
@@ -120,9 +145,9 @@ export async function updateUserWiki(
 ${list
     .map(
         (e) =>
-            `| ${formatDate(e.date)} | [${escapeTitle(e.postTitle)}](${
-                e.postUrl
-            })`
+            `| ${formatDate(e.date)} | [${escapeTitle(
+                e.postTitle
+            )}](${escapeMarkdownUrl(e.postUrl)}) |`
     )
     .join("\n")}
 `.trim();
@@ -137,9 +162,11 @@ ${list
 ${list
     .map(
         (e) =>
-            `| ${formatDate(e.date)} | [${escapeTitle(e.postTitle)}](${
-                e.postUrl
-            }) | [Link](${e.commentUrl}) | /u/${e.recipient}`
+            `| ${formatDate(e.date)} | [${escapeTitle(
+                e.postTitle
+            )}](${escapeMarkdownUrl(e.postUrl)}) | [Link](${escapeMarkdownUrl(
+                e.commentUrl
+            )}) | /u/${escapeMarkdownText(e.recipient)} |`
     )
     .join("\n")}
 `.trim();
@@ -162,24 +189,26 @@ ${list
         receivedTable: string,
         givenTable: string
     ) {
+        const displayUser = escapeMarkdownText(user);
+
         const content = `
-# ${capPoint} History for u/${user}
+# ${capPoint} History for u/${displayUser}
 
 ## ${capPlural} Received
-u/${user} has received ${
+u/${displayUser} has received ${
             receivedTable.includes("|")
                 ? receivedTable.split("\n").length - 2
                 : 0
-        } ${plural}.
+        } ${escapedPlural}.
 
 ${receivedTable}
 
 ---
 
 ## ${capPlural} Given
-u/${user} has given ${
+u/${displayUser} has given ${
             givenTable.includes("|") ? givenTable.split("\n").length - 2 : 0
-        } ${plural}.
+        } ${escapedPlural}.
 
 ${givenTable}
         `.trim();
@@ -223,8 +252,10 @@ export async function buildInitialUserWiki(
     }
 
     const plural = pluralize(pointName);
-    const capPoint = capitalize(pointName);
-    const capPlural = capitalize(plural);
+    const capPoint = escapeMarkdownText(capitalize(pointName));
+    const escapedPlural = escapeMarkdownText(plural);
+    const capPlural = escapeMarkdownText(capitalize(plural));
+    const displayUsername = escapeMarkdownText(username);
 
     logger.debug("📝 Computed wiki title parts", {
         username,
@@ -234,19 +265,19 @@ export async function buildInitialUserWiki(
     });
 
     const page = `
-# ${capPoint} History for u/${username}
+# ${capPoint} History for u/${displayUsername}
 
 ---
 
 ## ${capPlural} Received
-u/${username} has received 0 ${plural}
+u/${displayUsername} has received 0 ${escapedPlural}
 
 | Date | Submission | ${capPoint} Comment | Awarded To |
 
 ---
 
 ## ${capPlural} Given
-u/${username} has given 0 ${plural}
+u/${displayUsername} has given 0 ${escapedPlural}
 
 | Date | Submission | ${capPoint} Comment | Awarded To |
 `.trim();
@@ -397,17 +428,16 @@ export async function updateLeaderboard(
                         entry.member
                     )}](https://old.reddit.com/r/${subredditName}/wiki/user/${
                         entry.member
-                    })|${entry.score.toLocaleString('en')}`
+                    })|${entry.score.toLocaleString("en")}`
             )
             .join("\n");
     } else {
         wikiContents += "No users have been awarded yet.";
     }
 
-    wikiContents += `\n\nThe leaderboard shows the top ${leaderboardSize.toLocaleString('en')} ${pluralize(
-        "user",
-        leaderboardSize
-    )} who ${pluralize(
+    wikiContents += `\n\nThe leaderboard shows the top ${leaderboardSize.toLocaleString(
+        "en"
+    )} ${pluralize("user", leaderboardSize)} who ${pluralize(
         "has",
         leaderboardSize
     )} been awarded at least one ${pointName}`;
@@ -493,10 +523,13 @@ export async function updateLeaderboard(
             wikiPermLevel: wikiPageSettings.permLevel,
         });
     } else {
-        logger.info("🔐 Leaderboard wiki page permissions set to current wiki settings, no changes made", {
-            leaderboardMode,
-            mode,
-        });
+        logger.info(
+            "🔐 Leaderboard wiki page permissions set to current wiki settings, no changes made",
+            {
+                leaderboardMode,
+                mode,
+            }
+        );
     }
 }
 
@@ -513,7 +546,7 @@ function modInfoTemplate(subredditName: string): string {
     );
 }
 
-export async function modLeaderboardInfoJob(
+export async function modInfoJob(
     _: ScheduledJobEvent<JSONObject | undefined>,
     context: JobContext
 ) {

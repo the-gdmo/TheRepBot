@@ -299,7 +299,7 @@ export async function manualSetPointsFormHandler(
     } else {
         flairShouldBeManaged = true;
     }
-    
+
     // ✅ Overwrite the user's score directly
     const newScore: ScoreResult = {
         score: entry,
@@ -378,7 +378,7 @@ export async function manualPostRestrictionRemovalHandler(
     )?.trim();
     if (!confirmText) return;
 
-    const confirm = /^confirm$/gi;
+    const confirm = /^confirm$/i;
     if (!confirm.test(confirmText)) {
         context.ui.showToast(`⚠️ You must type "confirm" (case insensitive).`);
         logger.warn("⚠️ Moderator failed confirmation input.", { confirmText });

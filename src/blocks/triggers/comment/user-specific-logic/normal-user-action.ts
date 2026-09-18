@@ -203,21 +203,8 @@ async function awardPointToUserNormalCommand(
         newScore,
     });
 
-    let userObj: User | undefined;
-
-    try {
-        userObj = await context.reddit.getUserByUsername(awardee);
-    } catch {}
-
-    if (!userObj) {
-        logger.error(
-            "Failed to fetch user for flair update after normal award"
-        );
-        return;
-    }
-
-    const flairHandlingDisabled = await flairToggleKeyExists(context, userObj);
-
+    // 📘 Wiki history is independent of flair management.
+    // A successful award must always be recorded in the user wiki first.
     const givenData = {
         postTitle: event.post.title,
         postUrl: event.post.permalink,
@@ -225,17 +212,50 @@ async function awardPointToUserNormalCommand(
         commentUrl: event.comment.permalink,
     };
 
-    if (flairHandlingDisabled) {
-        logger.info(
-            "Flair handling is disabled for this user, updating user wiki and skipping flair update"
+    try {
+        const subredditName = event.subreddit.name;
+        const safeWiki = new SafeWikiClient(context.reddit);
+
+        const awarderWiki = await safeWiki.getWikiPage(
+            subredditName,
+            `user/${awarder.toLowerCase()}`
+        );
+        const recipientWiki = await safeWiki.getWikiPage(
+            subredditName,
+            `user/${awardee.toLowerCase()}`
         );
 
-        updateUserWiki(context, awarder, awardee, givenData);
+        if (!awarderWiki) {
+            await InitialUserWikiOptions(context, awarder);
+        }
+
+        if (!recipientWiki) {
+            await InitialUserWikiOptions(context, awardee);
+        }
+
+        await updateUserWiki(context, awarder, awardee, givenData);
+    } catch (err) {
+        logger.error("❌ Failed to update user wiki (Normal award)", {
+            awarder,
+            awardee,
+            err,
+        });
+    }
+
+    // Flair management is a separate optional side effect.
+    const flairHandlingDisabled = await flairToggleKeyExists(
+        context,
+        recipient
+    );
+
+    if (flairHandlingDisabled) {
+        logger.info(
+            "Flair handling is disabled for this user; wiki was updated and flair update was skipped"
+        );
         return;
     }
 
-    updateUserWiki(context, awarder, awardee, givenData);
-    setUserScore(context, awardee, newScore, settings);
+    await setUserScore(context, awardee, newScore, settings);
 }
 
 /**
@@ -634,46 +654,6 @@ export async function executeUserCommand(
     logger.info(`Point not awarded yet for this command`);
 
     await context.redis.set(key, "1");
-
-    // 📘 Always update both user wiki pages on successful award
-    try {
-        const subredditName = event.subreddit.name;
-
-        const safeWiki = new SafeWikiClient(context.reddit);
-
-        const awarderWiki = await safeWiki.getWikiPage(
-            subredditName,
-            `user/${awarder.toLowerCase()}`
-        );
-
-        const recipientWiki = await safeWiki.getWikiPage(
-            subredditName,
-            `user/${recipient}`
-        );
-
-        if (!awarderWiki) {
-            await InitialUserWikiOptions(context, awarder);
-        }
-
-        if (!recipientWiki) {
-            await InitialUserWikiOptions(context, recipient);
-        }
-
-        const givenData = {
-            postTitle: event.post.title,
-            postUrl: event.post.permalink,
-            recipient,
-            commentUrl: event.comment.permalink,
-        };
-
-        await updateUserWiki(context, awarder, recipient, givenData);
-    } catch (err) {
-        logger.error("❌ Failed to update user wiki (Normal award)", {
-            awarder,
-            recipient,
-            err,
-        });
-    }
 
     let awardee: User | undefined;
 

@@ -416,7 +416,7 @@ export async function handleThanksEvent(
                 logger.error(
                     `Original poster could not be found in executeUserCommand(), returning`
                 );
-                return false;
+                return;
             }
 
             if (!originalPoster) return;
@@ -451,7 +451,7 @@ export async function handleThanksEvent(
                         text: formattedPostAuthorAwardMessage,
                     });
                 }
-                return false;
+                return;
             }
 
             const handled = await executeModCommand(event, devvitContext);

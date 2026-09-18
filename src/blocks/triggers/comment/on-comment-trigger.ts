@@ -25,6 +25,7 @@ import {
     ExistingFlairOverwriteHandling,
     NotifyOnDisallowedFlairReplyOptions,
     NotifyOnModAwardFailReplyOptions,
+    NotifyOnPostAuthorAwardReplyOptions,
     NotifyOnSelfAwardReplyOptions,
     NotifyOnUnflairedPostReplyOptions,
     TemplateDefaults,
@@ -248,7 +249,7 @@ export async function handleThanksEvent(
     const commentBody = event.comment.body.toLowerCase();
     const triggers = await getTriggers(devvitContext);
     const triggerUsed = triggers.find((t) => commentBody.includes(t));
-
+    const pointName = (settings[AppSetting.PointName] as string) ?? "point";
     if (!triggerUsed) {
         logger.debug("❌ No valid award command found.");
         return;
@@ -405,6 +406,54 @@ export async function handleThanksEvent(
     // ─────────────────────────────────────────────
     if (containsMod && !containsUser) {
         if (isMod || isSuperUser) {
+            //recipient is OP
+            let originalPoster: User | undefined;
+            try {
+                originalPoster = await devvitContext.reddit.getUserById(
+                    event.post.authorId
+                );
+            } catch (err) {
+                logger.error(
+                    `Original poster could not be found in executeUserCommand(), returning`
+                );
+                return false;
+            }
+
+            if (!originalPoster) return;
+
+            if (recipient.username === originalPoster.username) {
+                const notifyMode = (
+                    settings[AppSetting.NotifyOnPostAuthorAward] as string[]
+                )?.[0];
+                const formattedPostAuthorAwardMessage = formatMessage(
+                    event,
+                    (settings[AppSetting.PostAuthorAwardMessage] ??
+                        TemplateDefaults.PostAuthorAwardMessage) as string,
+                    { name: pointName }
+                );
+
+                if (
+                    notifyMode ===
+                    NotifyOnPostAuthorAwardReplyOptions.ReplyAsComment
+                ) {
+                    const postAuthorAwardComment =
+                        await devvitContext.reddit.submitComment({
+                            id: event.comment.id,
+                            text: formattedPostAuthorAwardMessage,
+                        });
+                    postAuthorAwardComment.distinguish();
+                } else if (
+                    notifyMode === NotifyOnPostAuthorAwardReplyOptions.ReplyByPM
+                ) {
+                    await devvitContext.reddit.sendPrivateMessage({
+                        to: awarder,
+                        subject: `You do not have permission to award ${pointName}s to Post Authors`,
+                        text: formattedPostAuthorAwardMessage,
+                    });
+                }
+                return false;
+            }
+
             const handled = await executeModCommand(event, devvitContext);
             // Trigger leaderboard update
             if (handled) {

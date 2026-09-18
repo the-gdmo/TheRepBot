@@ -9,6 +9,7 @@ import {
     AppSetting,
     NotifyOnBlockedUserReplyOptions,
     NotifyOnPointAlreadyAwardedToUserReplyOptions,
+    NotifyOnPostAuthorAwardReplyOptions,
     NotifyOnSelfAwardReplyOptions,
     NotifyOnSuccessReplyOptions,
     TemplateDefaults,
@@ -148,8 +149,6 @@ async function awardPointToUserNormalCommand(
         },
     });
 
-    await setUserScore(context, recipient.username, newScore, settings);
-
     const successMessage = formatMessage(
         event,
         (settings[AppSetting.SuccessMessage] as string) ??
@@ -219,13 +218,23 @@ async function awardPointToUserNormalCommand(
 
     const flairHandlingDisabled = await flairToggleKeyExists(context, userObj);
 
+    const givenData = {
+        postTitle: event.post.title,
+        postUrl: event.post.permalink,
+        awardee,
+        commentUrl: event.comment.permalink,
+    };
+
     if (flairHandlingDisabled) {
         logger.info(
-            "Flair handling is disabled for this user, skipping flair update"
+            "Flair handling is disabled for this user, updating user wiki and skipping flair update"
         );
+
+        updateUserWiki(context, awarder, awardee, givenData);
         return;
     }
 
+    updateUserWiki(context, awarder, awardee, givenData);
     setUserScore(context, awardee, newScore, settings);
 }
 
@@ -526,6 +535,47 @@ export async function executeUserCommand(
             });
         }
 
+        return false;
+    }
+
+    let originalPoster: User | undefined;
+    try {
+        originalPoster = await context.reddit.getUserById(event.post.authorId);
+    } catch (err) {
+        logger.error(
+            `Original poster could not be found in executeUserCommand(), returning`
+        );
+        return false;
+    }
+
+    if (!originalPoster) return false;
+
+    if (recipient === originalPoster.username) {
+        const notifyMode = (
+            settings[AppSetting.NotifyOnPostAuthorAward] as string[]
+        )?.[0];
+        const formattedPostAuthorAwardMessage = formatMessage(
+            event,
+            (settings[AppSetting.PostAuthorAwardMessage] ??
+                TemplateDefaults.PostAuthorAwardMessage) as string,
+            { name: pointName }
+        );
+
+        if (notifyMode === NotifyOnPostAuthorAwardReplyOptions.ReplyAsComment) {
+            const postAuthorAwardComment = await context.reddit.submitComment({
+                id: event.comment.id,
+                text: formattedPostAuthorAwardMessage,
+            });
+            postAuthorAwardComment.distinguish();
+        } else if (
+            notifyMode === NotifyOnPostAuthorAwardReplyOptions.ReplyByPM
+        ) {
+            await context.reddit.sendPrivateMessage({
+                to: awarder,
+                subject: `You do not have permission to award ${pointName}s to Post Authors`,
+                text: formattedPostAuthorAwardMessage,
+            });
+        }
         return false;
     }
 

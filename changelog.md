@@ -1,4 +1,6 @@
 # Changelog for TheRepBot
+## 31.5.21
+* Make an award receiver's wikipage be updated even if flair management is disabled for them
 ## 31.5.20
 * Make an award receiver's wikipage be updated even if flair management is disabled for them
 ## 31.5.19

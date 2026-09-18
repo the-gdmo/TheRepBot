@@ -114,7 +114,7 @@ export enum TemplateDefaults {
     DisallowedFlairMessage = "Points cannot be awarded on posts with this flair. Please choose another post.",
     UsersWhoCannotAwardPointsMessage = "Hello u/{awarder}, you do not have permission to award {name}s in r/{subreddit}.",
     ModOnlyDisallowedMessage = "Only moderators allowed to award points.",
-    ApprovedOnlyDisallowedMessage = "Only moderators and approved users can award points.",
+    ApprovedOnlyDisallowedMessage = "Only moderators and approved users can award {name}s.",
     SelfAwardMessage = "You can't award yourself a {name}.",
     BotAwardMessage = "You can't award u/{awardee} {name}s.",
     SelfAwardTemplate = "Hello {awarder}, you cannot award a {name} to yourself.",
@@ -129,7 +129,7 @@ export enum TemplateDefaults {
     InvalidUsernameMessage = "Your target is not valid. Reddit usernames contain only letters, numbers, hyphens, and underscores.",
     NoUsernameMentionMessage = "You must mention a user (eg u/{awardee}) to award specific users.",
     RestrictionLiftedMessage = "Your posting restriction has been removed. You now have permission to make a post again in r/{subreddit}!",
-    PostAuthorAwardMessage = "OPs cannot be awarded points.",
+    PostAuthorAwardMessage = "The post author (OP) cannot be awarded {name}s.",
     TrustedUserAwardSuccessMessage = "Superuser u/{awarder} gave an award! u/{awardee} now has {total}{symbol} {name}s. {awardee}'s user page is located [here]({awardeePage}). Leaderboard is located [here]({leaderboard}).",
     ModsAndPostAuthorDisallowedMessage = "Only moderators and Post Authors (OPs) can award {name}s.",
     UnrestrictedPostingMessage = "***ATTENTION to OP:*** Please award {name}s by replying to successful comments. Valid command(s) are {commandsWithAnd}.\n\nIf you do not know where something is, we kindly ask that you remove your post.\n\nFailure to do so may result in a ban.\n\n*To hide text, write it like this: `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({markdownGuide})*.",
@@ -785,9 +785,9 @@ export const appSettings: SettingsFormField[] = [
             {
                 type: "paragraph",
                 name: AppSetting.ModOnlyDisallowedMessage,
-                label: "Mod Only Disallowed Message",
+                label: "Mod Only Disallowed Message (All placeholders allow single or double curly braces)",
                 helpText:
-                    "Message shown when a user tries to award a point but only moderators can award points",
+                    "Message shown when a user tries to award a point but only moderators can award points. Placeholders Supported: name, awarder",
                 defaultValue: TemplateDefaults.ModOnlyDisallowedMessage,
                 onValidate: paragraphFieldContainsText,
             },
@@ -804,9 +804,9 @@ export const appSettings: SettingsFormField[] = [
             {
                 type: "paragraph",
                 name: AppSetting.ModsAndPostAuthorDisallowedMessage,
-                label: "Mods and Post Author Disallowed Message",
+                label: "Mods and Post Author Disallowed Message (All placeholders allow single or double curly braces)",
                 helpText:
-                    "Message shown when a user tries to award a point but only moderators and the Post Author (OP) can award points",
+                    "Message shown when a user tries to award a point but only moderators and the Post Author (OP) can award points. Placeholders Supported: name, awarder",
                 defaultValue:
                     TemplateDefaults.ModsAndPostAuthorDisallowedMessage,
                 onValidate: paragraphFieldContainsText,
@@ -824,9 +824,9 @@ export const appSettings: SettingsFormField[] = [
             {
                 type: "paragraph",
                 name: AppSetting.ApprovedOnlyDisallowedMessage,
-                label: "Approved Only Disallowed Message",
+                label: "Approved Only Disallowed Message (All placeholders allow single or double curly braces)",
                 helpText:
-                    "Message shown when a user tries to award a point but only mods and approved users can award points",
+                    "Message shown when a user tries to award a point but only mods and approved users can award points. Placeholders Supported: name, awarder",
                 defaultValue: TemplateDefaults.ApprovedOnlyDisallowedMessage,
                 onValidate: paragraphFieldContainsText,
             },
@@ -841,9 +841,9 @@ export const appSettings: SettingsFormField[] = [
             {
                 type: "paragraph",
                 name: AppSetting.OPOnlyDisallowedMessage,
-                label: "OP Only Disallowed Message",
+                label: "OP Only Disallowed Message (All placeholders allow single or double curly braces)",
                 helpText:
-                    "Message shown when a user tries to award a point but only mods, approved users, and Post Authors (OPs) can award points",
+                    "Message shown when a user tries to award a point but only mods, approved users, and Post Authors (OPs) can award points. Placeholders Supported: name, awarder",
                 defaultValue: TemplateDefaults.OPOnlyDisallowedMessage,
                 onValidate: paragraphFieldContainsText,
             },

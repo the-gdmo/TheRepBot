@@ -61,8 +61,9 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 # Latest Changes
-## 31.5.20
+## 31.5.21
 * Make an award receiver's wikipage be updated even if flair management is disabled for them
+## 31.5.20
 * Update to latest devvit version
 ## 31.5.19
 * Make it so that user score will properly be managed if the user's flair is not managed

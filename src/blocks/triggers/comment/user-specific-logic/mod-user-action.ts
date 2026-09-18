@@ -260,7 +260,7 @@ export async function awardPointToUserModCommand(
 
     let flairShouldBeManaged: boolean;
 
-    const key = `flairToggle:${recipient.username}`;
+    const key = `flairToggle:${awardee}`;
     const exists = await context.redis.exists(key);
 
     if (exists) {
@@ -269,7 +269,7 @@ export async function awardPointToUserModCommand(
         flairShouldBeManaged = true;
     }
 
-    const username = recipient.username;
+    const username = awardee;
 
     const scoreFromRedis = await context.redis.zScore(
         POINTS_STORE_KEY,
@@ -337,17 +337,59 @@ export async function awardPointToUserModCommand(
         return;
     }
 
-    setUserScore(context, awardee, totalScore, settings);
-
     await context.scheduler.runJob({
         name: "updateLeaderboard",
         runAt: new Date(),
         data: {
-            reason: `Updated score for ${recipient.username}. Triggered by mod command.`,
+            reason: `Updated score for ${awardee}. Triggered by mod command.`,
         },
     });
 
-    await setUserScore(context, recipient.username, newScore, settings);
+    await setUserScore(context, awardee, newScore, settings);
+
+    const subredditName = event.subreddit.name;
+    // User wiki handling for MOD awarder + awardee
+    try {
+        const safeWiki = new SafeWikiClient(context.reddit);
+        const awarderPage = await safeWiki.getWikiPage(
+            subredditName,
+            `user/${awarder.toLowerCase()}`
+        );
+        const recipientPage = await safeWiki.getWikiPage(
+            subredditName,
+            `user/${awardee}`
+        );
+
+        if (!awarderPage) {
+            logger.info("📄 Creating missing awarder wiki", {
+                awarder,
+            });
+            await InitialUserWikiOptions(context, awarder);
+        }
+
+        if (!recipientPage) {
+            logger.info("📄 Creating missing recipient wiki", {
+                awardee,
+            });
+            await InitialUserWikiOptions(context, awardee);
+        }
+
+        const givenData = {
+            postTitle: event.post.title,
+            postUrl: event.post.permalink,
+            awardee,
+            commentUrl: event.comment.permalink,
+        };
+
+        await updateUserWiki(context, awarder, awardee, givenData);
+    } catch (err) {
+        logger.error("❌ Failed to update user wiki (MOD award)", {
+            awarder,
+            awardee,
+            err,
+        });
+    }
+
     const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${awardee}`;
     const awarderPage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${awarder}`;
     const modSuccessMessage = formatMessage(event, modSuccessTemplate, {
@@ -428,49 +470,6 @@ export async function awardPointToUserModCommand(
         }
     }
 
-    const subredditName = event.subreddit.name;
-    // User wiki handling for MOD awarder + awardee
-    try {
-        const safeWiki = new SafeWikiClient(context.reddit);
-        const awarderPage = await safeWiki.getWikiPage(
-            subredditName,
-            `user/${awarder.toLowerCase()}`
-        );
-        const recipientPage = await safeWiki.getWikiPage(
-            subredditName,
-            `user/${awardee}`
-        );
-
-        if (!awarderPage) {
-            logger.info("📄 Creating missing awarder wiki", {
-                awarder,
-            });
-            await InitialUserWikiOptions(context, awarder);
-        }
-
-        if (!recipientPage) {
-            logger.info("📄 Creating missing recipient wiki", {
-                awardee,
-            });
-            await InitialUserWikiOptions(context, awardee);
-        }
-
-        const givenData = {
-            postTitle: event.post.title,
-            postUrl: event.post.permalink,
-            awardee,
-            commentUrl: event.comment.permalink,
-        };
-
-        await updateUserWiki(context, awarder, awardee, givenData);
-    } catch (err) {
-        logger.error("❌ Failed to update user wiki (MOD award)", {
-            awarder,
-            awardee,
-            err,
-        });
-    }
-
     let userObj: User | undefined;
     try {
         userObj = await context.reddit.getUserByUsername(awardee);
@@ -483,13 +482,23 @@ export async function awardPointToUserModCommand(
 
     const flairHandlingDisabled = await flairToggleKeyExists(context, userObj);
 
+    const givenData = {
+        postTitle: event.post.title,
+        postUrl: event.post.permalink,
+        awardee,
+        commentUrl: event.comment.permalink,
+    };
+
     if (flairHandlingDisabled) {
         logger.info(
-            "Flair handling is disabled for this user, skipping flair update"
+            "Flair handling is disabled for this user, updating user wiki and skipping flair update"
         );
+
+        updateUserWiki(context, awarder, awardee, givenData);
         return;
     }
 
+    updateUserWiki(context, awarder, awardee, givenData);
     setUserScore(context, awardee, newScore, settings);
 }
 

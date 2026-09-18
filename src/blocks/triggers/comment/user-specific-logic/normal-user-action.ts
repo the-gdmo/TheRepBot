@@ -7,7 +7,6 @@ import {
 } from "../../utils/common-utilities";
 import {
     AppSetting,
-    appSettings,
     NotifyOnBlockedUserReplyOptions,
     NotifyOnPointAlreadyAwardedToUserReplyOptions,
     NotifyOnSelfAwardReplyOptions,

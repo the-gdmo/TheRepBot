@@ -61,6 +61,8 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 # Latest Changes
+## 31.6.2
+* Change latest user page url to Old Reddit version of the page
 ## 31.6.1
 * Make a way for mods to set the given/received stats for a user (this can be useful if you need to remove bad data or if the wikipage data is off (this would only happen if the data from your original page at `wiki/user/username` (the page I initially used for all user data) doesn't transfer))
 ## 31.6.0

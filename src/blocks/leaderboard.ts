@@ -147,7 +147,7 @@ function buildLatestPageNotice(
 ): string {
     const user = encodeURIComponent(username.toLowerCase());
     const subreddit = encodeURIComponent(subredditName);
-    const url = `https://www.reddit.com/r/${subreddit}/wiki/user/${user}/${latestPage}`;
+    const url = `https://old.reddit.com/r/${subreddit}/wiki/user/${user}/${latestPage}`;
     return `${LATEST_PAGE_NOTICE_PREFIX} [Go to page ${latestPage}](${url}).`;
 }
 

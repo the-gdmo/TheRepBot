@@ -1,4 +1,6 @@
 # Changelog for TheRepBot
+## 31.6.1
+* Make a way for mods to set the given/received stats for a user (this can be useful if you need to remove bad data or if the wikipage data is off (this would only happen if the data from your original page at `wiki/user/username` (the page I initially used for all user data) doesn't transfer))
 ## 31.6.0
 * Make an awardee wikipage rollover in case the user's current wikipage is at max text capacity
 * A link will be included at the top of all old pages informing the user of the most recent wikipage

@@ -1,6 +1,11 @@
 # Changelog for TheRepBot
-## 31.5.26
-* Make an award receiver's wikipage be updated even if flair management is disabled for them
+## 31.6.0
+* Make an awardee wikipage rollover in case the user's current wikipage is at max text capacity
+* A link will be included at the top of all old pages informing the user of the most recent wikipage
+## 31.5.29
+* Make an awardee's wikipage be updated even if flair management is disabled for them
+## 31.5.20
+* Update to latest devvit version
 ## 31.5.19
 * Make it so that user score will properly be managed if the user's flair is not managed
 ## 31.5.18

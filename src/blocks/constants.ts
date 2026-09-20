@@ -11,3 +11,6 @@ export const CLEANUP_JOB_CRON = "0 23 * * *";
 export const POST_OF_THE_MONTH_CRON = "0 0 1 * *";
 export const MODINFO_CRON = "0 * * * *";
 // export const UPGRADE_NOTIFIER_CRON = "* * * * *";
+
+// Miscellaneous
+export const specialCharRegex = /[\x21-\x2F\x3A-\x40\x5B-\x60\x7B-\x7E]/i;

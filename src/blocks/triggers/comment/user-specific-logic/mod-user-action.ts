@@ -30,8 +30,8 @@ import {
     getUserIsSuperuser,
     handleAutoSuperuserPromotion,
 } from "../../utils/user-utilities";
-import { InitialUserWikiOptions, updateUserWiki } from "../../../leaderboard";
-import { isModerator, SafeWikiClient } from "../../../utility";
+import { updateUserWiki } from "../../../leaderboard";
+import { isModerator } from "../../../utility";
 import { setUserScore } from "../on-comment-trigger";
 
 export async function commentContainsModCommand(
@@ -276,7 +276,7 @@ export async function awardPointToUserModCommand(
         username
     );
 
-    if (!scoreFromRedis) return;
+    if (scoreFromRedis === undefined || scoreFromRedis === null) return;
 
     await context.redis.zAdd(POINTS_STORE_KEY, {
         member: username,
@@ -345,8 +345,8 @@ export async function awardPointToUserModCommand(
         },
     });
 
-    const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${awardee}`;
-    const awarderPage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${awarder}`;
+    const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${awardee}/1`;
+    const awarderPage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${awarder}/1`;
     const modSuccessMessage = formatMessage(event, modSuccessTemplate, {
         awardee,
         awarder,
@@ -435,28 +435,8 @@ export async function awardPointToUserModCommand(
     };
 
     try {
-        const subredditName = event.subreddit.name;
-        const safeWiki = new SafeWikiClient(context.reddit);
-
-        const awarderWiki = await safeWiki.getWikiPage(
-            subredditName,
-            `user/${awarder.toLowerCase()}`
-        );
-        const recipientWiki = await safeWiki.getWikiPage(
-            subredditName,
-            `user/${awardee.toLowerCase()}`
-        );
-
-        if (!awarderWiki) {
-            logger.info("📄 Creating missing awarder wiki", { awarder });
-            await InitialUserWikiOptions(context, awarder);
-        }
-
-        if (!recipientWiki) {
-            logger.info("📄 Creating missing recipient wiki", { awardee });
-            await InitialUserWikiOptions(context, awardee);
-        }
-
+        // updateUserWiki owns migration/creation. Keep this before the flair
+        // toggle check so wiki history is recorded even when flair is disabled.
         await updateUserWiki(context, awarder, awardee, givenData);
     } catch (err) {
         logger.error("❌ Failed to update user wiki (MOD award)", {

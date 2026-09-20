@@ -24,8 +24,7 @@ import {
     restrictedKeyExists,
 } from "../../utils/redisKeys";
 import { getParentComment } from "../comment-trigger-context";
-import { InitialUserWikiOptions, updateUserWiki } from "../../../leaderboard";
-import { SafeWikiClient } from "../../../utility";
+import { updateUserWiki } from "../../../leaderboard";
 import {
     getCurrentScore,
     handleAutoSuperuserPromotion,
@@ -105,7 +104,7 @@ async function awardPointToUserNormalCommand(
         username
     );
 
-    if (!scoreFromRedis) return;
+    if (scoreFromRedis === undefined || scoreFromRedis === null) return;
 
     await context.redis.zAdd(POINTS_STORE_KEY, {
         member: username,
@@ -129,8 +128,8 @@ async function awardPointToUserNormalCommand(
         event.subreddit.name
     }/wiki/${settings[AppSetting.LeaderboardName] ?? "leaderboard"}`;
 
-    const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${recipient.username}`;
-    const awarderPage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${awarder}`;
+    const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${recipient.username}/1`;
+    const awarderPage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${awarder}/1`;
 
     const totalScore = await getCurrentScore(recipient, context);
 
@@ -213,26 +212,8 @@ async function awardPointToUserNormalCommand(
     };
 
     try {
-        const subredditName = event.subreddit.name;
-        const safeWiki = new SafeWikiClient(context.reddit);
-
-        const awarderWiki = await safeWiki.getWikiPage(
-            subredditName,
-            `user/${awarder.toLowerCase()}`
-        );
-        const recipientWiki = await safeWiki.getWikiPage(
-            subredditName,
-            `user/${awardee.toLowerCase()}`
-        );
-
-        if (!awarderWiki) {
-            await InitialUserWikiOptions(context, awarder);
-        }
-
-        if (!recipientWiki) {
-            await InitialUserWikiOptions(context, awardee);
-        }
-
+        // updateUserWiki owns migration/creation. Keep this before the flair
+        // toggle check so wiki history is recorded even when flair is disabled.
         await updateUserWiki(context, awarder, awardee, givenData);
     } catch (err) {
         logger.error("❌ Failed to update user wiki (Normal award)", {

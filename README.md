@@ -61,6 +61,8 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 # Latest Changes
+## 31.6.1
+* Make a way for mods to set the given/received stats for a user (this can be useful if you need to remove bad data or if the wikipage data is off (this would only happen if the data from your original page at `wiki/user/username` (the page I initially used for all user data) doesn't transfer))
 ## 31.6.0
 * Make an awardee wikipage rollover in case the user's current wikipage is at max text capacity
 * A link will be included at the top of all old pages informing the user of the most recent wikipage
@@ -70,10 +72,5 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * Update to latest devvit version
 ## 31.5.19
 * Make it so that user score will properly be managed if the user's flair is not managed
-## 31.5.18
-* Add changelog
-* Change version formatting (`##` instead of `###`)
-## 31.5.17
-* Make it so that user score will properly be managed if the user's flair is managed, but they don't have a numeric flair
 
 For older versions, please see the [full changelog](https://github.com/the-gdmo/therepbot/blob/main/changelog.md).

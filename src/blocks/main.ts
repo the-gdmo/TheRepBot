@@ -24,11 +24,13 @@ import { handleThanksEvent } from "./triggers/comment/on-comment-trigger";
 import { onPostSubmit } from "./triggers/post-logic/postSubmitEvent";
 import {
     handleManualPointSetting,
+    handleManualUserWikiTotalsSetting,
     handleManualPostRestrictionRemoval,
     handlePostRestrictionCheck,
     handleUserRestrictionCheck,
     manualPostRestrictionRemovalHandler,
     manualSetPointsFormHandler,
+    manualSetUserWikiTotalsFormHandler,
 } from "./triggers/utils/mod-utilities";
 import { logger } from "./logger";
 import { addPostOfTheMonthFlair } from "./postOfTheMonth";
@@ -96,6 +98,11 @@ export const manualSetPointsForm = Devvit.createForm(
     manualSetPointsFormHandler
 );
 
+export const manualSetUserWikiTotalsForm = Devvit.createForm(
+    (data) => ({ fields: data.fields as FormField[] }),
+    manualSetUserWikiTotalsFormHandler
+);
+
 export const manualSetFlairManagementForm = Devvit.createForm(
     (data) => ({ fields: data.fields as FormField[] }),
     manualSetFlairManagementFormHandler
@@ -125,27 +132,20 @@ Devvit.addMenuItem({
 });
 
 Devvit.addMenuItem({
-    label: "[RepBot] - Check Posting Restriction",
+    label: "[RepBot] - Check User Posting Restriction",
     location: "post",
     onPress: handlePostRestrictionCheck,
 });
 
 Devvit.addMenuItem({
     label: "[RepBot] - Check User Restriction",
-    location: "comment",
+    location: ["post", "comment"],
     forUserType: "moderator",
     onPress: handleUserRestrictionCheck,
 });
 
 Devvit.addMenuItem({
-    label: "[RepBot] - Check User Restriction",
-    location: "post",
-    forUserType: "moderator",
-    onPress: handleUserRestrictionCheck,
-});
-
-Devvit.addMenuItem({
-    label: "[RepBot] - Pin Comment",
+    label: "[RepBot] - Pin User Comment",
     location: "comment",
     forUserType: "moderator",
     onPress: handleCommentPin,
@@ -154,36 +154,29 @@ Devvit.addMenuItem({
 Devvit.addMenuItem({
     label: "[RepBot] - Check Flair Management For User",
     forUserType: "moderator",
-    location: "comment",
-    onPress: checkFlairToggle,
-});
-
-Devvit.addMenuItem({
-    label: "[RepBot] - Check Flair Management For User",
-    forUserType: "moderator",
-    location: "post",
+    location: ["post", "comment"],
     onPress: checkFlairToggle,
 });
 
 Devvit.addMenuItem({
     label: "[RepBot] - Toggle Flair Management For User",
     forUserType: "moderator",
-    location: "comment",
+    location: ["post", "comment"],
     onPress: handleFlairToggle,
 });
 
 Devvit.addMenuItem({
-    label: "[RepBot] - Toggle Flair Management For User",
+    label: "[RepBot] - Set User Score Manually",
     forUserType: "moderator",
-    location: "post",
-    onPress: handleFlairToggle,
-});
-
-Devvit.addMenuItem({
-    label: "[RepBot] - Set Score Manually",
-    forUserType: "moderator",
-    location: "comment",
+    location: ["post", "comment"],
     onPress: handleManualPointSetting,
+});
+
+Devvit.addMenuItem({
+    label: "[RepBot] - Set User Given/Received Totals",
+    forUserType: "moderator",
+    location: ["post", "comment"],
+    onPress: handleManualUserWikiTotalsSetting,
 });
 
 export async function handleCommentPin(

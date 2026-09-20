@@ -1071,7 +1071,7 @@ export const appSettings: SettingsFormField[] = [
             {
                 type: "paragraph",
                 name: AppSetting.UsersWhoCannotAwardPoints,
-                label: "Users Who Cannot Award Points",
+                label: "Users Who Cannot Award Points (No u/)",
                 helpText:
                     "List of usernames who cannot award points, even if they are mods or approved users. Each username should be on a new line",
             },

@@ -64,7 +64,8 @@ function wikiUsername(username: string): string {
     return String(username)
         .replace(/^\/?u\//i, "")
         .replace(/[\r\n\t]+/g, "")
-        .trim();
+        .trim()
+        .toLowerCase();
 }
 
 /**
@@ -98,6 +99,37 @@ function getWikiMarkdown(page: WikiPage | undefined): string {
 
 function userWikiLatestPageKey(username: string): string {
     return `userWiki:latestPage:${username.toLowerCase()}`;
+}
+
+function userWikiManualTotalKey(
+    username: string,
+    kind: "received" | "given"
+): string {
+    return `userWiki:manualTotal:${kind}:${wikiUsername(username)}`;
+}
+
+async function getManualUserWikiTotal(
+    context: TriggerContext,
+    username: string,
+    kind: "received" | "given"
+): Promise<number | undefined> {
+    const raw = await context.redis.get(userWikiManualTotalKey(username, kind));
+    if (raw === undefined || raw === null || raw === "") return;
+
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+async function persistManualUserWikiTotalIfPresent(
+    context: TriggerContext,
+    username: string,
+    kind: "received" | "given",
+    value: number
+): Promise<void> {
+    const key = userWikiManualTotalKey(username, kind);
+    if (await context.redis.exists(key)) {
+        await context.redis.set(key, String(value));
+    }
 }
 
 function getNumberedUserWikiPath(username: string, pageNumber: number): string {
@@ -370,7 +402,7 @@ function updateSectionCount(
         : content;
 }
 
-type UserWikiLifetimeTotals = {
+export type UserWikiLifetimeTotals = {
     received: number;
     given: number;
 };
@@ -443,9 +475,15 @@ async function getUserWikiLifetimeTotals(
         }
     }
 
+    const [manualReceived, manualGiven] = await Promise.all([
+        getManualUserWikiTotal(context, username, "received"),
+        getManualUserWikiTotal(context, username, "given"),
+    ]);
+
     return {
-        received: Math.max(receivedRows, highestReceivedCount),
-        given: Math.max(givenRows, highestGivenCount),
+        received:
+            manualReceived ?? Math.max(receivedRows, highestReceivedCount),
+        given: manualGiven ?? Math.max(givenRows, highestGivenCount),
     };
 }
 
@@ -827,6 +865,12 @@ async function appendUserWikiEntry(
             escapedPlural,
             safeWiki
         );
+        await persistManualUserWikiTotalIfPresent(
+            context,
+            username,
+            kind,
+            lifetimeTotals[kind]
+        );
         return;
     }
 
@@ -851,6 +895,114 @@ async function appendUserWikiEntry(
         escapedPlural,
         safeWiki
     );
+    await persistManualUserWikiTotalIfPresent(
+        context,
+        username,
+        kind,
+        lifetimeTotals[kind]
+    );
+}
+
+/**
+ * Returns the user's lifetime wiki totals. Numbered wiki history remains the
+ * default source of truth, but a moderator-set override wins for that specific
+ * direction so corrections can intentionally be lower than the number of rows.
+ */
+export async function getUserWikiLifetimeTotalsForUser(
+    context: TriggerContext,
+    username: string
+): Promise<UserWikiLifetimeTotals> {
+    username = wikiUsername(username);
+    const subredditName =
+        context.subredditName ??
+        (await context.reddit.getCurrentSubreddit()).name;
+    const safeWiki = new SafeWikiClient(context.reddit);
+    const latestPage = await ensureUserWikiInitialized(
+        context,
+        subredditName,
+        username,
+        safeWiki
+    );
+
+    return getUserWikiLifetimeTotals(
+        context,
+        subredditName,
+        username,
+        latestPage,
+        safeWiki
+    );
+}
+
+/**
+ * Sets moderator-corrected lifetime received/given totals without deleting
+ * history rows. The corrected values are written to every numbered wiki page
+ * and persisted as overrides so future awards increment from the correction.
+ */
+export async function setUserWikiLifetimeTotalsForUser(
+    context: TriggerContext,
+    username: string,
+    totals: UserWikiLifetimeTotals
+): Promise<UserWikiLifetimeTotals> {
+    username = wikiUsername(username);
+
+    if (
+        !Number.isInteger(totals.received) ||
+        totals.received < 0 ||
+        !Number.isInteger(totals.given) ||
+        totals.given < 0
+    ) {
+        throw new Error(
+            "Wiki lifetime totals must be whole numbers of 0 or higher"
+        );
+    }
+
+    const subredditName =
+        context.subredditName ??
+        (await context.reddit.getCurrentSubreddit()).name;
+    const settings = await context.settings.getAll();
+    const pointName = (settings[AppSetting.PointName] as string) ?? "point";
+    const plural = pluralize(pointName);
+    const capPoint = escapeMarkdownText(capitalize(pointName));
+    const capPlural = escapeMarkdownText(capitalize(plural));
+    const escapedPlural = escapeMarkdownText(plural);
+    const safeWiki = new SafeWikiClient(context.reddit);
+    const latestPage = await ensureUserWikiInitialized(
+        context,
+        subredditName,
+        username,
+        safeWiki
+    );
+
+    await refreshLifetimeTotalsOnPages(
+        context,
+        subredditName,
+        username,
+        latestPage,
+        totals,
+        capPoint,
+        capPlural,
+        escapedPlural,
+        safeWiki
+    );
+
+    await Promise.all([
+        context.redis.set(
+            userWikiManualTotalKey(username, "received"),
+            String(totals.received)
+        ),
+        context.redis.set(
+            userWikiManualTotalKey(username, "given"),
+            String(totals.given)
+        ),
+    ]);
+
+    logger.info("📄 Moderator set user wiki lifetime totals", {
+        username,
+        received: totals.received,
+        given: totals.given,
+    });
+
+    return totals;
 }
 
 export async function updateUserWiki(

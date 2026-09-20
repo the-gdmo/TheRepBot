@@ -15,11 +15,16 @@ import {
 import {
     manualPostRestrictionRemovalForm,
     manualSetPointsForm,
+    manualSetUserWikiTotalsForm,
 } from "../../main";
 import { AppSetting } from "../../settings";
 import { getCurrentScore } from "./user-utilities";
 import { setUserScore } from "../comment/on-comment-trigger";
 import { ScoreResult } from "./common-utilities";
+import {
+    getUserWikiLifetimeTotalsForUser,
+    setUserWikiLifetimeTotalsForUser,
+} from "../../leaderboard";
 
 export async function handleUserRestrictionCheck(
     event: MenuItemOnPressEvent,
@@ -50,7 +55,7 @@ export async function handleUserRestrictionCheck(
 
     if (!contentType || !targetId || !targetAuthor) {
         context.ui.showToast({
-            text: "Unable to determine target content or author.",
+            text: "Unable to determine target content or author",
         });
         return;
     }
@@ -133,7 +138,7 @@ export async function handlePostRestrictionCheck(
 
         if (!post?.authorName) {
             context.ui.showToast({
-                text: "Unable to determine post author.",
+                text: "Unable to determine post author",
             });
             return;
         }
@@ -216,27 +221,213 @@ export async function handlePostRestrictionCheck(
     }
 }
 
+async function resolveMenuTargetUsername(
+    event: MenuItemOnPressEvent,
+    context: Context
+): Promise<string | undefined> {
+    if (!event.targetId) return;
+
+    if (event.location === "comment") {
+        const comment = await context.reddit.getCommentById(event.targetId);
+        return comment?.authorName;
+    }
+
+    if (event.location === "post") {
+        const post = await context.reddit.getPostById(event.targetId);
+        return post?.authorName;
+    }
+}
+
+async function resolveFormTargetUsername(
+    context: Context
+): Promise<string | undefined> {
+    if (context.commentId) {
+        const comment = await context.reddit.getCommentById(context.commentId);
+        return comment?.authorName;
+    }
+
+    if (context.postId) {
+        const post = await context.reddit.getPostById(context.postId);
+        return post?.authorName;
+    }
+}
+
+function wholeNumberFormValue(value: unknown): number | undefined {
+    if (typeof value !== "number" && typeof value !== "string") return;
+    if (typeof value === "string" && value.trim() === "") return;
+
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+export async function handleManualUserWikiTotalsSetting(
+    event: MenuItemOnPressEvent,
+    context: Context
+) {
+    try {
+        const targetAuthor = await resolveMenuTargetUsername(event, context);
+        if (!targetAuthor || targetAuthor === "[deleted]") {
+            context.ui.showToast("Unable to determine the target user");
+            return;
+        }
+
+        let user: User | undefined;
+        try {
+            user = await context.reddit.getUserByUsername(targetAuthor);
+        } catch {
+            // Shadowbanned/deleted users cannot be safely targeted by this form.
+        }
+
+        if (!user) {
+            context.ui.showToast(
+                "Cannot set wiki totals. User may be deleted or shadowbanned"
+            );
+            return;
+        }
+
+        const settings = await context.settings.getAll();
+
+        const blockedUsersRaw =
+            (settings[AppSetting.UsersWhoCannotAwardPoints] as string) ?? "";
+
+        const blockedUsers = blockedUsersRaw
+            .split(/\r?\n/)
+            .map((username) => username.trim())
+            .filter(Boolean);
+
+        for (const blockedUser of blockedUsers) {
+            if (blockedUser.toLowerCase() === user.username.toLowerCase()) {
+                context.ui.showToast(
+                    `u/${user.username}'s user data cannot be set`
+                );
+                return;
+            }
+        }
+
+        const currentTotals = await getUserWikiLifetimeTotalsForUser(
+            context as unknown as TriggerContext,
+            user.username
+        );
+
+        const fields = [
+            {
+                name: "receivedTotal",
+                type: "number",
+                defaultValue: currentTotals.received,
+                label: `Lifetime received total for u/${user.username}`,
+                helpText:
+                    "Whole number, 0 or higher. This changes the lifetime wiki total without deleting history rows",
+                required: true,
+            },
+            {
+                name: "givenTotal",
+                type: "number",
+                defaultValue: currentTotals.given,
+                label: `Lifetime given total for u/${user.username}`,
+                helpText:
+                    "Whole number, 0 or higher. Future awards will increment from this corrected total",
+                required: true,
+            },
+        ];
+
+        context.ui.showForm(manualSetUserWikiTotalsForm, { fields });
+    } catch (err) {
+        logger.error("❌ Failed to open user wiki total form", {
+            targetId: event.targetId,
+            location: event.location,
+            error: String(err),
+        });
+        context.ui.showToast("Unable to load the user's wiki totals");
+    }
+}
+
+export async function manualSetUserWikiTotalsFormHandler(
+    event: FormOnSubmitEvent<JSONObject>,
+    context: Context
+) {
+    const received = wholeNumberFormValue(event.values.receivedTotal);
+    const given = wholeNumberFormValue(event.values.givenTotal);
+
+    if (received === undefined || given === undefined) {
+        context.ui.showToast(
+            "Given and received totals must both be whole numbers of 0 or higher"
+        );
+        return;
+    }
+
+    try {
+        const targetAuthor = await resolveFormTargetUsername(context);
+        if (!targetAuthor || targetAuthor === "[deleted]") {
+            context.ui.showToast("Unable to determine the target user");
+            return;
+        }
+
+        let user: User | undefined;
+        try {
+            user = await context.reddit.getUserByUsername(targetAuthor);
+        } catch {
+            //
+        }
+
+        if (!user) {
+            context.ui.showToast(
+                "Cannot set wiki totals. User may be deleted or shadowbanned"
+            );
+            return;
+        }
+
+        await setUserWikiLifetimeTotalsForUser(
+            context as unknown as TriggerContext,
+            user.username,
+            { received, given }
+        );
+
+        logger.info("🛡️ Moderator changed user wiki totals", {
+            username: user.username,
+            received,
+            given,
+        });
+
+        context.ui.showToast(
+            `u/${user.username}: received ${received}, given ${given}`
+        );
+    } catch (err) {
+        logger.error("❌ Failed to set user wiki totals", {
+            error: String(err),
+            received,
+            given,
+        });
+        context.ui.showToast("Failed to update the user's wiki totals");
+    }
+}
+
 export async function handleManualPointSetting(
     event: MenuItemOnPressEvent,
     context: Context
 ) {
-    const comment = await context.reddit.getCommentById(event.targetId);
+    const targetAuthor = await resolveMenuTargetUsername(event, context);
+
+    if (!targetAuthor || targetAuthor === "[deleted]") {
+        context.ui.showToast("Unable to determine the target user");
+        return;
+    }
+
     let user: User | undefined;
     try {
-        user = await context.reddit.getUserByUsername(comment.authorName);
+        user = await context.reddit.getUserByUsername(targetAuthor);
     } catch {
         //
     }
 
     if (!user) {
-        context.ui.showToast("Cannot set points. User may be shadowbanned.");
+        context.ui.showToast("Cannot set points. User may be shadowbanned");
         return;
     }
 
     const currentScore = await getCurrentScore(user, context);
 
     if (!currentScore) {
-        context.ui.showToast("Unable to retrieve current score for user.");
+        context.ui.showToast("Unable to retrieve current score for user");
         return;
     }
 
@@ -245,7 +436,7 @@ export async function handleManualPointSetting(
             name: "newScore",
             type: "number",
             defaultValue: currentScore.score,
-            label: `Enter a new score for ${comment.authorName}`,
+            label: `Enter a new score for ${targetAuthor}`,
             helpText:
                 "Warning: This will overwrite the score that currently exists",
             multiSelect: false,
@@ -260,8 +451,9 @@ export async function manualSetPointsFormHandler(
     event: FormOnSubmitEvent<JSONObject>,
     context: Context
 ) {
-    if (!context.commentId) {
-        context.ui.showToast("An error occurred setting the user's score.");
+    const targetAuthor = await resolveFormTargetUsername(context);
+    if (!targetAuthor || targetAuthor === "[deleted]") {
+        context.ui.showToast("An error occurred setting the user's score");
         return;
     }
 
@@ -275,17 +467,15 @@ export async function manualSetPointsFormHandler(
         return;
     }
 
-    const comment = await context.reddit.getCommentById(context.commentId);
-
     let user: User | undefined;
     try {
-        user = await context.reddit.getUserByUsername(comment.authorName);
+        user = await context.reddit.getUserByUsername(targetAuthor);
     } catch {
         //
     }
 
     if (!user) {
-        context.ui.showToast("Cannot set points. User may be shadowbanned.");
+        context.ui.showToast("Cannot set points. User may be shadowbanned");
         return;
     }
 
@@ -339,7 +529,7 @@ export async function handleManualPostRestrictionRemoval(
     }
 
     if (!user) {
-        context.ui.showToast("Cannot set points. User may be shadowbanned.");
+        context.ui.showToast("Cannot set points. User may be shadowbanned");
         return;
     }
 
@@ -367,7 +557,7 @@ export async function manualPostRestrictionRemovalHandler(
 
     // 🔹 Validate that we're working with a post
     if (!context.postId) {
-        context.ui.showToast("❌ Unable to identify the post to update.");
+        context.ui.showToast("❌ Unable to identify the post to update");
         logger.error("❌ No postId in context for restriction removal.");
         return;
     }
@@ -380,7 +570,7 @@ export async function manualPostRestrictionRemovalHandler(
 
     const confirm = /^confirm$/i;
     if (!confirm.test(confirmText)) {
-        context.ui.showToast(`⚠️ You must type "confirm" (case insensitive).`);
+        context.ui.showToast(`⚠️ You must type "confirm" (case insensitive)`);
         logger.warn("⚠️ Moderator failed confirmation input.", { confirmText });
         return;
     }
@@ -388,7 +578,7 @@ export async function manualPostRestrictionRemovalHandler(
     // 🔹 Fetch the post
     const post = await context.reddit.getPostById(context.postId);
     if (!post) {
-        context.ui.showToast("❌ Could not fetch post data.");
+        context.ui.showToast("❌ Could not fetch post data");
         logger.error(
             "❌ Post not found for manualPostRestrictionRemovalHandler",
             {
@@ -411,7 +601,7 @@ export async function manualPostRestrictionRemovalHandler(
 
     if (!user) {
         context.ui.showToast(
-            "⚠️ Cannot remove restriction. User may be deleted, suspended, or shadowbanned."
+            "⚠️ Cannot remove restriction. User may be deleted, suspended, or shadowbanned"
         );
         return;
     }
@@ -431,7 +621,7 @@ export async function manualPostRestrictionRemovalHandler(
     const isRestricted = restrictedFlagExists || requiredFlagExists;
     if (!isRestricted) {
         context.ui.showToast(
-            `ℹ️ u/${user.username} is not currently restricted.`
+            `ℹ️ u/${user.username} is not currently restricted`
         );
         logger.info("ℹ️ No restriction found for user", {
             username: user.username,
@@ -466,9 +656,9 @@ export async function manualPostRestrictionRemovalHandler(
     });
 
     // ──────────────── Notify Moderator ────────────────
-    context.ui.showToast(`✅ Post restriction removed for u/${user.username}.`);
+    context.ui.showToast(`✅ Post restriction removed for u/${user.username}`);
     logger.info(
-        `✅ Manual post restriction removal successful for u/${user.username}.`
+        `✅ Manual post restriction removal successful for u/${user.username}`
     );
 }
 

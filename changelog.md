@@ -1,4 +1,6 @@
 # Changelog for RepBot
+## 31.6.6
+* Make main leaderboard page prioritize the user's actual reddit handle
 ## 31.6.4
 * Add "Transfer wiki page" menuitem to subreddit burger/mod menu
 * Make wiki page content trump redis data

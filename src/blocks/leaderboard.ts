@@ -131,10 +131,12 @@ function parseLeaderboardWikiEntries(
         }
 
         if (!member) continue;
-        const normalizedMember = wikiUsername(member);
+        const normalizedMember = normalizeLeaderboardUsernameForLookup(member);
         if (!normalizedMember) continue;
 
-        entries.set(normalizedMember, {
+        // Deduplicate case-insensitively while preserving the best available
+        // spelling. updateLeaderboard() later asks Reddit for the canonical casing.
+        entries.set(normalizedMember.toLowerCase(), {
             member: normalizedMember,
             score,
         });
@@ -201,7 +203,8 @@ function wikiUsername(username: string): string {
     return String(username)
         .replace(/^\/?u\//i, "")
         .replace(/[\r\n\t]+/g, "")
-        .trim();
+        .trim()
+        .toLowerCase();
 }
 
 /**
@@ -1654,65 +1657,98 @@ export async function InitialUserWikiOptions(
     );
 }
 
-type LeaderboardEntry = {
+type CanonicalLeaderboardEntry = {
     member: string;
     score: number;
 };
 
+type NormalizedLeaderboardEntry = CanonicalLeaderboardEntry & {
+    lookupUsername: string;
+};
+
 /**
- * Fetches leaderboard entries, resolves each username against Reddit,
- * fixes incorrect capitalization, removes duplicate casing variants,
- * and returns the final sorted leaderboard.
+ * Safely decodes URL-encoded username data without throwing on malformed input.
+ * A second pass handles values that were accidentally encoded twice.
+ */
+function safeDecodeLeaderboardUsername(value: string): string {
+    let result = value;
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+            const decoded = decodeURIComponent(result);
+            if (decoded === result) break;
+            result = decoded;
+        } catch {
+            break;
+        }
+    }
+
+    return result;
+}
+
+/**
+ * Converts stored/migrated representations into the raw username expected by
+ * Reddit's getUserByUsername(). Legitimate username punctuation such as `_`
+ * and `-` is preserved wherever it appears.
  *
- * Example:
- *
- * Redis:
- *   Photon_Chaser = 500
- *   photon_chaser = 400
- *
- * Reddit:
- *   Photon_Chaser
- *
- * Result:
- *   Photon_Chaser = 500
- *
- * Redis after cleanup:
- *   Photon_Chaser = 500
- *
- *
- * Example where ONLY the incorrectly-cased username exists:
- *
- * Redis:
- *   photon_chaser = 400
- *
- * Reddit:
- *   Photon_Chaser
- *
- * Result:
- *   Photon_Chaser = 400
- *
- * Redis after cleanup:
- *   Photon_Chaser = 400
+ * Examples:
+ *   Photon_Chaser                         -> Photon_Chaser
+ *   Photon\\_Chaser                      -> Photon_Chaser
+ *   Some\\-User                          -> Some-User
+ *   Photon%5FChaser                      -> Photon_Chaser
+ *   Some%2DUser                          -> Some-User
+ *   u/Photon_Chaser                     -> Photon_Chaser
+ *   /u/Photon_Chaser                    -> Photon_Chaser
+ *   https://reddit.com/u/Photon_Chaser  -> Photon_Chaser
+ */
+function normalizeLeaderboardUsernameForLookup(value: string): string {
+    let username = String(value).trim();
+
+    // Handle a full Markdown link accidentally stored as the member.
+    const markdownLinkMatch = username.match(/^\[([^\]]+)\]\([^)]+\)$/);
+    if (markdownLinkMatch?.[1]) {
+        username = markdownLinkMatch[1];
+    }
+
+    // Handle full Reddit user/profile URLs before stripping shorter prefixes.
+    const redditProfileMatch = username.match(
+        /^(?:https?:\/\/)?(?:www\.|old\.)?reddit\.com\/(?:u|user)\/([^/?#]+)/i
+    );
+    if (redditProfileMatch?.[1]) {
+        username = redditProfileMatch[1];
+    }
+
+    username = safeDecodeLeaderboardUsername(username);
+
+    // getUserByUsername() expects the username itself, not u/<name>.
+    username = username.replace(/^\/?(?:u|user)\//i, "");
+
+    // A slash/query/hash cannot be part of a Reddit username, but may be left by
+    // an old URL-like representation such as /u/name/ or /u/name?context=3.
+    username = username.replace(/[/?#].*$/, "");
+
+    // Undo Markdown backslash escaping while preserving the actual punctuation.
+    // This fixes values such as Photon\\_Chaser and Some\\-User.
+    username = username.replace(/\\([\\`*_[\]{}()#+\-.!|>])/g, "$1");
+
+    username = safeDecodeLeaderboardUsername(username);
+
+    return username.normalize("NFC").trim();
+}
+
+/**
+ * Resolves leaderboard members through Reddit, restores canonical username
+ * casing, removes differently-cased/escaped/encoded duplicates from Redis, and
+ * returns a clean top-N leaderboard.
  */
 async function getCanonicalLeaderboardScores(
     context: JobContext,
     leaderboardSize: number
-): Promise<LeaderboardEntry[] | undefined> {
-    /*
-     * Fetch more than leaderboardSize because duplicates with different
-     * capitalization should only count as one leaderboard user.
-     *
-     * Example:
-     *
-     *   Photon_Chaser
-     *   photon_chaser
-     *
-     * should consume ONE leaderboard slot, not two.
-     */
+): Promise<CanonicalLeaderboardEntry[]> {
+    // Fetch extra rows because multiple Redis members can represent one account.
+    // Continue until there are enough unique normalized users to fill the board.
     const batchSize = Math.max(leaderboardSize * 2, 100);
-
-    const groups = new Map<string, LeaderboardEntry[]>();
-
+    const groups = new Map<string, NormalizedLeaderboardEntry[]>();
     let offset = 0;
 
     while (groups.size < leaderboardSize) {
@@ -1726,227 +1762,146 @@ async function getCanonicalLeaderboardScores(
             }
         );
 
-        if (batch.length === 0) {
-            break;
-        }
+        if (batch.length === 0) break;
 
         for (const entry of batch) {
-            /*
-             * Reddit usernames are treated case-insensitively here.
-             *
-             * These all go into the same group:
-             *
-             *   Photon_Chaser
-             *   photon_chaser
-             *   PHOTON_CHASER
-             */
-            const normalizedUsername = entry.member.toLowerCase();
+            const lookupUsername = normalizeLeaderboardUsernameForLookup(
+                entry.member
+            );
 
-            const existingGroup = groups.get(normalizedUsername);
-
-            if (existingGroup) {
-                existingGroup.push({
-                    member: entry.member,
-                    score: entry.score,
+            if (!lookupUsername) {
+                logger.warn("⚠️ Empty username encountered in leaderboard", {
+                    storedMember: entry.member,
                 });
+                continue;
+            }
+
+            const groupKey = lookupUsername.toLowerCase();
+            const normalizedEntry: NormalizedLeaderboardEntry = {
+                member: entry.member,
+                score: entry.score,
+                lookupUsername,
+            };
+
+            const existing = groups.get(groupKey);
+            if (existing) {
+                existing.push(normalizedEntry);
             } else {
-                groups.set(normalizedUsername, [
-                    {
-                        member: entry.member,
-                        score: entry.score,
-                    },
-                ]);
+                groups.set(groupKey, [normalizedEntry]);
             }
         }
 
         offset += batch.length;
-
-        /*
-         * If Redis returned fewer results than requested,
-         * we've reached the end of the sorted set.
-         */
-        if (batch.length < batchSize) {
-            break;
-        }
+        if (batch.length < batchSize) break;
     }
 
-    const normalizedEntries: LeaderboardEntry[] = [];
+    const normalizedEntries: CanonicalLeaderboardEntry[] = [];
 
-    /*
-     * Resolve every leaderboard account through Reddit.
-     */
     for (const variants of groups.values()) {
-        /*
-         * Choose the highest-scoring variant as the lookup/fallback entry.
-         *
-         * This does NOT mean it automatically wins if Reddit tells us
-         * another spelling is the canonical username.
-         */
+        const firstEntry = variants[0];
+        if (!firstEntry) continue;
+
         const highestScoringEntry = variants.reduce(
             (highest, current) =>
                 current.score > highest.score ? current : highest,
-            variants[0]!
+            firstEntry
         );
 
-        let redditUser;
+        // Usually all variants normalize to the same candidate. Keeping the list
+        // makes migrated/legacy data more resilient when representations differ.
+        const lookupCandidates = [
+            ...new Set(
+                variants
+                    .map((entry) =>
+                        normalizeLeaderboardUsernameForLookup(entry.member)
+                    )
+                    .filter((username) => username.length > 0)
+            ),
+        ];
 
-        try {
-            redditUser = await context.reddit.getUserByUsername(
-                highestScoringEntry.member
-            );
-        } catch (error) {
-            /*
-             * A Reddit/API failure should never cause us to delete points.
-             *
-             * Keep the existing Redis entry and try again during the next
-             * leaderboard update.
-             */
-            logger.warn(
-                "⚠️ Failed to resolve canonical Reddit username",
-                {
-                    username: highestScoringEntry.member,
+        let canonicalUsername: string | undefined;
+        let lookupHadApiError = false;
+
+        for (const candidate of lookupCandidates) {
+            try {
+                // Pass the raw username here. URL encoding belongs only in links.
+                const redditUser = await context.reddit.getUserByUsername(
+                    candidate
+                );
+
+                if (redditUser?.username) {
+                    canonicalUsername = redditUser.username;
+                    break;
+                }
+            } catch (error) {
+                lookupHadApiError = true;
+                logger.warn("⚠️ Failed to resolve Reddit username candidate", {
+                    storedUsername: highestScoringEntry.member,
+                    candidate,
                     error,
-                }
-            );
-
-            normalizedEntries.push(highestScoringEntry);
-            continue;
+                });
+            }
         }
 
-        /*
-         * Devvit can return undefined when an account cannot currently
-         * be resolved, including unavailable/suspended accounts.
-         *
-         * Do NOT delete it automatically because we cannot safely know
-         * that the Redis entry is invalid.
-         */
-        if (!redditUser) {
+        if (!canonicalUsername) {
+            // Do not destructively remove data when Reddit cannot currently resolve
+            // an account. Keep the best normalized representation and retry later.
             logger.debug(
-                "🏁 Reddit user could not be resolved; keeping existing leaderboard entry",
+                lookupHadApiError
+                    ? "🏁 Reddit username lookup failed; keeping existing leaderboard entry"
+                    : "🏁 Reddit username could not be resolved; keeping existing leaderboard entry",
                 {
-                    username: highestScoringEntry.member,
+                    storedUsername: highestScoringEntry.member,
+                    lookupCandidates,
                 }
             );
 
-            normalizedEntries.push(highestScoringEntry);
+            normalizedEntries.push({
+                member:
+                    highestScoringEntry.lookupUsername ||
+                    highestScoringEntry.member,
+                score: highestScoringEntry.score,
+            });
             continue;
         }
 
-        /*
-         * THIS is the important value.
-         *
-         * We trust Reddit's returned username rather than trying to
-         * guess capitalization ourselves.
-         *
-         * Example:
-         *
-         * lookup:
-         *   photon_chaser
-         *
-         * Reddit returns:
-         *   Photon_Chaser
-         */
-        const canonicalUsername = redditUser.username;
-
-        /*
-         * Look for a Redis member that ALREADY exactly matches
-         * Reddit's authoritative spelling.
-         */
+        // If Redis already contains the exact spelling Reddit returned, that
+        // canonical entry wins. Scores from aliases are deliberately not summed.
         const canonicalEntry = variants.find(
             (entry) => entry.member === canonicalUsername
         );
 
-        let finalScore: number;
+        const finalScore = canonicalEntry
+            ? canonicalEntry.score
+            : highestScoringEntry.score;
 
-        if (canonicalEntry) {
-            /*
-             * If the correctly-spelled/cased Redis entry exists,
-             * prioritize it.
-             *
-             * Example:
-             *
-             *   Photon_Chaser = 500
-             *   photon_chaser = 900
-             *
-             * Reddit says:
-             *   Photon_Chaser
-             *
-             * Result:
-             *   Photon_Chaser = 500
-             *
-             * The incorrect duplicate is NOT allowed to overwrite or
-             * inflate the legitimate entry.
-             */
-            finalScore = canonicalEntry.score;
-        } else {
-            /*
-             * No canonical spelling currently exists in Redis.
-             *
-             * Example:
-             *
-             *   photon_chaser = 400
-             *
-             * Reddit says:
-             *
-             *   Photon_Chaser
-             *
-             * Preserve the score and move it to the correctly-cased
-             * username.
-             */
-            finalScore = highestScoringEntry.score;
-
+        // Create/rename the canonical member before deleting aliases so the score
+        // is never temporarily lost during a casing/escaping repair.
+        if (!canonicalEntry) {
             await context.redis.zAdd(POINTS_STORE_KEY, {
                 member: canonicalUsername,
                 score: finalScore,
             });
 
-            logger.info(
-                "🏁 Corrected leaderboard username capitalization",
-                {
-                    from: highestScoringEntry.member,
-                    to: canonicalUsername,
-                    score: finalScore,
-                }
-            );
+            logger.info("🏁 Corrected leaderboard Reddit username", {
+                from: highestScoringEntry.member,
+                normalizedFrom: highestScoringEntry.lookupUsername,
+                to: canonicalUsername,
+                score: finalScore,
+            });
         }
 
-        /*
-         * Remove every variant that does NOT exactly match Reddit's
-         * canonical username.
-         *
-         * Example:
-         *
-         * Redis before:
-         *
-         *   Photon_Chaser
-         *   photon_chaser
-         *   PHOTON_CHASER
-         *
-         * Reddit:
-         *
-         *   Photon_Chaser
-         *
-         * Redis after:
-         *
-         *   Photon_Chaser
-         */
         const incorrectVariants = variants
             .filter((entry) => entry.member !== canonicalUsername)
             .map((entry) => entry.member);
 
         if (incorrectVariants.length > 0) {
-            await context.redis.zRem(
-                POINTS_STORE_KEY,
-                incorrectVariants
-            );
+            await context.redis.zRem(POINTS_STORE_KEY, incorrectVariants);
 
-            logger.info(
-                "🧹 Removed incorrectly-cased leaderboard usernames",
-                {
-                    canonicalUsername,
-                    removed: incorrectVariants,
-                }
-            );
+            logger.info("🧹 Removed invalid leaderboard username aliases", {
+                canonicalUsername,
+                removed: incorrectVariants,
+            });
         }
 
         normalizedEntries.push({
@@ -1955,22 +1910,9 @@ async function getCanonicalLeaderboardScores(
         });
     }
 
-    /*
-     * Sort again because correcting/deleting Redis members may have
-     * changed the effective leaderboard.
-     */
     normalizedEntries.sort((a, b) => {
-        /*
-         * Primary sort:
-         * highest score first.
-         */
-        if (b.score !== a.score) {
-            return b.score - a.score;
-        }
+        if (b.score !== a.score) return b.score - a.score;
 
-        /*
-         * Stable deterministic secondary sort for equal scores.
-         */
         return a.member.localeCompare(b.member, "en", {
             sensitivity: "base",
         });
@@ -1979,76 +1921,43 @@ async function getCanonicalLeaderboardScores(
     return normalizedEntries.slice(0, leaderboardSize);
 }
 
-
 export async function updateLeaderboard(
     event: ScheduledJobEvent<JSONObject | undefined>,
     context: JobContext
 ) {
-    // ──────────────── Settings ────────────────
-
     const settings = await context.settings.getAll();
 
-    const leaderboardMode = settings[
-        AppSetting.LeaderboardMode
-    ] as string[] | undefined;
-
-    /*
-     * Stop immediately if:
-     *
-     * - leaderboard mode has not been configured
-     * - setting is empty
-     * - leaderboard is explicitly disabled
-     */
+    const leaderboardMode = settings[AppSetting.LeaderboardMode] as
+        | string[]
+        | undefined;
     if (
         !leaderboardMode ||
         leaderboardMode.length === 0 ||
-        (leaderboardMode[0] as LeaderboardMode) ===
-            LeaderboardMode.Off
+        (leaderboardMode[0] as LeaderboardMode) === LeaderboardMode.Off
     ) {
-        logger.debug(
-            "🏁 Leaderboard mode off — skipping update."
-        );
-
+        logger.debug("🏁 Leaderboard mode off — skipping update.");
         return;
     }
 
     const wikiPageName =
-        (settings[
-            AppSetting.LeaderboardName
-        ] as string | undefined) ?? "leaderboard";
-
+        (settings[AppSetting.LeaderboardName] as string | undefined) ??
+        "leaderboard";
     const leaderboardSize =
-        (settings[
-            AppSetting.LeaderboardSize
-        ] as number | undefined) ?? 50;
+        (settings[AppSetting.LeaderboardSize] as number | undefined) ?? 50;
 
     const subredditName = await getSubredditName(context);
-
-    const pointName =
-        (settings[AppSetting.PointName] as string) ?? "point";
-
-    const helpPage = settings[
-        AppSetting.PointSystemHelpPage
-    ] as string | undefined;
-
+    const pointName = (settings[AppSetting.PointName] as string) ?? "point";
+    const helpPage = settings[AppSetting.PointSystemHelpPage] as
+        | string
+        | undefined;
 
     // ──────────────── Existing wiki -> Redis migration ────────────────
-
-    /*
-     * If a leaderboard wiki page already exists, its table is
-     * authoritative on the first run of the migration.
-     *
-     * replaceLeaderboardRedisFromExistingWikiOnce() should contain
-     * its own marker so the old wiki snapshot is not repeatedly
-     * copied back into Redis.
-     */
+    // If a leaderboard wiki page already exists, its table is authoritative on
+    // the first run of this migration and replaces the existing Redis sorted set.
+    // A per-page marker prevents future scheduled updates from rolling Redis back
+    // to an older wiki snapshot.
     const safeWiki = new SafeWikiClient(context.reddit);
-
-    const wikiPage = await safeWiki.getWikiPage(
-        subredditName,
-        wikiPageName
-    );
-
+    const wikiPage = await safeWiki.getWikiPage(subredditName, wikiPageName);
     if (wikiPage) {
         await replaceLeaderboardRedisFromExistingWikiOnce(
             context,
@@ -2058,98 +1967,54 @@ export async function updateLeaderboard(
         );
     }
 
-
     // ──────────────── Fetch + normalize scores ────────────────
-
-    /*
-     * Instead of directly displaying zRange results, run them through
-     * Reddit first.
-     *
-     * This:
-     *
-     * 1. Resolves the actual Reddit username.
-     *
-     * 2. Uses Reddit's capitalization.
-     *
-     * 3. Groups usernames case-insensitively.
-     *
-     * 4. Removes incorrect aliases from Redis.
-     *
-     * 5. Prevents duplicate aliases from consuming leaderboard slots.
-     *
-     * Example:
-     *
-     *   Photon_Chaser
-     *   photon_chaser
-     *
-     * becomes:
-     *
-     *   Photon_Chaser
-     */
+    // Resolve stored members through Reddit so escaped/encoded/specially-cased
+    // usernames are repaired before the leaderboard is rendered.
     const highScores = await getCanonicalLeaderboardScores(
         context,
         leaderboardSize
     );
 
-    if (!highScores) return;
-
     // ──────────────── Build markdown ────────────────
-
-    let wikiContents =
-        `# ${capitalize(pointName)}board for ${subredditName}\n\n`;
-
+    let wikiContents = `# ${capitalize(
+        pointName
+    )}board for ${subredditName}\n\n`;
     if (helpPage) {
-        wikiContents +=
-            `[How to award ${pointName}s on /r/${subredditName}]` +
-            `(https://reddit.com/r/${subredditName}/wiki/${helpPage})\n\n`;
+        wikiContents += `[How to award ${pointName}s on /r/${subredditName}](https://reddit.com/r/${subredditName}/wiki/${helpPage})\n\n`;
     }
 
-    wikiContents +=
-        `User | ${capitalize(pointName)}s Earned\n` +
-        `-|-\n`;
+    wikiContents += `User | ${capitalize(pointName)}s Earned\n-|-\n`;
 
     if (highScores.length > 0) {
         wikiContents += highScores
-            .map(
-                (entry) =>
-                    `[${markdownEscape(entry.member)}]` +
-                    `(https://old.reddit.com/r/${subredditName}/wiki/user/` +
-                    `${entry.member}/1)|` +
-                    `${entry.score.toLocaleString("en")}`
-            )
+            .map((entry) => {
+                const displayUsername = markdownEscape(entry.member);
+                const urlUsername = encodeURIComponent(entry.member);
+
+                return `[${displayUsername}](https://old.reddit.com/r/${subredditName}/wiki/user/${urlUsername}/1)|${entry.score.toLocaleString(
+                    "en"
+                )}`;
+            })
             .join("\n");
     } else {
-        wikiContents +=
-            "No users have been awarded yet.";
+        wikiContents += "No users have been awarded yet.";
     }
 
+    wikiContents += `\n\nThe leaderboard shows the top ${leaderboardSize.toLocaleString(
+        "en"
+    )} ${pluralize("user", leaderboardSize)} who ${pluralize(
+        "has",
+        leaderboardSize
+    )} been awarded at least one ${pointName}`;
 
-    // ──────────────── Leaderboard footer ────────────────
-
-    wikiContents +=
-        `\n\nThe leaderboard shows the top ` +
-        `${leaderboardSize.toLocaleString("en")} ` +
-        `${pluralize("user", leaderboardSize)} who ` +
-        `${pluralize("has", leaderboardSize)} been awarded ` +
-        `at least one ${pointName}`;
-
-    const installDateTimestamp =
-        await context.redis.get("InstallDate");
-
+    const installDateTimestamp = await context.redis.get("InstallDate");
     if (installDateTimestamp) {
-        const installDate = new Date(
-            parseInt(installDateTimestamp, 10)
-        );
-
-        wikiContents +=
-            ` since ${installDate.toUTCString()}`;
+        const installDate = new Date(parseInt(installDateTimestamp));
+        wikiContents += ` since ${installDate.toUTCString()}`;
     }
-
     wikiContents += ".";
 
-
     // ──────────────── Safe wiki handling ────────────────
-
     let currentWikiPage = wikiPage;
 
     const wikiPageOptions = {
@@ -2159,84 +2024,34 @@ export async function updateLeaderboard(
         reason: event.data?.reason as string | undefined,
     };
 
-    /*
-     * Only update the wiki if something actually changed.
-     */
     if (currentWikiPage) {
-        const existingMarkdown =
-            getWikiMarkdown(currentWikiPage);
-
-        if (existingMarkdown !== wikiContents) {
-            await context.reddit.updateWikiPage(
-                wikiPageOptions
-            );
-
-            console.log(
-                "Leaderboard: Leaderboard updated."
-            );
+        if (getWikiMarkdown(currentWikiPage) !== wikiContents) {
+            await context.reddit.updateWikiPage(wikiPageOptions);
+            console.log("Leaderboard: Leaderboard updated.");
         }
     } else {
-        /*
-         * Leaderboard doesn't exist yet.
-         */
-        currentWikiPage =
-            await context.reddit.createWikiPage(
-                wikiPageOptions
-            );
-
-        console.log(
-            "Leaderboard: Leaderboard created."
-        );
+        currentWikiPage = await context.reddit.createWikiPage(wikiPageOptions);
+        console.log("Leaderboard: Leaderboard created.");
     }
 
+    const mode = leaderboardMode[0];
 
-    // ──────────────── Wiki permission handling ────────────────
+    let correctPermissionLevel: number;
 
-    const mode =
-        leaderboardMode[0] as LeaderboardMode;
-
-    /*
-     * IMPORTANT FIX:
-     *
-     * Your original code had:
-     *
-     *     if (!LeaderboardMode.CurrentWikiSettings)
-     *
-     * That checks the enum VALUE itself rather than the selected mode.
-     *
-     * We want:
-     *
-     *     if (mode !== LeaderboardMode.CurrentWikiSettings)
-     */
     if (mode !== LeaderboardMode.CurrentWikiSettings) {
-        let correctPermissionLevel: number;
-
         switch (mode) {
-            /*
-             * Use subreddit/default wiki permissions.
-             */
             case LeaderboardMode.SubredditPermissions:
                 correctPermissionLevel = 0;
                 break;
 
-            /*
-             * Approved contributors may edit.
-             */
             case LeaderboardMode.ApprovedContributorsOnly:
                 correctPermissionLevel = 1;
                 break;
 
-            /*
-             * Moderator-only editing.
-             */
             case LeaderboardMode.ModOnly:
                 correctPermissionLevel = 2;
                 break;
 
-            /*
-             * Unknown values are handled safely by defaulting
-             * to moderator-only access.
-             */
             default:
                 logger.warn(
                     "⚠️ Unknown leaderboard mode, defaulting to mod only",
@@ -2244,7 +2059,6 @@ export async function updateLeaderboard(
                         mode,
                     }
                 );
-
                 correctPermissionLevel = 2;
                 break;
         }
@@ -2254,18 +2068,8 @@ export async function updateLeaderboard(
                 `Failed to create or retrieve wiki page ${wikiPageName}`
             );
         }
-
-        const wikiPageSettings =
-            await currentWikiPage.getSettings();
-
-        /*
-         * Only perform a Reddit API write when the permission
-         * actually needs changing.
-         */
-        if (
-            wikiPageSettings.permLevel !==
-            correctPermissionLevel
-        ) {
+        const wikiPageSettings = await currentWikiPage.getSettings();
+        if (wikiPageSettings.permLevel !== correctPermissionLevel) {
             await context.reddit.updateWikiPageSettings({
                 subredditName,
                 page: wikiPageName,
@@ -2274,21 +2078,13 @@ export async function updateLeaderboard(
             });
         }
 
-        logger.info(
-            "🔐 Checking leaderboard wiki page permissions",
-            {
-                leaderboardMode,
-                mode,
-                correctPermissionLevel,
-                wikiPermLevel:
-                    wikiPageSettings.permLevel,
-            }
-        );
+        logger.info("🔐 Checking leaderboard wiki page permissions", {
+            leaderboardMode,
+            mode,
+            correctPermissionLevel,
+            wikiPermLevel: wikiPageSettings.permLevel,
+        });
     } else {
-        /*
-         * User explicitly requested that existing wiki permissions
-         * remain untouched.
-         */
         logger.info(
             "🔐 Leaderboard wiki page permissions set to current wiki settings, no changes made",
             {

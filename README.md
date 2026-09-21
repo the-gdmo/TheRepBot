@@ -61,9 +61,9 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 # Latest Changes
-## 31.6.5
+## 31.6.6
 * Make main leaderboard page prioritize the user's actual reddit handle
-## 31.6.3
+## 31.6.4
 * Add "Transfer wiki page" menuitem to subreddit burger/mod menu
 * Make wiki page content trump redis data
 ## 31.6.2

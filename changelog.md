@@ -1,4 +1,6 @@
 # Changelog for RepBot
+## 31.6.7
+* Remove "fs" package from logger file (backend change)
 ## 31.6.6
 * Make main leaderboard page prioritize the user's actual reddit handle
 ## 31.6.4

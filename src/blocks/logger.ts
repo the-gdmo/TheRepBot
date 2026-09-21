@@ -1,7 +1,5 @@
 import chalk from "chalk";
 import { TriggerContext } from "@devvit/public-api";
-import fs from "fs";
-import path from "path";
 
 export enum LogLevel {
   INFO = "INFO",
@@ -11,33 +9,6 @@ export enum LogLevel {
 }
 
 // Environment config
-const IS_DEV = process.env.NODE_ENV === "development";
-const IS_DEVVIT = process.env.DEVVIT_ENV === "production";
-const ENABLE_FILE_LOGGING = IS_DEV && !IS_DEVVIT;
-
-// Log file path (for local dev)
-const dataDir = path.resolve("data");
-const LOG_FILE = path.join(dataDir, "bot.log");
-
-function ensureLogDirExists(): void {
-  if (!fs.existsSync(dataDir)) {
-    try {
-      fs.mkdirSync(dataDir, { recursive: true });
-    } catch (err) {
-      console.error("Logger: Failed to create log directory:", err);
-    }
-  }
-}
-
-function writeToFile(message: string): void {
-  if (!ENABLE_FILE_LOGGING) return;
-  ensureLogDirExists();
-  try {
-    fs.appendFileSync(LOG_FILE, message + "\n", "utf8");
-  } catch (err) {
-    console.error("Logger: Failed to write to log file:", err);
-  }
-}
 
 function formatMessage(level: LogLevel, message: string, context?: Record<string, any>): string {
   const timestamp = new Date().toISOString();
@@ -92,19 +63,16 @@ export const logger = {
     const msg = formatMessage(LogLevel.INFO, message, placeholders);
     const colored = colorize(LogLevel.INFO, msg);
     logToConsole(LogLevel.INFO, colored);
-    writeToFile(msg);
   },
   warn: (message: string, placeholders?: Record<string, any>) => {
     const msg = formatMessage(LogLevel.WARN, message, placeholders);
     const colored = colorize(LogLevel.WARN, msg);
     logToConsole(LogLevel.WARN, colored);
-    writeToFile(msg);
   },
   debug: (message: string, placeholders?: Record<string, any>) => {
     const msg = formatMessage(LogLevel.DEBUG, message, placeholders);
     const colored = colorize(LogLevel.DEBUG, msg);
     logToConsole(LogLevel.DEBUG, colored); // ✅ was console.debug
-    writeToFile(msg);
   },
   error: async (
     message: string,
@@ -114,7 +82,6 @@ export const logger = {
     const msg = formatMessage(LogLevel.ERROR, message, placeholders);
     const colored = colorize(LogLevel.ERROR, msg);
     logToConsole(LogLevel.ERROR, colored);
-    writeToFile(msg);
     if (triggerContext) {
       await sendModPM(triggerContext, msg);
     }

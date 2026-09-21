@@ -46,6 +46,143 @@ function markdownEscape(input: string): string {
     return escapeMarkdownText(input);
 }
 
+/**
+ * Tracks the one-time migration that makes an already-existing leaderboard wiki
+ * page authoritative over Redis. Without this guard, every scheduled leaderboard
+ * refresh could restore an older wiki snapshot and erase points that were added to
+ * Redis since the previous wiki update.
+ */
+function leaderboardWikiImportKey(
+    subredditName: string,
+    wikiPageName: string
+): string {
+    return `leaderboard:wikiImport:v1:${subredditName.toLowerCase()}:${wikiPageName.toLowerCase()}`;
+}
+
+type LeaderboardWikiEntry = {
+    member: string;
+    score: number;
+};
+
+/**
+ * Parses the leaderboard table that this file renders to the wiki.
+ *
+ * Returns undefined when the page does not look like a leaderboard at all. An
+ * empty array is different: it means the page has a valid leaderboard table but
+ * contains no users, so Redis should be cleared during migration.
+ */
+function parseLeaderboardWikiEntries(
+    content: string
+): LeaderboardWikiEntry[] | undefined {
+    const lines = content.replace(/\r\n/g, "\n").split("\n");
+    const headerIndex = lines.findIndex((line) =>
+        /^\s*\|?\s*User\s*\|\s*.+?\s+Earned\s*\|?\s*$/i.test(line)
+    );
+
+    if (headerIndex < 0) return;
+
+    const entries = new Map<string, LeaderboardWikiEntry>();
+
+    // Skip the header and its alignment row. Stop at the first blank line after
+    // the table, which is how updateLeaderboard separates the table from prose.
+    for (let index = headerIndex + 2; index < lines.length; index += 1) {
+        const line = lines[index]?.trim() ?? "";
+        if (!line) break;
+        if (/^No users have been awarded yet\.?$/i.test(line)) break;
+
+        const scoreMatch = line.match(
+            /\|\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*\|?\s*$/
+        );
+        if (!scoreMatch?.[1]) continue;
+
+        const score = Number(scoreMatch[1].replace(/,/g, ""));
+        if (!Number.isFinite(score) || score < 0) continue;
+
+        let member: string | undefined;
+
+        // Prefer the wiki/user URL because markdown labels may contain escaped
+        // punctuation (for example an underscore in a username).
+        const wikiUserMatch = line.match(
+            /https?:\/\/(?:old\.)?reddit\.com\/r\/[^/\s)]+\/wiki\/user\/([^/\s)#?]+)(?:\/\d+)?/i
+        );
+        if (wikiUserMatch?.[1]) {
+            try {
+                member = decodeURIComponent(wikiUserMatch[1]);
+            } catch {
+                member = wikiUserMatch[1];
+            }
+        }
+
+        // Compatibility fallback for older/custom leaderboard rows that retained
+        // a normal markdown link but did not use the canonical wiki/user URL.
+        if (!member) {
+            const labelMatch = line.match(/^\s*\|?\s*\[([^\]]+)\]\(/);
+            if (labelMatch?.[1]) {
+                member = labelMatch[1].replace(/\\(.)/g, "$1");
+            }
+        }
+
+        // Final fallback for a plain `username | score` table row.
+        if (!member) {
+            const plainMatch = line.match(
+                /^\s*\|?\s*(?:\/?u\/)?([A-Za-z0-9_-]+)\s*\|/i
+            );
+            member = plainMatch?.[1];
+        }
+
+        if (!member) continue;
+        const normalizedMember = wikiUsername(member);
+        if (!normalizedMember) continue;
+
+        entries.set(normalizedMember, {
+            member: normalizedMember,
+            score,
+        });
+    }
+
+    return [...entries.values()];
+}
+
+/**
+ * On the first run after this migration is introduced, replace POINTS_STORE_KEY
+ * with the contents of an already-existing leaderboard wiki page. The marker is
+ * scoped to the subreddit and configured wiki page name, so changing the wiki
+ * page can intentionally seed Redis from that page once as well.
+ */
+async function replaceLeaderboardRedisFromExistingWikiOnce(
+    context: JobContext,
+    subredditName: string,
+    wikiPageName: string,
+    wikiPage: WikiPage
+): Promise<void> {
+    const importKey = leaderboardWikiImportKey(subredditName, wikiPageName);
+    if (await context.redis.get(importKey)) return;
+
+    const entries = parseLeaderboardWikiEntries(getWikiMarkdown(wikiPage));
+    if (entries === undefined) {
+        logger.warn(
+            "⚠️ Existing leaderboard wiki could not be parsed; Redis was left unchanged",
+            { subredditName, wikiPageName }
+        );
+        return;
+    }
+
+    // The wiki is authoritative for this migration: remove the old sorted set
+    // completely before inserting the values parsed from the page.
+    await context.redis.del(POINTS_STORE_KEY);
+    if (entries.length > 0) {
+        await context.redis.zAdd(POINTS_STORE_KEY, ...entries);
+    }
+
+    await context.redis.set(importKey, new Date().toISOString());
+
+    logger.info("📥 Replaced leaderboard Redis data from existing wiki", {
+        subredditName,
+        wikiPageName,
+        importedUsers: entries.length,
+    });
+}
+
 function formatDate(dateValue: string | number | Date): string {
     const d = new Date(dateValue);
     return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
@@ -214,13 +351,373 @@ function extractSectionRows(
     content: string,
     verb: "received" | "given"
 ): string[] {
-    return getSectionBody(content, verb)
-        .split("\n")
+    const section = getSectionBody(content, verb);
+
+    return section
+        .split(/\r?\n/)
         .map((line) => line.trim())
         .filter((line) => line.startsWith("|") && line.endsWith("|"))
-        .filter((line) => !/^\|\s*Date\s*\|\s*Submission\s*\|/i.test(line))
-        .filter((line) => !/^\|\s*:?-+:?\s*\|/.test(line))
+        .filter((line) => {
+            // Treat the current wiki table as authoritative. Only ignore rows
+            // that are clearly a table header or alignment separator; do not
+            // rebuild/reformat valid data rows just because their presentation
+            // differs from the bot's default template.
+            const cells = line
+                .slice(1, -1)
+                .split("|")
+                .map((cell) =>
+                    cell
+                        .trim()
+                        .replace(/^\*\*(.*?)\*\*$/, "$1")
+                        .trim()
+                );
+
+            if (cells.length === 0) return false;
+
+            const isAlignmentRow = cells.every((cell) => /^:?-+:?$/.test(cell));
+            if (isAlignmentRow) return false;
+
+            const first = (cells[0] ?? "").toLowerCase();
+            const second = (cells[1] ?? "").toLowerCase();
+            if (first === "date" && second === "submission") return false;
+
+            return true;
+        })
         .filter((line) => !lineHasBackslashedUserMention(line));
+}
+
+type RedisGivenHistoryEntry = {
+    date: string;
+    postTitle: string;
+    postUrl: string;
+    recipient: string;
+    commentUrl: string;
+};
+
+type RedisReceivedHistoryEntry = {
+    date: string;
+    postTitle: string;
+    postUrl: string;
+    awarder: string;
+    commentUrl: string;
+};
+
+type ParsedGivenWikiEntry = {
+    recipient: string;
+    score: number;
+    givenMember: string;
+    receivedMember: string;
+};
+
+function userHistoryGivenKey(username: string): string {
+    return `userHistory:given:${wikiUsername(username)}`;
+}
+
+function userHistoryReceivedKey(username: string): string {
+    return `userHistory:received:${wikiUsername(username)}`;
+}
+
+/**
+ * Tracks which received-history keys were populated from a specific awarder's
+ * Given wiki rows. This lets a later wiki -> Redis rebuild remove stale rows
+ * when moderators delete or correct an existing wiki entry.
+ */
+function userHistoryRecipientIndexKey(awarder: string): string {
+    return `userHistory:wikiRecipients:${wikiUsername(awarder)}`;
+}
+
+function unescapeMarkdownText(input: string): string {
+    return input.replace(/\\([\x20-\x2F\x3A-\x40\x5B-\x60\x7B-\x7E])/g, "$1");
+}
+
+function decodeMarkdownUrl(input: string): string {
+    try {
+        return decodeURI(input);
+    } catch {
+        return input;
+    }
+}
+
+/**
+ * Wiki history only renders a calendar date, not the original timestamp. Add a
+ * tiny deterministic offset so multiple otherwise-identical rows from the same
+ * day remain distinct Redis sorted-set members and retain their wiki order.
+ */
+function parseWikiHistoryDate(
+    input: string,
+    sequence: number
+): { date: string; score: number } | undefined {
+    const match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(input.trim());
+    if (!match) return;
+
+    const month = Number.parseInt(match[1]!, 10);
+    const day = Number.parseInt(match[2]!, 10);
+    const year = Number.parseInt(match[3]!, 10);
+    const base = Date.UTC(year, month - 1, day);
+    const parsed = new Date(base);
+
+    if (
+        parsed.getUTCFullYear() !== year ||
+        parsed.getUTCMonth() !== month - 1 ||
+        parsed.getUTCDate() !== day
+    ) {
+        return;
+    }
+
+    // sequence is only used as a stable tie-breaker within wiki-derived data.
+    const score = base + sequence;
+    return { date: new Date(score).toISOString(), score };
+}
+
+/**
+ * Parses one canonical Given-table row:
+ * | Date | [Submission](url) | [Link](comment) | /u/recipient |
+ *
+ * A Given row contains enough information to rebuild BOTH Redis directions.
+ * The Received wiki table alone cannot do that because it omits awarder and
+ * commentUrl, so the awarder's Given history is the authoritative Redis source.
+ */
+function parseGivenWikiRow(
+    row: string,
+    awarder: string,
+    sequence: number
+): ParsedGivenWikiEntry | undefined {
+    const match = row.match(
+        /^\|\s*([^|]+?)\s*\|\s*\[((?:\\.|[^\]])*)\]\(([^)\s]+)\)\s*\|\s*\[((?:\\.|[^\]])*)\]\(([^)\s]+)\)\s*\|\s*(?:\/?u\/)?([A-Za-z0-9_-]+)\s*\|$/i
+    );
+    if (!match) return;
+
+    const parsedDate = parseWikiHistoryDate(match[1]!, sequence);
+    if (!parsedDate) return;
+
+    const recipient = wikiUsername(match[6]!);
+    if (!recipient) return;
+
+    const postTitle = unescapeMarkdownText(match[2]!);
+    const postUrl = decodeMarkdownUrl(match[3]!);
+    const commentUrl = decodeMarkdownUrl(match[5]!);
+    const normalizedAwarder = wikiUsername(awarder);
+
+    const given: RedisGivenHistoryEntry = {
+        date: parsedDate.date,
+        postTitle,
+        postUrl,
+        recipient,
+        commentUrl,
+    };
+    const received: RedisReceivedHistoryEntry = {
+        date: parsedDate.date,
+        postTitle,
+        postUrl,
+        awarder: normalizedAwarder,
+        commentUrl,
+    };
+
+    return {
+        recipient,
+        score: parsedDate.score,
+        givenMember: JSON.stringify(given),
+        receivedMember: JSON.stringify(received),
+    };
+}
+
+async function getAllSortedSetEntries(
+    context: TriggerContext,
+    key: string
+): Promise<Array<{ member: string; score: number }>> {
+    const count = await context.redis.zCard(key);
+    if (count <= 0) return [];
+    return context.redis.zRange(key, 0, count - 1, { by: "rank" });
+}
+
+async function zAddInBatches(
+    context: TriggerContext,
+    key: string,
+    entries: Array<{ member: string; score: number }>,
+    batchSize = 100
+): Promise<void> {
+    for (let index = 0; index < entries.length; index += batchSize) {
+        await context.redis.zAdd(
+            key,
+            ...entries.slice(index, index + batchSize)
+        );
+    }
+}
+
+function getRecipientFromGivenRedisMember(member: string): string | undefined {
+    try {
+        const parsed = JSON.parse(member) as Partial<RedisGivenHistoryEntry>;
+        return typeof parsed.recipient === "string"
+            ? wikiUsername(parsed.recipient)
+            : undefined;
+    } catch {
+        return;
+    }
+}
+
+function isReceivedRedisMemberFromAwarder(
+    member: string,
+    awarder: string
+): boolean {
+    try {
+        const parsed = JSON.parse(member) as Partial<RedisReceivedHistoryEntry>;
+        return (
+            typeof parsed.awarder === "string" &&
+            wikiUsername(parsed.awarder) === wikiUsername(awarder)
+        );
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Rebuilds userHistory Redis from the awarder's numbered wiki pages.
+ *
+ * This is intentionally a replacement, not an append:
+ * - userHistory:given:<awarder> becomes exactly the parseable Given wiki rows.
+ * - matching rows contributed by this awarder are removed from each affected
+ *   userHistory:received:<recipient> set, then rebuilt from those same wiki rows.
+ *
+ * Therefore moderator edits/migrations in the wiki become authoritative instead
+ * of leaving stale Redis history behind.
+ */
+async function replaceUserHistoryRedisFromWiki(
+    context: TriggerContext,
+    subredditName: string,
+    awarder: string
+): Promise<number> {
+    awarder = wikiUsername(awarder);
+    const safeWiki = new SafeWikiClient(context.reddit);
+    const latestPage = await discoverLatestPage(
+        context,
+        subredditName,
+        awarder,
+        safeWiki
+    );
+
+    const parsedEntries: ParsedGivenWikiEntry[] = [];
+    let sequence = 0;
+
+    for (let pageNumber = 1; pageNumber <= latestPage; pageNumber += 1) {
+        const page = await safeWiki.getWikiPage(
+            subredditName,
+            getNumberedUserWikiPath(awarder, pageNumber)
+        );
+        if (!page) continue;
+
+        const rows = extractSectionRows(
+            normalizeWikiContent(getWikiMarkdown(page)),
+            "given"
+        );
+        for (const row of rows) {
+            const parsed = parseGivenWikiRow(row, awarder, sequence);
+            sequence += 1;
+            if (parsed) parsedEntries.push(parsed);
+        }
+    }
+
+    const givenKey = userHistoryGivenKey(awarder);
+    const previousGiven = await getAllSortedSetEntries(context, givenKey);
+
+    // Recipients from old Redis, current wiki, and our previous sync index are
+    // all candidates for stale received rows that need to be removed.
+    const affectedRecipients = new Set<string>();
+    for (const entry of previousGiven) {
+        const recipient = getRecipientFromGivenRedisMember(entry.member);
+        if (recipient) affectedRecipients.add(recipient);
+    }
+    for (const entry of parsedEntries) {
+        affectedRecipients.add(entry.recipient);
+    }
+
+    const recipientIndexKey = userHistoryRecipientIndexKey(awarder);
+    const indexedRecipients = await context.redis.get(recipientIndexKey);
+    if (indexedRecipients) {
+        try {
+            const parsed = JSON.parse(indexedRecipients);
+            if (Array.isArray(parsed)) {
+                for (const recipient of parsed) {
+                    if (typeof recipient === "string") {
+                        affectedRecipients.add(wikiUsername(recipient));
+                    }
+                }
+            }
+        } catch {
+            logger.warn("⚠️ Invalid user-history recipient index; rebuilding", {
+                awarder,
+            });
+        }
+    }
+
+    // Remove this awarder's old contribution from every received-history set we
+    // know about before rebuilding it from the wiki.
+    for (const recipient of affectedRecipients) {
+        if (!recipient) continue;
+        const receivedKey = userHistoryReceivedKey(recipient);
+        const existing = await getAllSortedSetEntries(context, receivedKey);
+        const staleMembers = existing
+            .filter((entry) =>
+                isReceivedRedisMemberFromAwarder(entry.member, awarder)
+            )
+            .map((entry) => entry.member);
+
+        if (staleMembers.length > 0) {
+            await context.redis.zRem(receivedKey, staleMembers);
+        }
+    }
+
+    // Replace the awarder's Given set completely.
+    await context.redis.del(givenKey);
+    await zAddInBatches(
+        context,
+        givenKey,
+        parsedEntries.map((entry) => ({
+            member: entry.givenMember,
+            score: entry.score,
+        }))
+    );
+
+    // Rebuild Received entries grouped by recipient.
+    const receivedByRecipient = new Map<
+        string,
+        Array<{ member: string; score: number }>
+    >();
+    for (const entry of parsedEntries) {
+        const list = receivedByRecipient.get(entry.recipient) ?? [];
+        list.push({ member: entry.receivedMember, score: entry.score });
+        receivedByRecipient.set(entry.recipient, list);
+    }
+
+    for (const [recipient, entries] of receivedByRecipient) {
+        await zAddInBatches(
+            context,
+            userHistoryReceivedKey(recipient),
+            entries
+        );
+    }
+
+    await context.redis.set(
+        recipientIndexKey,
+        JSON.stringify([...receivedByRecipient.keys()])
+    );
+
+    // Verify that the replacement actually persisted instead of silently
+    // continuing with a partially-written Given history.
+    const savedGivenCount = await context.redis.zCard(givenKey);
+    if (savedGivenCount !== parsedEntries.length) {
+        throw new Error(
+            `Redis user history verification failed for ${awarder}: expected ${parsedEntries.length} Given entries, found ${savedGivenCount}`
+        );
+    }
+
+    logger.info("💾 Rebuilt Redis user history from wiki", {
+        awarder,
+        latestPage,
+        givenEntries: parsedEntries.length,
+        recipients: receivedByRecipient.size,
+    });
+
+    return parsedEntries.length;
 }
 
 function buildCanonicalUserWikiBody(
@@ -230,41 +727,33 @@ function buildCanonicalUserWikiBody(
     capPlural: string,
     escapedPlural: string
 ): string {
+    // Existing wiki markdown is the source of truth for what the page should
+    // display. normalizeWikiContent() only applies the bot's targeted repairs
+    // (latest-page notice removal, malformed mention cleanup, legacy escaping,
+    // etc.); it no longer causes the page to be reconstructed from a template.
     const normalized = normalizeWikiContent(content);
+    if (normalized) {
+        return normalized;
+    }
+
+    // Only an actually empty/new page gets the default structure.
     const displayUsername = wikiUsername(username);
-    const receivedRows = extractSectionRows(normalized, "received");
-    const givenRows = extractSectionRows(normalized, "given");
-
-    const receivedCount = Math.max(
-        receivedRows.length,
-        readSectionCount(normalized, displayUsername, "received") ?? 0
-    );
-    const givenCount = Math.max(
-        givenRows.length,
-        readSectionCount(normalized, displayUsername, "given") ?? 0
-    );
-
-    const receivedRowsText =
-        receivedRows.length > 0 ? `\n${receivedRows.join("\n")}` : "";
-    const givenRowsText =
-        givenRows.length > 0 ? `\n${givenRows.join("\n")}` : "";
-
     return `
 # ${capPoint} History for u/${displayUsername}
 
 ## ${capPlural} Received
-u/${displayUsername} has received a total of ${receivedCount} ${escapedPlural}.
+u/${displayUsername} has received a total of 0 ${escapedPlural}.
 
 | Date | Submission |
-| :-: | :-- |${receivedRowsText}
+| :-: | :-- |
 
 ---
 
 ## ${capPlural} Given
-u/${displayUsername} has given a total of ${givenCount} ${escapedPlural}.
+u/${displayUsername} has given a total of 0 ${escapedPlural}.
 
 | Date | Submission | ${capPoint} Comment | Awarded To |
-| :-: | :-- | :-: | :-: |${givenRowsText}
+| :-: | :-- | :-: | :-: |
     `.trim();
 }
 
@@ -306,8 +795,8 @@ function appendRowToSection(
 ): string {
     const sectionStart = content.indexOf(heading);
 
-    // A non-standard legacy page should be preserved, not discarded. If its
-    // expected section is missing, add only the missing section at the bottom.
+    // Preserve the existing page as the display source. If the requested
+    // section does not exist at all, add only that missing section.
     if (sectionStart < 0) {
         return `${content.trimEnd()}\n\n---\n\n${heading}\n\n${tableHeader}\n${alignmentRow}\n${row}`;
     }
@@ -317,29 +806,53 @@ function appendRowToSection(
     const ends = [nextDivider, nextHeading].filter((n) => n >= 0);
     const sectionEnd = ends.length > 0 ? Math.min(...ends) : content.length;
 
-    let section = content.slice(sectionStart, sectionEnd).trimEnd();
+    let section = content.slice(sectionStart, sectionEnd);
     section = section.replace(/\nNo history yet\.?\s*$/i, "");
 
     const sectionLines = section.split("\n");
     const existingHeaderIndex = sectionLines.findIndex((line) =>
-        /^\|\s*Date\s*\|\s*Submission\s*\|/i.test(line)
+        /^\|\s*(?:\*\*)?Date(?:\*\*)?\s*\|\s*(?:\*\*)?Submission(?:\*\*)?\s*\|/i.test(
+            line.trim()
+        )
     );
 
     if (existingHeaderIndex >= 0) {
-        // Repair an older malformed table header/alignment in place, then append.
-        sectionLines[existingHeaderIndex] = tableHeader;
-        if (
-            /^\|\s*:?-+:?\s*\|/.test(
-                sectionLines[existingHeaderIndex + 1]?.trim() ?? ""
-            )
-        ) {
-            sectionLines[existingHeaderIndex + 1] = alignmentRow;
-        } else {
-            sectionLines.splice(existingHeaderIndex + 1, 0, alignmentRow);
+        // Keep the existing wiki header/layout intact. Only add an alignment row
+        // when the table truly does not have one.
+        let alignmentIndex = existingHeaderIndex + 1;
+        const nextLine = sectionLines[alignmentIndex]?.trim() ?? "";
+        const isAlignmentRow =
+            nextLine.startsWith("|") &&
+            nextLine.endsWith("|") &&
+            nextLine
+                .slice(1, -1)
+                .split("|")
+                .map((cell) => cell.trim())
+                .filter(Boolean)
+                .every((cell) => /^:?-+:?$/.test(cell));
+
+        if (!isAlignmentRow) {
+            sectionLines.splice(alignmentIndex, 0, alignmentRow);
         }
-        section = `${sectionLines.join("\n")}\n${row}`;
+
+        // Walk only through the contiguous markdown table. This puts the new
+        // Received/Given data directly after the last existing table row rather
+        // than at the end of the entire section, preserving custom text below it.
+        let insertIndex = alignmentIndex + 1;
+        while (insertIndex < sectionLines.length) {
+            const candidate = sectionLines[insertIndex]?.trim() ?? "";
+            if (!candidate.startsWith("|") || !candidate.endsWith("|")) {
+                break;
+            }
+            insertIndex += 1;
+        }
+
+        sectionLines.splice(insertIndex, 0, row);
+        section = sectionLines.join("\n");
     } else {
-        section += `\n\n${tableHeader}\n${alignmentRow}\n${row}`;
+        // The section exists but has no history table yet. Add the table at the
+        // bottom of that section and put the new data row into it immediately.
+        section = `${section.trimEnd()}\n\n${tableHeader}\n${alignmentRow}\n${row}`;
     }
 
     const sectionSpacer = sectionEnd < content.length ? "\n" : "";
@@ -1030,31 +1543,8 @@ export async function updateUserWiki(
     const capPlural = escapeMarkdownText(capitalize(plural));
     const now = new Date().toISOString();
 
-    // Keep Redis history for compatibility/diagnostics, but the current wiki
-    // markdown is the authoritative source for rendering and migration.
-    await context.redis.zAdd(`userHistory:given:${awarder}`, {
-        member: JSON.stringify({
-            date: now,
-            postTitle: data.postTitle,
-            postUrl: data.postUrl,
-            recipient,
-            commentUrl: data.commentUrl,
-        }),
-        score: Date.now(),
-    });
-
-    await context.redis.zAdd(`userHistory:received:${recipient}`, {
-        member: JSON.stringify({
-            date: now,
-            postTitle: data.postTitle,
-            postUrl: data.postUrl,
-            awarder,
-            commentUrl: data.commentUrl,
-        }),
-        score: Date.now(),
-    });
-
-    // Append in chronological order: old entries remain above new entries.
+    // Write the wiki first. The wiki is the authoritative history, so Redis is
+    // rebuilt from the actual persisted Given rows after both pages are updated.
     await appendUserWikiEntry(
         context,
         subredditName,
@@ -1089,9 +1579,20 @@ export async function updateUserWiki(
         escapedPlural
     );
 
-    logger.info("📄 User wiki updated for both awarder & recipient", {
+    // Replace Redis from the awarder's complete Given wiki history. Given rows
+    // contain recipient + comment URL, so they can reconstruct both Redis keys.
+    // This also imports legacy/migrated wiki rows instead of only saving the new
+    // award that happened during this invocation.
+    const redisHistoryCount = await replaceUserHistoryRedisFromWiki(
+        context,
+        subredditName,
+        awarder
+    );
+
+    logger.info("📄 User wiki and Redis history updated", {
         awarder,
         recipient,
+        redisHistoryCount,
     });
 }
 
@@ -1184,6 +1685,22 @@ export async function updateLeaderboard(
         | string
         | undefined;
 
+    // ──────────────── Existing wiki -> Redis migration ────────────────
+    // If a leaderboard wiki page already exists, its table is authoritative on
+    // the first run of this migration and replaces the existing Redis sorted set.
+    // A per-page marker prevents future scheduled updates from rolling Redis back
+    // to an older wiki snapshot.
+    const safeWiki = new SafeWikiClient(context.reddit);
+    const wikiPage = await safeWiki.getWikiPage(subredditName, wikiPageName);
+    if (wikiPage) {
+        await replaceLeaderboardRedisFromExistingWikiOnce(
+            context,
+            subredditName,
+            wikiPageName,
+            wikiPage
+        );
+    }
+
     // ──────────────── Fetch scores ────────────────
     const highScores = await context.redis.zRange(
         POINTS_STORE_KEY,
@@ -1232,15 +1749,7 @@ export async function updateLeaderboard(
     wikiContents += ".";
 
     // ──────────────── Safe wiki handling ────────────────
-    let wikiPage: WikiPage | undefined;
-    try {
-        wikiPage = await context.reddit.getWikiPage(
-            subredditName,
-            wikiPageName
-        );
-    } catch {
-        //
-    }
+    let currentWikiPage = wikiPage;
 
     const wikiPageOptions = {
         subredditName,
@@ -1249,13 +1758,13 @@ export async function updateLeaderboard(
         reason: event.data?.reason as string | undefined,
     };
 
-    if (wikiPage) {
-        if (wikiPage.content !== wikiContents) {
+    if (currentWikiPage) {
+        if (getWikiMarkdown(currentWikiPage) !== wikiContents) {
             await context.reddit.updateWikiPage(wikiPageOptions);
             console.log("Leaderboard: Leaderboard updated.");
         }
     } else {
-        wikiPage = await context.reddit.createWikiPage(wikiPageOptions);
+        currentWikiPage = await context.reddit.createWikiPage(wikiPageOptions);
         console.log("Leaderboard: Leaderboard created.");
     }
 
@@ -1288,7 +1797,12 @@ export async function updateLeaderboard(
                 break;
         }
 
-        const wikiPageSettings = await wikiPage.getSettings();
+        if (!currentWikiPage) {
+            throw new Error(
+                `Failed to create or retrieve wiki page ${wikiPageName}`
+            );
+        }
+        const wikiPageSettings = await currentWikiPage.getSettings();
         if (wikiPageSettings.permLevel !== correctPermissionLevel) {
             await context.reddit.updateWikiPageSettings({
                 subredditName,

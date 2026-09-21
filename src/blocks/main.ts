@@ -19,7 +19,7 @@ import {
     UPDATE_MODINFO_JOB,
     // UPGRADE_NOTIFIER_JOB,
 } from "./constants";
-import { handleConfirmReply } from "./utility";
+import { handleConfirmReply, SafeWikiClient } from "./utility";
 import { handleThanksEvent } from "./triggers/comment/on-comment-trigger";
 import { onPostSubmit } from "./triggers/post-logic/postSubmitEvent";
 import {
@@ -120,8 +120,19 @@ export const manualPostRestrictionRemovalForm = Devvit.createForm(
 Devvit.addMenuItem({
     label: "[RepBot] - Set Flair Management For Specified User",
     forUserType: "moderator",
-    location: "subreddit",
+    location: ["post", "comment"],
     onPress: handleFlairToggleForUser,
+});
+
+Devvit.addMenuItem({
+    label: "Transfer wiki page",
+    description: "Copy one wiki page to another",
+    location: "subreddit",
+    forUserType: "moderator",
+
+    onPress: async (_event, context) => {
+        context.ui.showForm(transferWikiForm);
+    },
 });
 
 Devvit.addMenuItem({
@@ -506,6 +517,101 @@ export async function manualSetFlairManagementForUserFormHandler(
         `Flair management for u/${target} is now ${isEnabled}`
     );
 }
+
+function normalizeWikiPath(input: string): string {
+    let path = input.trim();
+
+    // Allow someone to paste:
+    // foo/bar
+    // wiki/foo/bar
+    // /wiki/foo/bar
+    path = path.replace(/^\/?wiki\//i, path);
+
+    // Strip leading/trailing slashes.
+    path = path.replace(/^\/+|\/+$/g, path);
+
+    return path;
+}
+
+const transferWikiForm = Devvit.createForm(
+    {
+        title: "Transfer wiki page",
+        description: "Copy the contents of one wiki page to another.",
+        acceptLabel: "Transfer",
+        cancelLabel: "Cancel",
+
+        fields: [
+            {
+                type: "string",
+                name: "sourcePage",
+                label: "Source wiki page",
+                placeholder: "example/source",
+                helpText: "The link after /wiki/",
+                required: true,
+            },
+            {
+                type: "string",
+                name: "destinationPage",
+                label: "Destination wiki page",
+                placeholder: "example/destination",
+                helpText: "The link after /wiki/. The page will be created if it does not exist",
+                required: true,
+            },
+        ],
+    },
+
+    async (event, context) => {
+        const sourcePage = normalizeWikiPath(
+            String(event.values.sourcePage ?? "")
+        );
+
+        const destinationPage = normalizeWikiPath(
+            String(event.values.destinationPage ?? "")
+        );
+
+        if (!sourcePage || !destinationPage) {
+            context.ui.showToast("Source and destination pages are required.");
+            return;
+        }
+
+        if (sourcePage === destinationPage) {
+            context.ui.showToast(
+                "Source and destination cannot be the same page."
+            );
+            return;
+        }
+
+        try {
+            const subreddit = await context.reddit.getCurrentSubreddit();
+
+            const wiki = new SafeWikiClient(context.reddit);
+
+            const result = await wiki.copyWikiPage(
+                subreddit.name,
+                sourcePage,
+                destinationPage
+            );
+
+            context.ui.showToast(
+                result === "created"
+                    ? `Created wiki/${destinationPage} from wiki/${sourcePage}.`
+                    : `Updated wiki/${destinationPage} from wiki/${sourcePage}.`
+            );
+        } catch (error) {
+            console.error("Wiki transfer failed:", error);
+
+            const message =
+                error instanceof Error
+                    ? error.message
+                    : "Unknown wiki transfer error.";
+
+            context.ui.showToast({
+                text: message,
+                appearance: "neutral",
+            });
+        }
+    }
+);
 
 Devvit.configure({
     redditAPI: true,

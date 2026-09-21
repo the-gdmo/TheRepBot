@@ -36,77 +36,141 @@ export async function getSubredditName(
 }
 
 export class SafeWikiClient {
-    constructor(protected reddit: RedditAPIClient) {}
+  constructor(protected reddit: RedditAPIClient) {}
 
-    /**
-     * Safely gets or creates a wiki page.
-     * Handles missing or uninitialized wiki pages without throwing.
-     */
-    public async getWikiPage(
-        subredditName: string,
-        wikiPath: string
-    ): Promise<WikiPage | undefined> {
-        try {
-            const wikiPage = await this.reddit.getWikiPage(
-                subredditName,
-                wikiPath
-            );
+  /**
+   * Safely gets a wiki page.
+   * Returns undefined when the page has never been created.
+   */
+  public async getWikiPage(
+    subredditName: string,
+    wikiPath: string
+  ): Promise<WikiPage | undefined> {
+    try {
+      return await this.reddit.getWikiPage(
+        subredditName,
+        wikiPath
+      );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
 
-            // Return the actual WikiPage object intact. Modern Devvit exposes
-            // markdown through WikiPage.content; reconstructing/spreading this
-            // class can drop accessor-backed fields and lose the page content.
-            return wikiPage;
-        } catch (error) {
-            const errorMessage =
-                error instanceof Error ? error.message : String(error);
+      if (
+        errorMessage.includes("PAGE_NOT_CREATED") ||
+        errorMessage.includes("404 Not Found")
+      ) {
+        return undefined;
+      }
 
-            if (
-                errorMessage.includes("PAGE_NOT_CREATED") ||
-                errorMessage.includes("404 Not Found")
-            ) {
-                // Page doesn't exist
-                return;
-            }
+      if (
+        errorMessage.includes(
+          "Wiki page author details are missing"
+        )
+      ) {
+        console.warn(
+          "Wiki page exists but could not be read safely",
+          {
+            subredditName,
+            wikiPath,
+            error: errorMessage,
+          }
+        );
 
-            if (errorMessage.includes("Wiki page author details are missing")) {
-                // Do not seed/overwrite this page. The page may contain history,
-                // and preserving existing wiki content is more important than
-                // silently replacing an unreadable revision with placeholder text.
-                logger.warn("Wiki page exists but could not be read safely", {
-                    subredditName,
-                    wikiPath,
-                    error: errorMessage,
-                });
-                throw error;
-            }
+        throw error;
+      }
 
-            console.error(
-                "❌ Unexpected error while getting wiki page!",
-                error
-            );
-            throw error;
-        }
+      console.error(
+        "Unexpected error while getting wiki page",
+        error
+      );
+
+      throw error;
+    }
+  }
+
+  /**
+   * Creates a wiki page.
+   */
+  public async createWikiPage(
+    options: CreateWikiPageOptions
+  ): Promise<WikiPage | undefined> {
+    try {
+      // Don't .trim() here if this method is being used
+      // to copy wiki content exactly.
+      const content =
+        options.content.length > 0
+          ? options.content
+          : "---";
+
+      return await this.reddit.createWikiPage({
+        ...options,
+        content,
+      });
+    } catch (error) {
+      console.warn("Error creating wiki page:", error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Copy one wiki page to another.
+   *
+   * Creates the destination if it does not exist.
+   * Updates it if it already exists.
+   */
+  public async copyWikiPage(
+    subredditName: string,
+    sourcePath: string,
+    destinationPath: string
+  ): Promise<"created" | "updated"> {
+    const source = await this.getWikiPage(
+      subredditName,
+      sourcePath
+    );
+
+    if (!source) {
+      throw new Error(
+        `Source wiki page "${sourcePath}" does not exist.`
+      );
     }
 
-    /**
-     * Creates a wiki page safely, avoiding empty-content issues.
-     */
-    public async createWikiPage(
-        options: CreateWikiPageOptions
-    ): Promise<WikiPage | undefined> {
-        try {
-            const content = options.content?.trim() || "---";
-            const created = await this.reddit.createWikiPage({
-                ...options,
-                content,
-            });
+    const destination = await this.getWikiPage(
+      subredditName,
+      destinationPath
+    );
 
-            return created;
-        } catch (error) {
-            console.warn("⚠️ Error creating wiki page:", error);
-            return;
-        }
+    // Important: use the WikiPage.content accessor directly.
+    const content = source.content;
+
+    const reason =
+      `Copied from wiki/${sourcePath}`;
+
+    if (destination) {
+      await this.reddit.updateWikiPage({
+        subredditName,
+        page: destinationPath,
+        content,
+        reason,
+      });
+
+      return "updated";
     }
+
+    const created = await this.createWikiPage({
+      subredditName,
+      page: destinationPath,
+      content,
+      reason,
+    });
+
+    if (!created) {
+      throw new Error(
+        `Failed to create destination wiki page "${destinationPath}".`
+      );
+    }
+
+    return "created";
+  }
 }
 
 export async function handleConfirmReply(

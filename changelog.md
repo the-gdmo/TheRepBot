@@ -1,4 +1,7 @@
 # Changelog for RepBot
+## 31.6.4
+* Add "Transfer wiki page" menuitem to subreddit burger/mod menu
+* Make wiki page content trump redis data
 ## 31.6.2
 * Change latest user page url to Old Reddit version of the page
 ## 31.6.1

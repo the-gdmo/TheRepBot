@@ -17,17 +17,6 @@
     "marketingAssets": {
         "icon": "assets/repbot.png"
     },
-    "menu": {
-        "items": [
-            {
-                "label": "Submit Leaderboard Post",
-                "description": "TheRepBot",
-                "forUserType": "moderator",
-                "location": "subreddit",
-                "endpoint": "/internal/menu/create-post"
-            }
-        ]
-    },
     "forms": {
         "post-create-form": "/internal/form/create-post"
     }

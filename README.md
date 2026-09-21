@@ -61,6 +61,9 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 # Latest Changes
+## 31.6.4
+* Add "Transfer wiki page" menuitem to subreddit burger/mod menu
+* Make wiki page content trump redis data
 ## 31.6.2
 * Change latest user page url to Old Reddit version of the page
 ## 31.6.1
@@ -72,7 +75,5 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * Make an awardee's wikipage be updated even if flair management is disabled for them
 ## 31.5.20
 * Update to latest devvit version
-## 31.5.19
-* Make it so that user score will properly be managed if the user's flair is not managed
 
 For older versions, please see the [full changelog](https://github.com/the-gdmo/therepbot/blob/main/changelog.md).

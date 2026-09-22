@@ -1,4 +1,6 @@
 # Changelog for RepBot
+## 31.6.8
+* Fix "Unrestricted Posting Message" to apply to all subreddits. Previous was related to r/FindTheSniper
 ## 31.6.7
 * Remove "fs" package from logger file (backend change)
 ## 31.6.6

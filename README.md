@@ -71,12 +71,5 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * Remove "fs" package from logger file (backend change)
 ## 31.6.6
 * Make main leaderboard page prioritize the user's actual reddit handle
-## 31.6.4
-* Add "Transfer wiki page" menuitem to subreddit burger/mod menu
-* Make wiki page content trump redis data
-## 31.6.2
-* Change latest user page url to Old Reddit version of the page
-## 31.6.1
-* Make a way for mods to set the given/received stats for a user (this can be useful if you need to remove bad data or if the wikipage data is off (this would only happen if the data from your original page at `wiki/user/username` (the page I initially used for all user data) doesn't transfer))
 
 For older versions, please see the [full changelog](https://github.com/the-gdmo/therepbot/blob/main/changelog.md).

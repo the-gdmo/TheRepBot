@@ -1,4 +1,8 @@
 # Changelog for RepBot
+## 31.6.9
+* Update to latest devvit version
+* Add mod digest to give mods info about actions taken using RepBot (eg how many points were awarded in the timespan overall, how many were awarded by mods, how many awarded by non-mods, etc.)
+* Add upgrade notification capability
 ## 31.6.8
 * Fix "Unrestricted Posting Message" to apply to all subreddits. Previous was related to r/FindTheSniper
 ## 31.6.7

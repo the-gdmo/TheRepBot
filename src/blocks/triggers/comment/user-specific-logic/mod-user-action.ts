@@ -33,6 +33,7 @@ import {
 import { updateUserWiki } from "../../../leaderboard";
 import { isModerator } from "../../../utility";
 import { setUserScore } from "../on-comment-trigger";
+import { recordDigestPointAward } from "../../utils/digest-stats";
 
 export async function commentContainsModCommand(
     event: CommentSubmit | CommentUpdate,
@@ -229,6 +230,13 @@ export async function awardPointToUserModCommand(
     const awarder = event.author.name;
     const awardee = parentComment.authorName;
 
+    // Classify by actual moderator status, not by which command was used.
+    const awarderIsModerator = await isModerator(
+        context,
+        event.subreddit.name,
+        awarder
+    );
+
     let user: User | undefined;
 
     try {
@@ -283,6 +291,16 @@ export async function awardPointToUserModCommand(
         score: scoreFromRedis ? scoreFromRedis + 1 : existingScore.score + 1,
     });
 
+    // Record the successful point independently of optional replies/flair/wiki.
+    try {
+        await recordDigestPointAward(context, awarder, awarderIsModerator);
+    } catch (error) {
+        logger.error("Could not record moderator-command digest statistic", {
+            awarder,
+            error,
+        });
+    }
+
     const newScore: ScoreResult = {
         score: scoreFromRedis ? scoreFromRedis + 1 : existingScore.score + 1,
         userHasFlair: existingScore.userHasFlair,
@@ -314,11 +332,6 @@ export async function awardPointToUserModCommand(
     const leaderboard = `https://old.reddit.com/r/${
         event.subreddit.name
     }/wiki/${settings[AppSetting.LeaderboardName] ?? "leaderboard"}`;
-    const awarderIsModerator = await isModerator(
-        context,
-        event.subreddit.name,
-        awarder
-    );
     const awarderIsSuperUser = await getUserIsSuperuser(context, awarder);
 
     const modSuccessTemplate =

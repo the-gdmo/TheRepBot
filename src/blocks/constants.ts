@@ -4,13 +4,15 @@ export const UPDATE_MODINFO_JOB = "updateModInfo";
 export const CLEANUP_JOB = "cleanupDeletedAccounts";
 export const ADHOC_CLEANUP_JOB = "cleanupDeletedAccountsAdhoc";
 export const ADHOC_POST_OF_THE_MONTH_JOB = "updatePostOfTheMonthAdhoc"
-// export const UPGRADE_NOTIFIER_JOB = "upgradeNotifier";
+export const UPGRADE_NOTIFIER_JOB = "upgradeNotifier";
+export const MOD_DIGEST_JOB = "modDigest";
 
 // Job Cron
 export const CLEANUP_JOB_CRON = "0 23 * * *";
 export const POST_OF_THE_MONTH_CRON = "0 0 1 * *";
 export const MODINFO_CRON = "0 * * * *";
-// export const UPGRADE_NOTIFIER_CRON = "* * * * *";
+export const UPGRADE_NOTIFIER_CRON = "* * * * *";
+export const MOD_DIGEST_CRON = "* * * * *";
 
 // Miscellaneous
 export const specialCharRegex = /[\x21-\x2F\x3A-\x40\x5B-\x60\x7B-\x7E]/i;

@@ -28,8 +28,10 @@ import { updateUserWiki } from "../../../leaderboard";
 import {
     getCurrentScore,
     handleAutoSuperuserPromotion,
+    isModerator,
 } from "../../utils/user-utilities";
 import { setUserScore } from "../on-comment-trigger";
+import { recordDigestPointAward } from "../../utils/digest-stats";
 
 /**
  * Checks if a comment contains any user command keywords.
@@ -110,6 +112,21 @@ async function awardPointToUserNormalCommand(
         member: username,
         score: scoreFromRedis ? scoreFromRedis + 1 : existingScore.score + 1,
     });
+
+    // Record only applied awards. Mods using the normal command still count as mods.
+    try {
+        const awarderIsModerator = await isModerator(
+            context,
+            event.subreddit.name,
+            awarder
+        );
+        await recordDigestPointAward(context, awarder, awarderIsModerator);
+    } catch (error) {
+        logger.error("Could not record normal-command digest statistic", {
+            awarder,
+            error,
+        });
+    }
 
     const newScore: ScoreResult = {
         score: scoreFromRedis ? scoreFromRedis + 1 : existingScore.score + 1,

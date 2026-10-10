@@ -24,7 +24,9 @@ export enum LeaderboardMode {
 }
 
 export enum AppSetting {
-    // UpgradeNotifier = "upgradeNotifier",
+    UpgradeNotifier = "upgradeNotifier",
+    DigestNewMessageEachDay = "digestNewMessageEachDay",
+    DigestFrequency = "digestFrequency",
     EnablePostOfTheMonth = "enablePostOfTheMonth",
     NotifyOnPostAuthorAward = "notifyOnPostAuthorAward",
     PostAuthorAwardMessage = "postAuthorAwardMessage",
@@ -1206,56 +1208,52 @@ export const appSettings: SettingsFormField[] = [
             },
         ],
     },
-    // {
-    //     type: "group",
-    //     label: "Summary Message Settings",
-    //     fields: [
-    //         {
-    //             type: "boolean",
-    //             label: "Create a new Modmail conversation for each summary",
-    //             name: AppSetting.DigestNewMessageEachDay,
-    //             helpText:
-    //                 "If enabled, a new modmail conversation will be created for each summary message. If disabled, the bot will reply to the previous summary message when sending a new summary.",
-    //             defaultValue: true,
-    //         },
-    //         {
-    //             type: "select",
-    //             label: "Frequency of summary messages",
-    //             name: AppSetting.DigestFrequency,
-    //             helpText:
-    //                 "Choose how often you would like to receive the summary messages",
-    //             options: [
-    //                 { label: "Daily", value: DigestFrequency.Daily },
-    //                 { label: "Weekly", value: DigestFrequency.Weekly },
-    //             ],
-    //             multiSelect: false,
-    //             defaultValue: [DigestFrequency.Daily],
-    //         },
-    //         {
-    //             type: "boolean",
-    //             label: "Send summary to the 'Mod Notifications' section of modmail",
-    //             helpText:
-    //                 "If set, the daily digest will be sent to the 'Mod Notifications' section of modmail, otherwise it will go into the main inbox.",
-    //             name: AppSetting.DigestAsModNotification,
-    //             defaultValue: false,
-    //         },
-    //     ],
-    // },
-    // {
-    //     type: "group",
-    //     label: "Upgrade Notification Settings",
-    //     fields: [
-    //         {
-    //             type: "boolean",
-    //             label: "Upgrade notifications",
-    //             name: AppSetting.UpgradeNotifier,
-    //             helpText:
-    //                 "Receive a message when a new version of RepBot is released",
-    //             defaultValue: true,
-    //         },
-    //     ],
-    //     // },
-    // },
+{
+        type: "group",
+        label: "Summary Message Settings",
+        fields: [
+            {
+                type: "boolean",
+                label: "Create a new Modmail conversation for each summary?",
+                name: AppSetting.DigestNewMessageEachDay,
+                helpText: `All summaries will be sent to the "Mod Discussions" section of modmail`,
+                defaultValue: false,
+            },
+            {
+                type: "select",
+                label: "Frequency of summary messages",
+                name: AppSetting.DigestFrequency,
+                helpText: `Choose how often you would like to receive the summary messages. All summaries will be sent to "Mod Discussions"`,
+                options: [
+                    {
+                        label: "Never",
+                        value: "Never",
+                    },
+                    { label: "Daily", value: "Daily" },
+                    { label: "Weekly", value: "Weekly" },
+                    { label: "Monthly", value: "Monthly" },
+                ],
+                multiSelect: false,
+                defaultValue: ["Monthly"],
+                onValidate: selectFieldHasOptionChosen,
+            },
+        ],
+    },
+    {
+        type: "group",
+        label: "Upgrade Notification Settings",
+        fields: [
+            {
+                type: "boolean",
+                label: "Upgrade notifications",
+                name: AppSetting.UpgradeNotifier,
+                helpText:
+                    "Receive a message when a new version of RepBot is released",
+                defaultValue: true,
+            },
+        ],
+        // },
+    },
 ];
 
 function isFlairTemplateValid(event: SettingsFormFieldValidatorEvent<string>) {

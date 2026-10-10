@@ -15,8 +15,10 @@ import {
     ADHOC_CLEANUP_JOB,
     ADHOC_POST_OF_THE_MONTH_JOB,
     CLEANUP_JOB,
+    MOD_DIGEST_JOB,
     UPDATE_LEADERBOARD_JOB,
     UPDATE_MODINFO_JOB,
+    UPGRADE_NOTIFIER_JOB,
     // UPGRADE_NOTIFIER_JOB,
 } from "./constants";
 import { handleConfirmReply, SafeWikiClient } from "./utility";
@@ -34,6 +36,8 @@ import {
 } from "./triggers/utils/mod-utilities";
 import { logger } from "./logger";
 import { addPostOfTheMonthFlair } from "./postOfTheMonth";
+import { checkForUpdates } from "./upgradeNotify/upgradeNotifier";
+import { modDigestJob } from "./modDigest";
 // import { checkForUpdates } from "./upgradeNotify/upgradeNotifier";
 
 Devvit.addSettings(appSettings);
@@ -59,10 +63,15 @@ Devvit.addTrigger({
     onEvent: onAppInstallOrUpgrade,
 });
 
-// Devvit.addSchedulerJob({
-//     name: UPGRADE_NOTIFIER_JOB,
-//     onRun: checkForUpdates,
-// });
+Devvit.addSchedulerJob({
+    name: UPGRADE_NOTIFIER_JOB,
+    onRun: checkForUpdates,
+});
+
+Devvit.addSchedulerJob({
+    name: MOD_DIGEST_JOB,
+    onRun: modDigestJob,
+});
 
 Devvit.addTrigger({
     event: "CommentUpdate",
@@ -554,7 +563,8 @@ const transferWikiForm = Devvit.createForm(
                 name: "destinationPage",
                 label: "Destination wiki page",
                 placeholder: "example/destination",
-                helpText: "The link after /wiki/. The page will be created if it does not exist",
+                helpText:
+                    "The link after /wiki/. The page will be created if it does not exist",
                 required: true,
             },
         ],

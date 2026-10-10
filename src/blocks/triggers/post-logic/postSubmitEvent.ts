@@ -11,11 +11,23 @@ import {
 } from "../utils/redisKeys";
 import { isModerator } from "../utils/user-utilities";
 import { formatMessage } from "../utils/common-utilities";
+import { recordDigestPost } from "../utils/digest-stats";
 
 export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
     if (!event.subreddit || !event.author || !event.post) {
         logger.warn("❌ Missing required event data", { event });
         return;
+    }
+
+    // Count every post submission, including mod/exempt and later-removed posts.
+    // Do this before any restriction or early-return logic.
+    try {
+        await recordDigestPost(context);
+    } catch (error) {
+        logger.error("Could not record post-creation digest statistic", {
+            postId: event.post.id,
+            error,
+        });
     }
 
     const settings = await context.settings.getAll();

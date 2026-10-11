@@ -147,9 +147,8 @@ export async function modDigestJob(
                 : "_None this period._";
 
         // The body intentionally contains ONLY the six requested statistics.
-        const subject = `Reputation Bot ${frequency} Digest — r/${subredditName}`;
+        const subject = `RepBot ${frequency} Digest — r/${subredditName}`;
         const body = [
-            `# Reputation Bot ${frequency} Digest`,
             `**Total points awarded:** ${fmt(totalPoints)}`,
             `**Moderators who awarded points:** ${fmt(moderators.length)}`,
             `**Users who awarded points:** ${fmt(users.length)}`,

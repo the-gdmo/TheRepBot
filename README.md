@@ -61,9 +61,9 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 # Latest Changes
-## 31.6.11
+## 31.6.16
+* Make all digests go into the mod notifications inbox (previous was mod discussions, which isn't easily visible)
 * Fix mod digest formatting
-## 31.6.10
 * Fix certain backend keys (sending it now so it's not something that breaks your sub in the future)
 ## 31.6.9
 * Update to latest devvit version

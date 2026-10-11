@@ -491,7 +491,7 @@ export enum NotifyOnTrustedUserAwardSuccessReplyOptions {
     NoReply = "none",
     ReplyByPM = "replybypm",
     ReplyAsComment = "replybycomment",
-} 
+}
 
 const NotifyOnTrustedUserAwardSuccessOptionChoices = [
     {
@@ -1210,7 +1210,7 @@ export const appSettings: SettingsFormField[] = [
             },
         ],
     },
-{
+    {
         type: "group",
         label: "Summary Message Settings",
         fields: [
@@ -1218,14 +1218,14 @@ export const appSettings: SettingsFormField[] = [
                 type: "boolean",
                 label: "Create a new Modmail conversation for each summary?",
                 name: AppSetting.DigestNewMessageEachDay,
-                helpText: `All summaries will be sent to the "Mod Discussions" section of modmail`,
+                helpText: `All summaries will be sent to the "Mod Notifications" section of modmail`,
                 defaultValue: false,
             },
             {
                 type: "select",
                 label: "Frequency of summary messages",
                 name: AppSetting.DigestFrequency,
-                helpText: `Choose how often you would like to receive the summary messages. All summaries will be sent to "Mod Discussions"`,
+                helpText: `Choose how often you would like to receive the summary messages. All summaries will be sent to "Mod Notifications"`,
                 options: [
                     {
                         label: "Never",
@@ -1258,7 +1258,9 @@ export const appSettings: SettingsFormField[] = [
     },
 ];
 
-function validateFlairTemplateId(event: SettingsFormFieldValidatorEvent<string>) {
+function validateFlairTemplateId(
+    event: SettingsFormFieldValidatorEvent<string>
+) {
     const flairTemplateRegex = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){4}[0-9a-f]{8}$/gi;
     if (event.value && !flairTemplateRegex.test(event.value)) {
         return "Invalid flair template ID";

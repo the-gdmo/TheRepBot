@@ -1,7 +1,7 @@
 # Changelog for RepBot
-## 31.6.11
+## 31.6.16
+* Make all digests go into the mod notifications inbox (previous was mod discussions, which isn't easily visible)
 * Fix mod digest formatting
-## 31.6.10
 * Fix certain backend keys (sending it now so it's not something that breaks your sub in the future)
 ## 31.6.9
 * Update to latest devvit version

@@ -1,6 +1,7 @@
 import {
     JobContext,
     JSONObject,
+    ModMailService,
     ScheduledJobEvent,
     TriggerContext,
 } from "@devvit/public-api";
@@ -149,6 +150,9 @@ export async function modDigestJob(
         // The body intentionally contains ONLY the six requested statistics.
         const subject = `RepBot ${frequency} Digest — r/${subredditName}`;
         const body = [
+            `**Reporting Period:** ${new Date(
+                lastSentAt ?? 0
+            ).toUTCString()} → ${new Date(now).toUTCString()}`,
             `**Total points awarded:** ${fmt(totalPoints)}`,
             `**Moderators who awarded points:** ${fmt(moderators.length)}`,
             `**Users who awarded points:** ${fmt(users.length)}`,
@@ -163,7 +167,7 @@ export async function modDigestJob(
                 context.redis.get(conversationKey),
                 context.redis.get(conversationTypeKey),
             ]);
-        const modMail = context.reddit.modMail as any;
+        const modMail = context.reddit.modMail as ModMailService;
         let conversationId: string | undefined;
 
         if (
@@ -187,8 +191,8 @@ export async function modDigestJob(
         }
 
         if (!conversationId) {
-            conversationId = await modMail.createModDiscussionConversation({
-                subredditId: context.subredditId,
+            conversationId = await modMail.createModNotification({
+                subredditId: context.subredditId as `t5_${string}`,
                 subject,
                 bodyMarkdown: body,
             });
@@ -205,7 +209,7 @@ export async function modDigestJob(
         }
         await context.redis.del(DIGEST_PENDING_KEY);
 
-        logger.info("Reputation Bot mod digest sent; reported stats reset", {
+        logger.info("RepBot mod digest sent; reported stats reset", {
             subreddit: subredditName,
             frequency,
             totalPoints,
@@ -215,7 +219,7 @@ export async function modDigestJob(
         });
     } catch (error) {
         await logger.error(
-            "Reputation Bot mod digest failed; unsent counters retained",
+            "RepBot mod digest failed; unsent counters retained",
             {
                 subreddit: subredditName,
                 error: error instanceof Error ? error.message : String(error),

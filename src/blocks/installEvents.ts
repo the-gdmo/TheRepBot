@@ -13,8 +13,6 @@ import {
     UPDATE_MODINFO_JOB,
     UPGRADE_NOTIFIER_CRON,
     UPGRADE_NOTIFIER_JOB,
-    // UPGRADE_NOTIFIER_CRON,
-    // UPGRADE_NOTIFIER_JOB,
 } from "./constants";
 
 export async function onAppFirstInstall(

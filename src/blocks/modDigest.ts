@@ -24,7 +24,7 @@ export async function modDigestJob(
         return;
     }
 
-    const prefix = "vipcentral:modDigest"; // preserve existing delivery settings/state
+    const prefix = "repbot:modDigest"; // preserve existing delivery settings/state
     const lastSentKey = `${prefix}:lastSentAt`;
     const conversationKey = `${prefix}:conversationId`;
     const conversationTypeKey = `${prefix}:conversationType`;
@@ -44,11 +44,11 @@ export async function modDigestJob(
         const frequency = rawFrequency;
 
         const intervalMs: Record<string, number> = {
-            daily: 24 * 60 * 60 * 1000,
-            weekly: 7 * 24 * 60 * 60 * 1000,
-            monthly: 30 * 24 * 60 * 60 * 1000,
+            Daily: 24 * 60 * 60 * 1000,
+            Weekly: 7 * 24 * 60 * 60 * 1000,
+            Monthly: 30 * 24 * 60 * 60 * 1000,
         };
-        if (frequency === "never") return;
+        if (frequency === "Never") return;
         if (
             !frequency ||
             !(frequency in intervalMs) ||
@@ -133,10 +133,10 @@ export async function modDigestJob(
             0
         );
         const fmt = (value: number) => value.toLocaleString("en-US");
-        const topFive = (entries: Array<{ username: string; count: number }>) =>
+        const topTen = (entries: Array<{ username: string; count: number }>) =>
             entries.length
                 ? entries
-                      .slice(0, 5)
+                      .slice(0, 10)
                       .map(
                           (entry, index) =>
                               `${index + 1}. u/${entry.username} — ${fmt(
@@ -153,9 +153,9 @@ export async function modDigestJob(
             `**Total points awarded:** ${fmt(totalPoints)}`,
             `**Moderators who awarded points:** ${fmt(moderators.length)}`,
             `**Users who awarded points:** ${fmt(users.length)}`,
-            `## Users who awarded the most points\n${topFive(users)}`,
-            `## Moderators who awarded the most points\n${topFive(moderators)}`,
             `**Posts created:** ${fmt(postsCreated)}`,
+            `## Users who awarded the most points\n${topTen(users)}`,
+            `## Moderators who awarded the most points\n${topTen(moderators)}`,
         ].join("\n\n");
 
         const desiredConversationType = "notification";

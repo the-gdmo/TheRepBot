@@ -61,6 +61,8 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 # Latest Changes
+## 31.6.10
+* Fix certain backend keys (sending it now so it's not something that breaks your sub in the future)
 ## 31.6.9
 * Update to latest devvit version
 * Add mod digest to give mods info about actions taken using RepBot (eg how many points were awarded in the timespan overall, how many were awarded by mods, how many awarded by non-mods, etc.)

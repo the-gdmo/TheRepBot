@@ -1,4 +1,6 @@
 # Changelog for RepBot
+## 31.6.10
+* Fix certain backend keys (sending it now so it's not something that breaks your sub in the future)
 ## 31.6.9
 * Update to latest devvit version
 * Add mod digest to give mods info about actions taken using RepBot (eg how many points were awarded in the timespan overall, how many were awarded by mods, how many awarded by non-mods, etc.)

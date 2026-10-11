@@ -603,7 +603,7 @@ export const appSettings: SettingsFormField[] = [
                 helpText:
                     "Sent on initial post. Required even if not used. Placeholders Supported: requirement, name, commandsWithOr, commandsWithAnd, markdownGuide, subreddit, helpPage, discord",
                 defaultValue: TemplateDefaults.InitialMessageToRestrictedUsers,
-                onValidate: paragraphFieldContainsText,
+                onValidate: stringOrParagraphFieldContainsText,
             },
             {
                 name: AppSetting.SubsequentPostRestrictionMessage,
@@ -612,7 +612,7 @@ export const appSettings: SettingsFormField[] = [
                 helpText:
                     "Required even if not used. Message to send users when they try to post while restricted from posting. Placeholders supported: permalink, title, name, commandsWithOr, commandsWithAnd, helpPage",
                 defaultValue: TemplateDefaults.SubsequentPostRestrictionMessage,
-                onValidate: paragraphFieldContainsText,
+                onValidate: stringOrParagraphFieldContainsText,
             },
             {
                 name: AppSetting.NotifyOnRestrictionLifted,
@@ -632,7 +632,7 @@ export const appSettings: SettingsFormField[] = [
                 helpText:
                     "Required even if not used. Placeholders Supported: awarder, subreddit, requirement, name, helpPage, discord",
                 defaultValue: TemplateDefaults.RestrictionLiftedMessage,
-                onValidate: paragraphFieldContainsText,
+                onValidate: stringOrParagraphFieldContainsText,
             },
         ],
     },
@@ -691,7 +691,7 @@ export const appSettings: SettingsFormField[] = [
                 helpText:
                     "How the flair should be formatted. Placeholders Supported: place, total, symbol",
                 defaultValue: TemplateDefaults.FlairFormatting,
-                onValidate: paragraphFieldContainsText,
+                onValidate: stringOrParagraphFieldContainsText,
             },
             {
                 type: "paragraph",
@@ -723,7 +723,7 @@ export const appSettings: SettingsFormField[] = [
                 helpText:
                     "Message shown when a user tries to award points on a post without flair. Placeholders Supported: name",
                 defaultValue: TemplateDefaults.UnflairedPostMessage,
-                onValidate: paragraphFieldContainsText,
+                onValidate: stringOrParagraphFieldContainsText,
             },
             //todo
             {
@@ -742,7 +742,7 @@ export const appSettings: SettingsFormField[] = [
                 label: "Message to send users when they use the Normal Award Command, but the comment author has already received a point for the comment (All placeholders allow single or double curly braces)",
                 helpText: "Placeholders Supported: awarder, awardee, name",
                 defaultValue: TemplateDefaults.PointAlreadyAwardedToUserMessage,
-                onValidate: paragraphFieldContainsText,
+                onValidate: stringOrParagraphFieldContainsText,
             },
             {
                 name: AppSetting.NotifyOnPostAuthorAward,
@@ -759,7 +759,7 @@ export const appSettings: SettingsFormField[] = [
                 type: "paragraph",
                 label: "Message to send when someone tries to award the Post Author (OP)",
                 defaultValue: TemplateDefaults.PostAuthorAwardMessage,
-                onValidate: paragraphFieldContainsText,
+                onValidate: stringOrParagraphFieldContainsText,
             },
             {
                 type: "string",
@@ -768,6 +768,7 @@ export const appSettings: SettingsFormField[] = [
                 helpText:
                     "Singular form of the name shown in award messages, like 'point', 'kudo', etc. Lowercase is recommended",
                 defaultValue: "point",
+                onValidate: stringOrParagraphFieldContainsText,
             },
             {
                 type: "string",
@@ -791,7 +792,7 @@ export const appSettings: SettingsFormField[] = [
                 helpText:
                     "Message shown when a user tries to award a point but only moderators can award points. Placeholders Supported: name, awarder",
                 defaultValue: TemplateDefaults.ModOnlyDisallowedMessage,
-                onValidate: paragraphFieldContainsText,
+                onValidate: stringOrParagraphFieldContainsText,
             },
             {
                 type: "select",
@@ -811,7 +812,7 @@ export const appSettings: SettingsFormField[] = [
                     "Message shown when a user tries to award a point but only moderators and the Post Author (OP) can award points. Placeholders Supported: name, awarder",
                 defaultValue:
                     TemplateDefaults.ModsAndPostAuthorDisallowedMessage,
-                onValidate: paragraphFieldContainsText,
+                onValidate: stringOrParagraphFieldContainsText,
             },
             {
                 type: "select",
@@ -830,7 +831,7 @@ export const appSettings: SettingsFormField[] = [
                 helpText:
                     "Message shown when a user tries to award a point but only mods and approved users can award points. Placeholders Supported: name, awarder",
                 defaultValue: TemplateDefaults.ApprovedOnlyDisallowedMessage,
-                onValidate: paragraphFieldContainsText,
+                onValidate: stringOrParagraphFieldContainsText,
             },
             {
                 type: "select",
@@ -847,7 +848,7 @@ export const appSettings: SettingsFormField[] = [
                 helpText:
                     "Message shown when a user tries to award a point but only mods, approved users, and Post Authors (OPs) can award points. Placeholders Supported: name, awarder",
                 defaultValue: TemplateDefaults.OPOnlyDisallowedMessage,
-                onValidate: paragraphFieldContainsText,
+                onValidate: stringOrParagraphFieldContainsText,
             },
             {
                 type: "select",
@@ -862,7 +863,7 @@ export const appSettings: SettingsFormField[] = [
                 name: AppSetting.DisallowedFlairs,
                 label: "Disallowed Flairs",
                 helpText:
-                    "Flairs where points cannot be awarded. Each flair should be on a new line",
+                    "Optional. Flairs where points cannot be awarded. Each flair should be on a new line",
             },
             {
                 type: "paragraph",
@@ -871,7 +872,7 @@ export const appSettings: SettingsFormField[] = [
                 helpText:
                     "Message shown when a user tries to award points on a post with a disallowed flair",
                 defaultValue: TemplateDefaults.DisallowedFlairMessage,
-                onValidate: paragraphFieldContainsText,
+                onValidate: stringOrParagraphFieldContainsText,
             },
         ],
     },
@@ -883,7 +884,7 @@ export const appSettings: SettingsFormField[] = [
                 type: "paragraph",
                 name: AppSetting.SuperUsers,
                 label: "A list of trusted users other than mods who can award points",
-                helpText: "Each username should be on a new line",
+                helpText: "Optional. Each username should be on a new line",
             },
             {
                 name: AppSetting.ModAwardCommand,
@@ -917,7 +918,7 @@ export const appSettings: SettingsFormField[] = [
                 label: "Message sent when a user reaches the trusted user threshold (All placeholders allow single or double curly braces)",
                 helpText: "Placeholders Supported: name, threshold, command",
                 defaultValue: TemplateDefaults.NotifyOnSuperuserTemplate,
-                onValidate: paragraphFieldContainsText,
+                onValidate: stringOrParagraphFieldContainsText,
             },
             {
                 type: "select",
@@ -935,7 +936,7 @@ export const appSettings: SettingsFormField[] = [
                 label: "Trusted User Award Success Message (All placeholders allow single or double curly braces)",
                 helpText: `Optional. Message to send users when a trusted user awards a point. Placeholders Supported: awardeePage, awarderPage, awardee, awarder, symbol, total, name, leaderboard`,
                 defaultValue: TemplateDefaults.TrustedUserAwardSuccessMessage,
-                onValidate: paragraphFieldContainsText,
+                onValidate: stringOrParagraphFieldContainsText,
             },
             {
                 name: AppSetting.NotifyOnModAwardSuccess,
@@ -953,7 +954,7 @@ export const appSettings: SettingsFormField[] = [
                 label: "Mod Award Success Message (All placeholders allow single or double curly braces)",
                 helpText: `Optional. Message to send users when they successfully award a message with the "Trusted User/Mod award command". Placeholders Supported: awardeePage, awarderPage, awardee, awarder, symbol, total, name, leaderboard`,
                 defaultValue: TemplateDefaults.ModAwardCommandSuccessMessage,
-                onValidate: paragraphFieldContainsText,
+                onValidate: stringOrParagraphFieldContainsText,
             },
             {
                 name: AppSetting.NotifyOnModAwardFail,
@@ -969,7 +970,7 @@ export const appSettings: SettingsFormField[] = [
                 label: "Mod Award Fail Message (All placeholders allow single or double curly braces)",
                 helpText: `Optional. Message to send users when they aren't allowed to use the "Trusted User/Mod award command". Placeholders Supported: command, name, awarder, awardee`,
                 defaultValue: TemplateDefaults.ModAwardCommandFailMessage,
-                onValidate: paragraphFieldContainsText,
+                onValidate: stringOrParagraphFieldContainsText,
             },
             {
                 name: AppSetting.ModAwardAlreadyGiven,
@@ -978,7 +979,7 @@ export const appSettings: SettingsFormField[] = [
                 helpText:
                     "Optional. Placeholders Supported: awarder, awardee, name",
                 defaultValue: TemplateDefaults.ModAwardAlreadyGivenMessage,
-                onValidate: paragraphFieldContainsText,
+                onValidate: stringOrParagraphFieldContainsText,
             },
         ],
     },
@@ -1010,6 +1011,7 @@ export const appSettings: SettingsFormField[] = [
                 label: "Flair template ID to use for points flairs",
                 helpText:
                     "Optional. Please choose either a CSS class or flair template, not both",
+                onValidate: validateFlairTemplateId,
             },
         ],
     },
@@ -1023,7 +1025,7 @@ export const appSettings: SettingsFormField[] = [
                 label: "Unrestricted Posting Message (All placeholders allow single or double curly braces)",
                 helpText: `Message sent on all new posts if "Awards required to create new posts" is set to 0. Placeholders supported: name, markdownGuide, commandsWithOr, commandsWithAnd`,
                 defaultValue: TemplateDefaults.UnrestrictedPostingMessage,
-                onValidate: paragraphFieldContainsText,
+                onValidate: stringOrParagraphFieldContainsText,
             },
             {
                 type: "select",
@@ -1040,7 +1042,7 @@ export const appSettings: SettingsFormField[] = [
                 helpText:
                     "Shown when someone tries to award themselves. Placeholders Supported: name, awarder",
                 defaultValue: TemplateDefaults.SelfAwardTemplate,
-                onValidate: paragraphFieldContainsText,
+                onValidate: stringOrParagraphFieldContainsText,
             },
             {
                 type: "select",
@@ -1058,7 +1060,7 @@ export const appSettings: SettingsFormField[] = [
                     "Message when a point is awarded. Placeholders Supported: awardeePage, awarderPage, awardee, awarder, symbol, total, name, leaderboard",
                 defaultValue:
                     TemplateDefaults.NotifyOnNormalAwardSuccessTemplate,
-                onValidate: paragraphFieldContainsText,
+                onValidate: stringOrParagraphFieldContainsText,
             },
             {
                 type: "select",
@@ -1091,7 +1093,7 @@ export const appSettings: SettingsFormField[] = [
                 label: "User Cannot Award Points Message (All placeholders allow single or double curly braces)",
                 helpText: `Message shown when a user specified in the "Users Who Cannot Award Points" setting tries to award points but is not allowed to. Placeholders Supported: name`,
                 defaultValue: TemplateDefaults.UsersWhoCannotAwardPointsMessage,
-                onValidate: paragraphFieldContainsText,
+                onValidate: stringOrParagraphFieldContainsText,
             },
             {
                 type: "select",
@@ -1108,7 +1110,7 @@ export const appSettings: SettingsFormField[] = [
                 helpText:
                     "Message shown when someone tries to award the bot. Placeholders Supported: name, awardee",
                 defaultValue: TemplateDefaults.BotAwardMessage,
-                onValidate: paragraphFieldContainsText,
+                onValidate: stringOrParagraphFieldContainsText,
             },
         ],
     },
@@ -1144,7 +1146,7 @@ export const appSettings: SettingsFormField[] = [
                 label: "Post Flair Template ID",
                 helpText:
                     "Optional. Please choose either a CSS class or flair template, not both",
-                onValidate: isFlairTemplateValid,
+                onValidate: validateFlairTemplateId,
             },
         ],
     },
@@ -1256,7 +1258,7 @@ export const appSettings: SettingsFormField[] = [
     },
 ];
 
-function isFlairTemplateValid(event: SettingsFormFieldValidatorEvent<string>) {
+function validateFlairTemplateId(event: SettingsFormFieldValidatorEvent<string>) {
     const flairTemplateRegex = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){4}[0-9a-f]{8}$/gi;
     if (event.value && !flairTemplateRegex.test(event.value)) {
         return "Invalid flair template ID";
@@ -1309,7 +1311,7 @@ export function numberFieldHasValidOption(
     }
 }
 
-function paragraphFieldContainsText(
+function stringOrParagraphFieldContainsText(
     event: SettingsFormFieldValidatorEvent<string>,
     _context: TriggerContext
 ): string | void {

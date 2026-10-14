@@ -61,6 +61,9 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 # Latest Changes
+## 31.6.17
+* Fix default message for "Mod Only Disallowed Message" and slightly alter default wording for all "x Disallowed Message"s
+* Update to latest devvit version
 ## 31.6.16
 * Make all digests go into the mod notifications inbox (previous was mod discussions, which isn't easily visible)
 * Fix mod digest formatting
@@ -73,7 +76,5 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * Fix "Unrestricted Posting Message" to apply to all subreddits. Previous was related to r/FindTheSniper
 ## 31.6.7
 * Remove "fs" package from logger file (backend change)
-## 31.6.6
-* Make main leaderboard page prioritize the user's actual reddit handle
 
 For older versions, please see the [full changelog](https://github.com/the-gdmo/therepbot/blob/main/changelog.md).

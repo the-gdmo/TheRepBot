@@ -1,4 +1,6 @@
 # Changelog for RepBot
+## 31.6.17
+* Fix default message for "Mod Only Disallowed Message" and slightly alter default wording for all "x Disallowed Message"s
 ## 31.6.16
 * Make all digests go into the mod notifications inbox (previous was mod discussions, which isn't easily visible)
 * Fix mod digest formatting

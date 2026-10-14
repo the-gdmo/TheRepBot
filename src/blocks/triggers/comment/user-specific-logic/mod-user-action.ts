@@ -34,6 +34,7 @@ import { updateUserWiki } from "../../../leaderboard";
 import { isModerator } from "../../../utility";
 import { setUserScore } from "../on-comment-trigger";
 import { recordDigestPointAward } from "../../utils/digest-stats";
+import { UPDATE_LEADERBOARD_JOB } from "../../../constants";
 
 export async function commentContainsModCommand(
     event: CommentSubmit | CommentUpdate,
@@ -351,7 +352,7 @@ export async function awardPointToUserModCommand(
     }
 
     await context.scheduler.runJob({
-        name: "updateLeaderboard",
+        name: UPDATE_LEADERBOARD_JOB,
         runAt: new Date(),
         data: {
             reason: `Updated score for ${awardee}. Triggered by mod command.`,

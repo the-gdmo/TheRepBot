@@ -25,6 +25,7 @@ import {
     getUserWikiLifetimeTotalsForUser,
     setUserWikiLifetimeTotalsForUser,
 } from "../../leaderboard";
+import { UPDATE_LEADERBOARD_JOB } from "../../constants";
 
 export async function handleUserRestrictionCheck(
     event: MenuItemOnPressEvent,
@@ -506,7 +507,7 @@ export async function manualSetPointsFormHandler(
 
     // Trigger leaderboard update
     await context.scheduler.runJob({
-        name: "updateLeaderboard",
+        name: UPDATE_LEADERBOARD_JOB,
         runAt: new Date(),
         data: {
             reason: `Updated score for ${user.username}. New score: ${entry}`,

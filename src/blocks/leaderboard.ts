@@ -1927,9 +1927,9 @@ export async function updateLeaderboard(
 ) {
     const settings = await context.settings.getAll();
 
-    const leaderboardMode = settings[AppSetting.LeaderboardMode] as
-        | string[]
-        | undefined;
+    const leaderboardMode =
+        (settings[AppSetting.LeaderboardMode] as LeaderboardMode) ??
+        LeaderboardMode.SubredditPermissions;
     if (
         !leaderboardMode ||
         leaderboardMode.length === 0 ||
@@ -2038,57 +2038,52 @@ export async function updateLeaderboard(
 
     let correctPermissionLevel: number;
 
-    if (mode !== LeaderboardMode.CurrentWikiSettings) {
-        switch (mode) {
-            case LeaderboardMode.SubredditPermissions:
-                correctPermissionLevel = 0;
-                break;
+    switch (mode) {
+        case LeaderboardMode.SubredditPermissions:
+            correctPermissionLevel = 0;
+            break;
 
-            case LeaderboardMode.ApprovedContributorsOnly:
-                correctPermissionLevel = 1;
-                break;
+        case LeaderboardMode.ApprovedContributorsOnly:
+            correctPermissionLevel = 1;
+            break;
 
-            case LeaderboardMode.ModOnly:
-                correctPermissionLevel = 2;
-                break;
+        case LeaderboardMode.ModOnly:
+            correctPermissionLevel = 2;
+            break;
+        case LeaderboardMode.Off:
+            correctPermissionLevel = 2;
+            break;
 
-            default:
-                logger.warn(
-                    "⚠️ Unknown leaderboard mode, defaulting to mod only",
-                    {
-                        mode,
-                    }
-                );
-                correctPermissionLevel = 2;
-                break;
-        }
-
-        if (!currentWikiPage) {
-            throw new Error(
-                `Failed to create or retrieve wiki page ${wikiPageName}`
-            );
-        }
-        const wikiPageSettings = await currentWikiPage.getSettings();
-        if (wikiPageSettings.permLevel !== correctPermissionLevel) {
-            await context.reddit.updateWikiPageSettings({
-                subredditName,
-                page: wikiPageName,
-                listed: true,
-                permLevel: correctPermissionLevel,
+        default:
+            logger.warn("⚠️ Unknown leaderboard mode, defaulting to mod only", {
+                mode,
             });
-        }
+            correctPermissionLevel = 2;
+            break;
+    }
 
-        logger.info("🔐 Checking leaderboard wiki page permissions", {
-            leaderboardMode,
+    if (!currentWikiPage) {
+        throw new Error(
+            `Failed to create or retrieve wiki page ${wikiPageName}`
+        );
+    }
+    const wikiPageSettings = await currentWikiPage.getSettings();
+    if (wikiPageSettings.permLevel !== correctPermissionLevel) {
+        await context.reddit.updateWikiPageSettings({
+            subredditName,
+            page: wikiPageName,
+            listed: true,
+            permLevel: correctPermissionLevel,
+        });
+        logger.info("🔐 Updating leaderboard wiki page permissions", {
             mode,
             correctPermissionLevel,
-            wikiPermLevel: wikiPageSettings.permLevel,
+            currentPermLevel: wikiPageSettings.permLevel,
         });
     } else {
         logger.info(
             "🔐 Leaderboard wiki page permissions set to current wiki settings, no changes made",
             {
-                leaderboardMode,
                 mode,
             }
         );

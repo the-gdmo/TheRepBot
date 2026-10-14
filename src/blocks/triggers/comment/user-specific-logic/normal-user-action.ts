@@ -32,6 +32,7 @@ import {
 } from "../../utils/user-utilities";
 import { setUserScore } from "../on-comment-trigger";
 import { recordDigestPointAward } from "../../utils/digest-stats";
+import { UPDATE_LEADERBOARD_JOB } from "../../../constants";
 
 /**
  * Checks if a comment contains any user command keywords.
@@ -158,7 +159,7 @@ async function awardPointToUserNormalCommand(
     }
 
     await context.scheduler.runJob({
-        name: "updateLeaderboard",
+        name: UPDATE_LEADERBOARD_JOB,
         runAt: new Date(),
         data: {
             reason: `Updated score for ${recipient.username}. Triggered by normal command.`,

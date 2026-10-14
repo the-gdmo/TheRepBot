@@ -20,7 +20,6 @@ export enum LeaderboardMode {
     ModOnly = "modonly",
     ApprovedContributorsOnly = "approvedcontributorsonly",
     Off = "off",
-    CurrentWikiSettings = "currentwikisettings",
 }
 
 export enum AppSetting {
@@ -304,6 +303,10 @@ const NotifyUsersWhoCannotAwardPointsReplyOptionChoices = [
 
 const NotifyOnBotAwardReplyOptionChoices = [
     {
+        label: "No Notification",
+        value: NotifyOnBotAwardReplyOptions.NoReply,
+    },
+    {
         label: "Send user a private message",
         value: NotifyOnBotAwardReplyOptions.ReplyByPM,
     },
@@ -445,10 +448,6 @@ const AccessControlOptionChoices = [
 
 const LeaderboardModeOptionChoices = [
     { label: "Off", value: LeaderboardMode.Off },
-    {
-        label: "Current Wiki Settings",
-        value: LeaderboardMode.CurrentWikiSettings,
-    },
     { label: "Mod Only", value: LeaderboardMode.ModOnly },
     {
         label: "Approved Contributors Only",
@@ -962,6 +961,7 @@ export const appSettings: SettingsFormField[] = [
                 label: "Notify on mod award fail",
                 helpText: `Applicable to both "Mod Award Fail Message" and "Message to send user when the "Trusted User/Mod award command" has already been used on the comment."`,
                 options: NotifyOnModAwardFailOptionChoices,
+                defaultValue: [NotifyOnModAwardFailReplyOptions.NoReply],
                 onValidate: selectFieldHasOptionChosen,
             },
             {
@@ -1160,7 +1160,7 @@ export const appSettings: SettingsFormField[] = [
                 label: "Wiki Leaderboard Mode",
                 options: LeaderboardModeOptionChoices,
                 multiSelect: false,
-                defaultValue: [LeaderboardMode.CurrentWikiSettings],
+                defaultValue: [LeaderboardMode.SubredditPermissions],
                 onValidate: selectFieldHasOptionChosen,
             },
             {

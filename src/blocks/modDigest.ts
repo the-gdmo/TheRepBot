@@ -75,7 +75,6 @@ export async function modDigestJob(
             nx: true,
         });
         if (lockResult !== "OK") {
-            logger.info("Mod digest: another send is already in progress");
             return;
         }
         ownsLock = true;
@@ -183,7 +182,7 @@ export async function modDigestJob(
                 });
                 conversationId = previousConversationId;
             } catch (error) {
-                logger.warn("Mod digest reply failed; creating discussion", {
+                logger.warn("Mod digest reply failed", {
                     error,
                     previousConversationId,
                 });
@@ -209,14 +208,6 @@ export async function modDigestJob(
         }
         await context.redis.del(DIGEST_PENDING_KEY);
 
-        logger.info("RepBot mod digest sent; reported stats reset", {
-            subreddit: subredditName,
-            frequency,
-            totalPoints,
-            moderators: moderators.length,
-            users: users.length,
-            postsCreated,
-        });
     } catch (error) {
         await logger.error(
             "RepBot mod digest failed; unsent counters retained",

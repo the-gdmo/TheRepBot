@@ -56,7 +56,6 @@ export async function onAppInstallOrUpgrade(
     });
     await context.scheduler.runJob({
         name: UPDATE_LEADERBOARD_JOB,
-        runAt: new Date(),
-        data: { reason: "TheRepBot has been installed or upgraded." },
+        cron: "* * * * *",
     });
 }

@@ -1,7 +1,7 @@
 import { TriggerContext } from "@devvit/public-api";
 import { addDays, addMinutes, subMinutes } from "date-fns";
 import { CronExpressionParser } from "cron-parser";
-import { ADHOC_CLEANUP_JOB, CLEANUP_JOB_CRON } from "./constants";
+import { ADHOC_CLEANUP_JOB, CLEANUP_JOB_CRON, UPDATE_LEADERBOARD_JOB } from "./constants";
 import { AppSetting } from "./settings";
 import { POINTS_STORE_KEY } from "./triggers/utils/redisKeys";
 
@@ -87,7 +87,7 @@ export async function cleanupDeletedAccounts(
         await context.redis.zRem(CLEANUP_LOG_KEY, deletedUsers);
 
         await context.scheduler.runJob({
-            name: "updateLeaderboard",
+            name: UPDATE_LEADERBOARD_JOB,
             runAt: new Date(),
             data: {
                 reason: "One or more deleted accounts removed from database",

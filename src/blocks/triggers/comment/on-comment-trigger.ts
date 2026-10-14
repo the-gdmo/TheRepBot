@@ -40,6 +40,7 @@ import {
 import { setCleanupForUsers } from "../../cleanupTasks";
 import { getCurrentScore } from "../utils/user-utilities";
 import { POINTS_STORE_KEY } from "../utils/redisKeys";
+import { UPDATE_LEADERBOARD_JOB } from "../../constants";
 
 export async function setUserScore(
     context: TriggerContext,
@@ -69,7 +70,7 @@ export async function setUserScore(
 
     // Queue a leaderboard update.
     await context.scheduler.runJob({
-        name: "updateLeaderboard",
+        name: UPDATE_LEADERBOARD_JOB,
         runAt: new Date(),
         data: {
             reason: `Updated score for ${username}. New score: ${newScore.score}`,
@@ -387,7 +388,7 @@ export async function handleThanksEvent(
         // Trigger leaderboard update
         if (handled) {
             await devvitContext.scheduler.runJob({
-                name: "updateLeaderboard",
+                name: UPDATE_LEADERBOARD_JOB,
                 runAt: new Date(),
                 data: {
                     reason: `Updated score for ${user.username}. Triggered by user command.`,
@@ -458,7 +459,7 @@ export async function handleThanksEvent(
             // Trigger leaderboard update
             if (handled) {
                 await devvitContext.scheduler.runJob({
-                    name: "updateLeaderboard",
+                    name: UPDATE_LEADERBOARD_JOB,
                     runAt: new Date(),
                     data: {
                         reason: `Updated score for ${user.username}. Triggered by mod command.`,

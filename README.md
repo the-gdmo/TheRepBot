@@ -61,6 +61,8 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 # Latest Changes
+## 31.6.24
+* Making sure the leaderboard updating function runs (doesn't run after app upgrade for all previous versions)
 ## 31.6.23
 * Remove a bunch of logging from upgrade notifier and mod digest files (makes it easier for me to check subreddit logs)
 * "Current Wiki Permissions" was removed from the settings for "Wiki Leaderboard Mode" (if this isn't fixed, it will default to "Default settings for wiki")

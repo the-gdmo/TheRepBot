@@ -5,6 +5,7 @@ import {
     ADHOC_POST_OF_THE_MONTH_JOB,
     CLEANUP_JOB,
     CLEANUP_JOB_CRON,
+    LEADERBOARD_CRON,
     MOD_DIGEST_CRON,
     MOD_DIGEST_JOB,
     MODINFO_CRON,
@@ -32,6 +33,14 @@ export async function onAppInstallOrUpgrade(
     );
 
     await context.scheduler.runJob({
+        name: MOD_DIGEST_JOB,
+        cron: MOD_DIGEST_CRON,
+    });
+    await context.scheduler.runJob({
+        name: UPDATE_LEADERBOARD_JOB,
+        cron: LEADERBOARD_CRON,
+    });
+    await context.scheduler.runJob({
         cron: POST_OF_THE_MONTH_CRON,
         name: ADHOC_POST_OF_THE_MONTH_JOB,
     });
@@ -49,13 +58,4 @@ export async function onAppInstallOrUpgrade(
     });
 
     await populateCleanupLogAndScheduleCleanup(context);
-
-    await context.scheduler.runJob({
-        name: MOD_DIGEST_JOB,
-        cron: MOD_DIGEST_CRON,
-    });
-    await context.scheduler.runJob({
-        name: UPDATE_LEADERBOARD_JOB,
-        cron: "* * * * *",
-    });
 }

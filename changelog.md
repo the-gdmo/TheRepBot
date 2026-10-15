@@ -1,4 +1,9 @@
 # Changelog for RepBot
+## 31.6.23
+* Remove a bunch of logging from upgrade notifier and mod digest files (makes it easier for me to check subreddit logs)
+* "Current Wiki Permissions" was removed from the settings for "Wiki Leaderboard Mode" (if this isn't fixed, it will default to "Default settings for wiki")
+* "Wiki Leaderboard Mode" will say "Select an option" if you had it set to "Current Wiki Permissions" after updating
+* Make mod digest sending actually work (for some reason didn't as far as I can tell)
 ## 31.6.18
 * Fix default message for "Mod Only Disallowed Message" and slightly alter default wording for all "x Disallowed Message"s
 * Add a default value to "Notify on mod award fail" (for some reason there wasn't one)

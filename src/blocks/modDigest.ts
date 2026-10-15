@@ -45,11 +45,14 @@ export async function modDigestJob(
         const frequency = rawFrequency;
 
         const intervalMs: Record<string, number> = {
+            Testing: 5 * 60 * 1000,
             Daily: 24 * 60 * 60 * 1000,
             Weekly: 7 * 24 * 60 * 60 * 1000,
             Monthly: 30 * 24 * 60 * 60 * 1000,
         };
+
         if (frequency === "Never") return;
+
         if (
             !frequency ||
             !(frequency in intervalMs) ||
@@ -62,10 +65,25 @@ export async function modDigestJob(
         const lastSentRaw = await context.redis.get(lastSentKey);
         const parsed = lastSentRaw === null ? NaN : Number(lastSentRaw);
         const lastSentAt = Number.isFinite(parsed) ? parsed : undefined;
+
         if (
             lastSentAt !== undefined &&
             now - lastSentAt < intervalMs[frequency]
         ) {
+            logger.info(
+                "Mod digest: not enough time has passed since last send",
+                {
+                    frequency,
+                    lastSentAt: lastSentAt.toLocaleString("en-US"),
+                    nextSendAt: (lastSentAt + intervalMs[frequency]).toLocaleString("en-US"),
+                    timeUntilNextSendSeconds:
+                        ((intervalMs[frequency] - (now - lastSentAt))/1_000).toLocaleString("en-US") + " seconds",
+                    timeUntilNextSendHours:
+                        ((intervalMs[frequency] - (now - lastSentAt))/3_600_000).toLocaleString("en-US") + " hours",
+                        timeUntilNextSendDays:
+                        ((intervalMs[frequency] - (now - lastSentAt))/86_400_000).toLocaleString("en-US") + " days",
+                }
+            );
             return;
         }
 
@@ -74,15 +92,19 @@ export async function modDigestJob(
         const lockResult = await context.redis.set(lockKey, `${now}`, {
             nx: true,
         });
+
         if (lockResult !== "OK") {
+            logger.info("Mod digest: another send is already in progress");
             return;
         }
+
         ownsLock = true;
 
         // Recheck after getting the lease, since another job may have sent.
         const lastSentAfterLock = await context.redis.get(lastSentKey);
         const lastSentNum =
             lastSentAfterLock === null ? NaN : Number(lastSentAfterLock);
+
         if (
             Number.isFinite(lastSentNum) &&
             now - lastSentNum < intervalMs[frequency]
@@ -100,6 +122,7 @@ export async function modDigestJob(
         // A failed send leaves :pending for the next attempt. Never overwrite it.
         // RENAME is atomic: subsequent awards/posts start a fresh active hash.
         const hasPending = await context.redis.exists(DIGEST_PENDING_KEY);
+
         if (!hasPending && (await context.redis.exists(DIGEST_STATS_KEY))) {
             await context.redis.rename(DIGEST_STATS_KEY, DIGEST_PENDING_KEY);
         }
@@ -111,7 +134,9 @@ export async function modDigestJob(
 
         for (const [field, rawValue] of Object.entries(values)) {
             const count = Number(rawValue);
+
             if (!Number.isFinite(count) || count <= 0) continue;
+
             if (field === "posts") {
                 postsCreated = count;
             } else if (field.startsWith("mod:")) {
@@ -125,6 +150,7 @@ export async function modDigestJob(
             a: { username: string; count: number },
             b: { username: string; count: number }
         ) => b.count - a.count || a.username.localeCompare(b.username);
+
         moderators.sort(sortByPoints);
         users.sort(sortByPoints);
 
@@ -132,7 +158,9 @@ export async function modDigestJob(
             (sum, entry) => sum + entry.count,
             0
         );
+
         const fmt = (value: number) => value.toLocaleString("en-US");
+
         const topTen = (entries: Array<{ username: string; count: number }>) =>
             entries.length
                 ? entries
@@ -148,6 +176,7 @@ export async function modDigestJob(
 
         // The body intentionally contains ONLY the six requested statistics.
         const subject = `RepBot ${frequency} Digest — r/${subredditName}`;
+
         const body = [
             `**Reporting Period:** ${new Date(
                 lastSentAt ?? 0
@@ -161,11 +190,13 @@ export async function modDigestJob(
         ].join("\n\n");
 
         const desiredConversationType = "notification";
+
         const [previousConversationId, previousConversationType] =
             await Promise.all([
                 context.redis.get(conversationKey),
                 context.redis.get(conversationTypeKey),
             ]);
+
         const modMail = context.reddit.modMail as ModMailService;
         let conversationId: string | undefined;
 
@@ -178,11 +209,11 @@ export async function modDigestJob(
                 await modMail.reply({
                     conversationId: previousConversationId,
                     body,
-                    isInternal: true,
                 });
+
                 conversationId = previousConversationId;
             } catch (error) {
-                logger.warn("Mod digest reply failed", {
+                logger.warn("Mod digest reply failed; creating discussion", {
                     error,
                     previousConversationId,
                 });
@@ -200,14 +231,24 @@ export async function modDigestJob(
         // The message has succeeded. Keep active (new) counters untouched and
         // remove ONLY the frozen batch that was just reported.
         await context.redis.set(lastSentKey, now.toString());
+
         if (conversationId) {
             await Promise.all([
                 context.redis.set(conversationKey, conversationId),
                 context.redis.set(conversationTypeKey, desiredConversationType),
             ]);
         }
+
         await context.redis.del(DIGEST_PENDING_KEY);
 
+        logger.info("Reputation Bot mod digest sent; reported stats reset", {
+            subreddit: subredditName,
+            frequency,
+            totalPoints,
+            moderators: moderators.length,
+            users: users.length,
+            postsCreated,
+        });
     } catch (error) {
         await logger.error(
             "RepBot mod digest failed; unsent counters retained",

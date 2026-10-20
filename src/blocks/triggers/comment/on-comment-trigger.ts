@@ -41,12 +41,266 @@ import { setCleanupForUsers } from "../../cleanupTasks";
 import { getCurrentScore } from "../utils/user-utilities";
 import { POINTS_STORE_KEY } from "../utils/redisKeys";
 import { UPDATE_LEADERBOARD_JOB } from "../../constants";
+import { getSubredditName, SafeWikiClient } from "../../utility";
+import {
+    capitalize,
+    discoverLatestPage,
+    escapeMarkdownText,
+    getNumberedUserWikiPath,
+    getStoredLatestPage,
+} from "../../leaderboard";
+import pluralize from "pluralize";
+
+export function getAwardsGivenFromWiki(
+    wikiContent: string,
+    capPlural: string
+): string | undefined {
+    const givenHeading = `## ${capPlural} Given`;
+    const givenSectionStart = wikiContent.indexOf(givenHeading);
+
+    if (givenSectionStart === -1) {
+        return undefined;
+    }
+
+    // Only inspect the Given section, not Received.
+    const givenSection = wikiContent.slice(givenSectionStart);
+    const nextSectionStart = givenSection.indexOf("\n## ", givenHeading.length);
+
+    const section =
+        nextSectionStart === -1
+            ? givenSection
+            : givenSection.slice(0, nextSectionStart);
+
+    const match = section.match(/has given a total of\s+([\d,]+)/i);
+
+    if (!match) {
+        logger.warn(
+            "Could not find awards given in wiki content, returning undefined"
+        );
+        return undefined;
+    }
+
+    return match[1]?.toString().replaceAll(",", "");
+}
+
+async function setFlairForUser(
+    context: TriggerContext,
+    awarder: string,
+    awardee: string,
+    appSettings: SettingsValues
+): Promise<void> {
+    if (!context.subredditName) {
+        logger.error("Cannot set user flair: subreddit name is missing");
+        return;
+    }
+
+    const settings = await context.settings.getAll();
+    const pointName = (settings[AppSetting.PointName] as string) ?? "point";
+    const subredditName = await getSubredditName(context);
+    const safeWiki = new SafeWikiClient(context.reddit);
+
+    const baseCssClass =
+        (appSettings[AppSetting.BaseCSSClass] as string | undefined) ||
+        undefined;
+
+    const baseFlairTemplate =
+        (appSettings[AppSetting.BaseFlairTemplate] as string | undefined) ||
+        undefined;
+
+    const superAwarderCSSClass =
+        (appSettings[AppSetting.SuperAwarderCSSClass] as string | undefined) ||
+        undefined;
+
+    // Use the base template until a dedicated Super Awarder template setting exists.
+    const superAwarderFlairTemplate = baseFlairTemplate;
+
+    const flairFormatting =
+        (appSettings[AppSetting.FlairFormatting] as string | undefined) ??
+        TemplateDefaults.FlairFormatting;
+
+    const pointSymbol =
+        (appSettings[AppSetting.PointSymbol] as string | undefined) ?? "";
+
+    const superAwarderThreshold =
+        (appSettings[AppSetting.SuperAwarderThreshold] as number) ?? 0;
+
+    const superAwarderFlairText =
+        (appSettings[AppSetting.SuperAwarderFlairText] as string) ??
+        TemplateDefaults.SuperAwarderFlairText;
+
+    const capPlural = escapeMarkdownText(capitalize(pluralize(pointName)));
+
+    // Initialize the cached awards-given count from the latest wiki page
+    // if it doesn't exist yet.
+    const getOrInitializeAwardsGiven = async (
+        username: string
+    ): Promise<number> => {
+        const redisKey = `awardsGiven:${username}`;
+        const cached = await context.redis.get(redisKey);
+
+        if (cached && cached !== null && cached !== "") {
+            const parsed = Number.parseInt(cached, 10);
+            return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+        }
+
+        let count = 0;
+        const latestPage = await getStoredLatestPage(context, username);
+
+        if (!latestPage) {
+            logger.warn("Couldn't find latest stored wiki page for user", {
+                username,
+            });
+        } else {
+            const wikiPage = await safeWiki.getWikiPage(
+                subredditName,
+                getNumberedUserWikiPath(username, latestPage)
+            );
+
+            if (!wikiPage) {
+                logger.warn("User wiki page not found", {
+                    username,
+                    latestPage,
+                });
+            } else {
+                const parsed = getAwardsGivenFromWiki(
+                    wikiPage.content,
+                    capPlural
+                );
+
+                const value = Number.parseInt(parsed ?? "0", 10);
+                count = Number.isFinite(value) && value >= 0 ? value : 0;
+            }
+        }
+
+        await context.redis.set(redisKey, count.toString());
+        return count;
+    };
+
+    // The awarder gets credit for this award:
+    // - If their cache already exists, increment it.
+    // - Otherwise initialize it from their wiki without incrementing it.
+    const awarderAwardsGivenKey = `awardsGiven:${awarder}`;
+    const cachedAwarderCount = await context.redis.get(awarderAwardsGivenKey);
+
+    if (cachedAwarderCount && cachedAwarderCount !== null && cachedAwarderCount !== "") {
+        const parsed = Number.parseInt(cachedAwarderCount, 10);
+        const currentCount =
+            Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+
+        await context.redis.set(
+            awarderAwardsGivenKey,
+            (currentCount + 1).toString()
+        );
+    } else {
+        await getOrInitializeAwardsGiven(awarder);
+    }
+
+    // Get the received-points leaderboard once for both users.
+    const leaderboard = await context.redis.zRange(POINTS_STORE_KEY, 0, -1, {
+        by: "rank",
+        reverse: true,
+    });
+
+    // If both names are the same, only update that user once.
+    const usernames = [...new Set([awarder, awardee])];
+
+    for (const username of usernames) {
+        try {
+            // Respect each user's own flair opt-out.
+            const flairDisabled = await context.redis.exists(
+                `flairToggle:${username}`
+            );
+
+            if (flairDisabled) {
+                logger.info("Skipping flair update because user opted out", {
+                    username,
+                });
+                continue;
+            }
+
+            // Received-points total and leaderboard position.
+            const score =
+                (await context.redis.zScore(POINTS_STORE_KEY, username)) ?? 0;
+
+            const index = leaderboard.findIndex(
+                (member) => member.member === username
+            );
+
+            const userRank = index >= 0 ? index + 1 : undefined;
+            const placeText = userRank?.toString() ?? "N/A";
+
+            // Determine Super Awarder status independently for each user.
+            // This means receiving points won't remove their title.
+            const awardsGiven = await getOrInitializeAwardsGiven(username);
+
+            const isSuperAwarder =
+                superAwarderThreshold > 0 &&
+                awardsGiven >= superAwarderThreshold;
+
+            let flairText = isSuperAwarder
+                ? superAwarderFlairText
+                : flairFormatting;
+
+            let cssClass = isSuperAwarder
+                ? superAwarderCSSClass ?? baseCssClass
+                : baseCssClass;
+
+            const flairTemplate = isSuperAwarder
+                ? superAwarderFlairTemplate
+                : baseFlairTemplate;
+
+            // Replace both supported placeholder styles.
+            const replacements: Record<string, string> = {
+                "{{place}}": placeText,
+                "{place}": placeText,
+                "{{total}}": score.toString(),
+                "{total}": score.toString(),
+                "{{symbol}}": pointSymbol,
+                "{symbol}": pointSymbol,
+            };
+
+            for (const [placeholder, value] of Object.entries(replacements)) {
+                flairText = flairText.replaceAll(placeholder, value);
+            }
+
+            // A flair template ID takes precedence over the CSS class.
+            if (flairTemplate) {
+                cssClass = undefined;
+            }
+
+            await context.reddit.setUserFlair({
+                subredditName: context.subredditName,
+                username,
+                cssClass,
+                flairTemplateId: flairTemplate,
+                text: flairText,
+            });
+
+            logger.info("Updated user flair", {
+                username,
+                isSuperAwarder,
+                awardsGiven,
+                score,
+                userRank,
+            });
+        } catch (err) {
+            logger.error(
+                "Unable to update user flair",
+                {
+                    username,
+                    error: err instanceof Error ? err.message : String(err),
+                },
+                context
+            );
+        }
+    }
+}
 
 export async function setUserScore(
     context: TriggerContext,
-    username: string,
-    newScore: ScoreResult,
-    appSettings: SettingsValues
+    awardee: string,
+    awarder: string,
+    newScore: ScoreResult
 ): Promise<void> {
     /**
      * POINTS_STORE_KEY is the single source of truth.
@@ -54,31 +308,76 @@ export async function setUserScore(
      * member = username
      * score  = user's point total
      */
+    const settings = await context.settings.getAll();
+
     await context.redis.zAdd(POINTS_STORE_KEY, {
-        member: username,
+        member: awardee,
         score: newScore.score,
     });
 
     logger.debug("Saved user score", {
-        username,
+        awardee,
         score: newScore.score,
     });
 
-    // Queue user for cleanup checks in 24 hours,
-    // overwriting any existing cleanup time.
-    await setCleanupForUsers([username], context);
+    // Queue cleanup checks for both users.
+    await setCleanupForUsers([awardee, awarder], context);
 
     // Queue a leaderboard update.
+
+    if (!(await context.redis.get(`awardsGiven:${awarder}`))) {
+        const safeWiki = new SafeWikiClient(context.reddit);
+        const subredditName = await getSubredditName(context);
+        const latestPage = await discoverLatestPage(
+            context,
+            subredditName,
+            awarder,
+            safeWiki
+        );
+        const pointName = (settings[AppSetting.PointName] as string) ?? "point";
+        const capPlural = escapeMarkdownText(capitalize(pluralize(pointName)));
+
+        for (let pageNumber = 1; pageNumber <= latestPage; pageNumber += 1) {
+            const awarderWiki = await safeWiki.getWikiPage(
+                subredditName,
+                getNumberedUserWikiPath(awarder, pageNumber)
+            );
+
+            if (!awarderWiki) {
+                logger.error("Couldn't retrieve awarder wiki, skipping page", {
+                    awarder,
+                    pageNumber,
+                });
+                continue;
+            }
+
+            const awardsGiven = getAwardsGivenFromWiki(
+                awarderWiki.content,
+                capPlural
+            );
+
+            if (awardsGiven !== undefined) {
+                await context.redis.set(`awardsGiven:${awarder}`, awardsGiven);
+            } else {
+                await context.redis.set(`awardsGiven:${awarder}`, "1");
+            }
+        }
+    }
+
+    const awarderScore =
+        (await context.redis.get(`awardsGiven:${awarder}`)) ?? "0";
+
     await context.scheduler.runJob({
         name: UPDATE_LEADERBOARD_JOB,
         runAt: new Date(),
         data: {
-            reason: `Updated score for ${username}. New score: ${newScore.score}`,
+            reason: `Updated score for ${awardee} and ${awarder}. Awardee Score: ${newScore.score}. Awarder Score: ${awarderScore}.`,
         },
     });
 
+    // Respect the configured existing-flair overwrite behavior.
     const existingFlairOverwriteHandling =
-        (appSettings[AppSetting.ExistingFlairHandling] as
+        (settings[AppSetting.ExistingFlairHandling] as
             | ExistingFlairOverwriteHandling
             | undefined) ?? ExistingFlairOverwriteHandling.OverwriteNumeric;
 
@@ -105,17 +404,13 @@ export async function setUserScore(
 
     if (!shouldSetUserFlair) {
         logger.debug(
-            `${username}: Flair not set because existing flair should be preserved`,
+            "Flair not set because existing flair should be preserved",
             {
-                username,
-                score: newScore.score,
-                userHasFlair: newScore.userHasFlair,
-                flairIsNumber: newScore.flairIsNumber,
+                awardee,
+                awarder,
                 existingFlairOverwriteHandling,
-                shouldSetUserFlair,
             }
         );
-
         return;
     }
 
@@ -126,97 +421,8 @@ export async function setUserScore(
         return;
     }
 
-    /**
-     * A flair toggle prevents the bot from changing this user's flair.
-     */
-    const flairToggleKey = `flairToggle:${username}`;
-    const flairDisabled = await context.redis.exists(flairToggleKey);
-
-    if (flairDisabled) {
-        logger.debug("❌ Flair should not be set, skipping", {
-            username,
-            score: newScore.score,
-            subreddit: context.subredditName,
-        });
-
-        return;
-    }
-
-    let cssClass = appSettings[AppSetting.CSSClass] as string | undefined;
-
-    if (!cssClass) {
-        cssClass = undefined;
-    }
-
-    let flairTemplate = appSettings[AppSetting.FlairTemplate] as
-        | string
-        | undefined;
-
-    if (!flairTemplate) {
-        flairTemplate = undefined;
-    }
-
-    /**
-     * Flair templates take priority over old Reddit CSS classes.
-     */
-    if (flairTemplate && cssClass) {
-        cssClass = undefined;
-    }
-
-    const flairFormatting =
-        (appSettings[AppSetting.FlairFormatting] as string | undefined) ??
-        TemplateDefaults.FlairFormatting;
-
-    const pointSymbol =
-        (appSettings[AppSetting.PointSymbol] as string | undefined) ?? "";
-
-    /**
-     * Get the leaderboard in DESCENDING score order.
-     *
-     * zRank() is not used here because zRank() ranks the LOWEST
-     * score as rank 0.
-     */
-    const leaderboard = await context.redis.zRange(POINTS_STORE_KEY, 0, -1, {
-        by: "rank",
-        reverse: true,
-    });
-
-    const index = leaderboard.findIndex((member) => member.member === username);
-
-    const userRank = index >= 0 ? index + 1 : undefined;
-
-    logger.debug("User leaderboard rank", {
-        username,
-        rank: userRank,
-        score: newScore.score,
-        totalUsers: leaderboard.length,
-    });
-
-    const flairText = flairFormatting
-        .replaceAll(
-            "{place}",
-            userRank !== undefined ? userRank.toString() : "0"
-        )
-        .replaceAll("{total}", newScore.score.toString())
-        .replaceAll("{symbol}", pointSymbol);
-
-    logger.info("Setting user flair", {
-        username,
-        score: newScore.score,
-        rank: userRank,
-        cssClass,
-        flairTemplate,
-        flairText,
-        subreddit: context.subredditName,
-    });
-
-    await context.reddit.setUserFlair({
-        subredditName: context.subredditName,
-        username,
-        cssClass,
-        flairTemplateId: flairTemplate,
-        text: flairText,
-    });
+    // Set the recipient's flair using their updated score.
+    await setFlairForUser(context, awarder, awardee, settings);
 }
 
 export async function handleThanksEvent(

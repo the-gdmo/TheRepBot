@@ -61,6 +61,10 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
 
 # Latest Changes
+## 31.6.25
+* Move `"[RepBot] - Set Flair Management For Specified User"` to subreddit mod menu only as it can target any user and didn't make sense in post/comment contexts
+* Add `"Super Awarder Settings"` section to settings (a way to award users via flair for a specified amount of awards given to users)
+* User can only become a super awarder after they award the point that gets them above the "Super Awarder Threshold"
 ## 31.6.24
 * Making sure the leaderboard updating function runs (doesn't run after app upgrade for all previous versions)
 ## 31.6.23
@@ -68,17 +72,5 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * "Current Wiki Permissions" was removed from the settings for "Wiki Leaderboard Mode" (if this isn't fixed, it will default to "Default settings for wiki")
 * "Wiki Leaderboard Mode" will say "Select an option" if you had it set to "Current Wiki Permissions" after updating
 * Make mod digest sending actually work (for some reason didn't as far as I can tell)
-## 31.6.18
-* Fix default message for "Mod Only Disallowed Message" and slightly alter default wording for all "x Disallowed Message"s
-* Add a default value to "Notify on mod award fail" (for some reason there wasn't one)
-* Update to latest devvit version
-## 31.6.16
-* Make all digests go into the mod notifications inbox (previous was mod discussions, which isn't easily visible)
-* Fix mod digest formatting
-* Fix certain backend keys (sending it now so it's not something that breaks your sub in the future)
-## 31.6.9
-* Update to latest devvit version
-* Add mod digest to give mods info about actions taken using RepBot (eg how many points were awarded in the timespan overall, how many were awarded by mods, how many awarded by non-mods, etc.)
-* Add upgrade notification capability
 
 For older versions, please see the [full changelog](https://github.com/the-gdmo/therepbot/blob/main/changelog.md).

@@ -54,7 +54,7 @@ export async function commentContainsUserCommand(
 /**
  * Awards a point to a normal user and performs all success side-effects.
  */
-async function awardPointToUserNormalCommand(
+export async function awardPointToUserNormalCommand(
     event: CommentSubmit | CommentUpdate,
     context: TriggerContext,
     awarder: string,
@@ -254,7 +254,7 @@ async function awardPointToUserNormalCommand(
         return;
     }
 
-    await setUserScore(context, awardee, newScore, settings);
+    await setUserScore(context, awardee, awarder, newScore);
 }
 
 /**

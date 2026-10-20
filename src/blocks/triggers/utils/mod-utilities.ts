@@ -222,7 +222,7 @@ export async function handlePostRestrictionCheck(
     }
 }
 
-async function resolveMenuTargetUsername(
+export async function resolveMenuTargetUsername(
     event: MenuItemOnPressEvent,
     context: Context
 ): Promise<string | undefined> {
@@ -239,7 +239,7 @@ async function resolveMenuTargetUsername(
     }
 }
 
-async function resolveFormTargetUsername(
+export async function resolveFormTargetUsername(
     context: Context
 ): Promise<string | undefined> {
     if (context.commentId) {
@@ -253,7 +253,7 @@ async function resolveFormTargetUsername(
     }
 }
 
-function wholeNumberFormValue(value: unknown): number | undefined {
+export function wholeNumberFormValue(value: unknown): number | undefined {
     if (typeof value !== "number" && typeof value !== "string") return;
     if (typeof value === "string" && value.trim() === "") return;
 
@@ -468,27 +468,47 @@ export async function manualSetPointsFormHandler(
         return;
     }
 
-    let user: User | undefined;
+    let awardee: User | undefined;
     try {
-        user = await context.reddit.getUserByUsername(targetAuthor);
+        awardee = await context.reddit.getUserByUsername(targetAuthor);
     } catch {
         //
     }
 
-    if (!user) {
+    if (!awardee) {
         context.ui.showToast("Cannot set points. User may be shadowbanned");
         return;
     }
 
-    let flairShouldBeManaged: boolean;
+    let awarder: User | undefined;
+    try {
+        if (!context.username) {
+            logger.error(
+                `Couldn't find username from context in manualSetPointsFormHandler(), returning`
+            );
+            return;
+        }
+        awarder = await context.reddit.getUserByUsername(context.username);
+    } catch {
+        //
+    }
 
-    const key = `flairToggle:${user.username}`;
-    const exists = await context.redis.exists(key);
+    if (!awarder) {
+        context.ui.showToast(
+            "Cannot set score manually because the awarder could not be identified."
+        );
+        return;
+    }
 
-    if (exists) {
-        flairShouldBeManaged = false;
+    let recipientFlairShouldBeManaged: boolean;
+
+    const recipientKey = `flairToggle:${awardee.username}`;
+    const recipientKeyExists = await context.redis.exists(recipientKey);
+
+    if (recipientKeyExists) {
+        recipientFlairShouldBeManaged = false;
     } else {
-        flairShouldBeManaged = true;
+        recipientFlairShouldBeManaged = true;
     }
 
     // ✅ Overwrite the user's score directly
@@ -496,25 +516,21 @@ export async function manualSetPointsFormHandler(
         score: entry,
         userHasFlair: false,
         flairIsNumber: false,
-        flairShouldBeManaged,
+        flairShouldBeManaged: recipientFlairShouldBeManaged,
     };
-    setUserScore(
-        context,
-        user.username,
-        newScore,
-        await context.settings.getAll()
-    );
+
+    setUserScore(context, awardee.username, awarder.username, newScore);
 
     // Trigger leaderboard update
     await context.scheduler.runJob({
         name: UPDATE_LEADERBOARD_JOB,
         runAt: new Date(),
         data: {
-            reason: `Updated score for ${user.username}. New score: ${entry}`,
+            reason: `Updated score for ${awardee.username}. New score: ${entry}`,
         },
     });
 
-    context.ui.showToast(`Score for ${user.username} is now ${entry}`);
+    context.ui.showToast(`Score for ${awardee.username} is now ${entry}`);
 }
 
 export async function handleManualPostRestrictionRemoval(

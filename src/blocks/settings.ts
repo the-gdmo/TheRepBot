@@ -104,6 +104,12 @@ export enum AppSetting {
     NotifyOnModsAndPostAuthorDisallowed = "notifyOnModsAndPostAuthorDisallowed",
     FlairFormatting = "flairFormatting",
     UnrestrictedPostingMessage = "UnrestrictedPostingMessage",
+    BaseCSSClass = "baseCSSClass",
+    BaseFlairTemplate = "baseFlairTemplate",
+    SuperAwarderThreshold = "superAwarderThreshold",
+    SuperAwarderFlairText = "superAwarderFlairText",
+    SuperAwarderCSSClass = "superAwarderCSSClass",
+    SuperAwarderFlairTemplate = "superAwarderFlairTemplate",
 }
 
 export enum TemplateDefaults {
@@ -134,6 +140,7 @@ export enum TemplateDefaults {
     TrustedUserAwardSuccessMessage = "Superuser u/{awarder} gave an award! u/{awardee} now has {total}{symbol} {name}s. {awardee}'s user page is located [here]({awardeePage}). Leaderboard is located [here]({leaderboard}).",
     ModsAndPostAuthorDisallowedMessage = "Only moderators and Post Authors (OPs) can award {name}s.",
     UnrestrictedPostingMessage = "***ATTENTION to OP:*** Please award {name}s by replying to successful comments. Valid command(s) are {commandsWithAnd}.\n\nFailure to do so may result in a ban.\n\n*To hide text, write it like this: `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({markdownGuide})*.",
+    SuperAwarderFlairText = "Super Awarder | #{place} | {total}{symbol}",
 }
 
 export enum AutoSuperuserReplyOptions {
@@ -999,16 +1006,55 @@ export const appSettings: SettingsFormField[] = [
                 onValidate: selectFieldHasOptionChosen,
             },
             {
-                name: AppSetting.CSSClass,
+                name: AppSetting.BaseCSSClass,
                 type: "string",
                 label: "CSS class to use for points flairs",
                 helpText:
                     "Optional. Please choose either a CSS class or flair template, not both",
             },
             {
-                name: AppSetting.FlairTemplate,
+                name: AppSetting.BaseFlairTemplate,
                 type: "string",
                 label: "Flair template ID to use for points flairs",
+                helpText:
+                    "Optional. Please choose either a CSS class or flair template, not both",
+                onValidate: validateFlairTemplateId,
+            },
+        ],
+    },
+    {
+        type: "group",
+        label: "Super Awarder Settings",
+        helpText:
+            "Settings for users who have awarded a certain number of points and are considered super awarders",
+        fields: [
+            {
+                name: AppSetting.SuperAwarderFlairText,
+                type: "string",
+                label: `Flair text to use for super awarders (All placeholders allow single or double curly braces)`,
+                helpText: "Placeholders Supported: total, symbol, place",
+                defaultValue: TemplateDefaults.SuperAwarderFlairText,
+                onValidate: stringOrParagraphFieldContainsText,
+            },
+            {
+                name: AppSetting.SuperAwarderThreshold,
+                type: "number",
+                label: "Super Awarder Threshold",
+                helpText:
+                    "Number of points a user must award to be considered a super awarder. Set to 0 to disable",
+                defaultValue: 0,
+            },
+            {
+                name: AppSetting.SuperAwarderCSSClass,
+                type: "string",
+                label: `CSS class to use for super awarders.`,
+                helpText:
+                    "Optional. Please choose either a CSS class or flair template, not both",
+            },
+            {
+                name: AppSetting.SuperAwarderFlairTemplate,
+                type: "string",
+                label: `Flair template ID to use for super awarders. Please choose either a CSS class or flair template, not both`,
                 helpText:
                     "Optional. Please choose either a CSS class or flair template, not both",
                 onValidate: validateFlairTemplateId,

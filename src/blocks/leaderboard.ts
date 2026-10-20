@@ -11,7 +11,7 @@ import pluralize from "pluralize";
 import { logger } from "./logger";
 import { POINTS_STORE_KEY } from "./triggers/utils/redisKeys";
 
-function capitalize(word: string): string {
+export function capitalize(word: string): string {
     return word.charAt(0).toUpperCase() + word.slice(1);
 }
 
@@ -26,7 +26,7 @@ function capitalize(word: string): string {
  * Newlines/tabs are collapsed so user-controlled text cannot create a new wiki
  * table row/cell or otherwise change the surrounding markdown structure.
  */
-function escapeMarkdownText(input: string): string {
+export function escapeMarkdownText(input: string): string {
     return String(input)
         .replace(/[\r\n\t]+/g, " ")
         .replace(/[\x20-\x2F\x3A-\x40\x5B-\x60\x7B-\x7E]/g, "\\$&");
@@ -38,11 +38,11 @@ function escapeMarkdownText(input: string): string {
  * parentheses, whitespace, backslashes, and other characters that can terminate
  * or corrupt markdown link syntax.
  */
-function escapeMarkdownUrl(input: string): string {
+export function escapeMarkdownUrl(input: string): string {
     return encodeURI(String(input)).replace(/\(/g, "%28").replace(/\)/g, "%29");
 }
 
-function markdownEscape(input: string): string {
+export function markdownEscape(input: string): string {
     return escapeMarkdownText(input);
 }
 
@@ -52,7 +52,7 @@ function markdownEscape(input: string): string {
  * refresh could restore an older wiki snapshot and erase points that were added to
  * Redis since the previous wiki update.
  */
-function leaderboardWikiImportKey(
+export function leaderboardWikiImportKey(
     subredditName: string,
     wikiPageName: string
 ): string {
@@ -71,7 +71,7 @@ type LeaderboardWikiEntry = {
  * empty array is different: it means the page has a valid leaderboard table but
  * contains no users, so Redis should be cleared during migration.
  */
-function parseLeaderboardWikiEntries(
+export function parseLeaderboardWikiEntries(
     content: string
 ): LeaderboardWikiEntry[] | undefined {
     const lines = content.replace(/\r\n/g, "\n").split("\n");
@@ -151,7 +151,7 @@ function parseLeaderboardWikiEntries(
  * scoped to the subreddit and configured wiki page name, so changing the wiki
  * page can intentionally seed Redis from that page once as well.
  */
-async function replaceLeaderboardRedisFromExistingWikiOnce(
+export async function replaceLeaderboardRedisFromExistingWikiOnce(
     context: JobContext,
     subredditName: string,
     wikiPageName: string,
@@ -185,21 +185,21 @@ async function replaceLeaderboardRedisFromExistingWikiOnce(
     });
 }
 
-function formatDate(dateValue: string | number | Date): string {
+export function formatDate(dateValue: string | number | Date): string {
     const d = new Date(dateValue);
     return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
 }
 
-function escapeTitle(title: string): string {
+export function escapeTitle(title: string): string {
     // A post title must never be allowed to create a second markdown/table line.
     return escapeMarkdownText(title.replace(/[\r\n\t]+/g, " "));
 }
 
-function escapeRegExp(input: string): string {
+export function escapeRegExp(input: string): string {
     return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function wikiUsername(username: string): string {
+export function wikiUsername(username: string): string {
     return String(username)
         .replace(/^\/?u\//i, "")
         .replace(/[\r\n\t]+/g, "")
@@ -212,12 +212,12 @@ function wikiUsername(username: string): string {
  * pages. Remove the entire source line instead of trying to guess what the
  * original username was.
  */
-function lineHasBackslashedUserMention(line: string): boolean {
+export function lineHasBackslashedUserMention(line: string): boolean {
     const mentions = line.match(/(?:^|[\s|[(])\/?u(?:\\?\/)[^\s|)\]]+/gi) ?? [];
     return mentions.some((mention) => mention.includes("\\"));
 }
 
-function removeMalformedUserMentionLines(content: string): string {
+export function removeMalformedUserMentionLines(content: string): string {
     return content
         .split("\n")
         .filter((line) => !lineHasBackslashedUserMention(line))
@@ -227,7 +227,7 @@ function removeMalformedUserMentionLines(content: string): string {
 const USER_WIKI_MAX_LENGTH = 520_000;
 const LATEST_PAGE_NOTICE_PREFIX = "> **Most recent history page:**";
 
-function getWikiMarkdown(page: WikiPage | undefined): string {
+export function getWikiMarkdown(page: WikiPage | undefined): string {
     if (!page) return "";
 
     // Devvit 0.14+ exposes WikiPage.content. Keep contentMd as a compatibility
@@ -236,18 +236,18 @@ function getWikiMarkdown(page: WikiPage | undefined): string {
     return compatiblePage.content ?? compatiblePage.contentMd ?? "";
 }
 
-function userWikiLatestPageKey(username: string): string {
+export function userWikiLatestPageKey(username: string): string {
     return `userWiki:latestPage:${username.toLowerCase()}`;
 }
 
-function userWikiManualTotalKey(
+export function userWikiManualTotalKey(
     username: string,
     kind: "received" | "given"
 ): string {
     return `userWiki:manualTotal:${kind}:${wikiUsername(username)}`;
 }
 
-async function getManualUserWikiTotal(
+export async function getManualUserWikiTotal(
     context: TriggerContext,
     username: string,
     kind: "received" | "given"
@@ -259,7 +259,7 @@ async function getManualUserWikiTotal(
     return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
-async function persistManualUserWikiTotalIfPresent(
+export async function persistManualUserWikiTotalIfPresent(
     context: TriggerContext,
     username: string,
     kind: "received" | "given",
@@ -271,15 +271,15 @@ async function persistManualUserWikiTotalIfPresent(
     }
 }
 
-function getNumberedUserWikiPath(username: string, pageNumber: number): string {
+export function getNumberedUserWikiPath(username: string, pageNumber: number): string {
     return `user/${username.toLowerCase()}/${pageNumber}`;
 }
 
-function getLegacyUserWikiPath(username: string): string {
+export function getLegacyUserWikiPath(username: string): string {
     return `user/${username.toLowerCase()}`;
 }
 
-function buildLatestPageNotice(
+export function buildLatestPageNotice(
     subredditName: string,
     username: string,
     latestPage: number
@@ -290,7 +290,7 @@ function buildLatestPageNotice(
     return `${LATEST_PAGE_NOTICE_PREFIX} [Go to page ${latestPage}](${url}).`;
 }
 
-function stripLatestPageNotice(content: string): string {
+export function stripLatestPageNotice(content: string): string {
     const lines = content.replace(/^\uFEFF/, "").split(/\r?\n/);
     if (lines[0]?.startsWith(LATEST_PAGE_NOTICE_PREFIX)) {
         lines.shift();
@@ -303,7 +303,7 @@ function stripLatestPageNotice(content: string): string {
  * Repairs the failure modes this bot can create in wiki markdown without
  * reformatting unrelated moderator-authored content.
  */
-function normalizeWikiContent(content: string): string {
+export function normalizeWikiContent(content: string): string {
     let normalized = stripLatestPageNotice(content).replace(/\r\n/g, "\n");
 
     // Older versions escaped literal spaces even though CommonMark does not
@@ -333,7 +333,7 @@ function normalizeWikiContent(content: string): string {
     return normalized.trim();
 }
 
-function getSectionBody(content: string, verb: "received" | "given"): string {
+export function getSectionBody(content: string, verb: "received" | "given"): string {
     const headingPattern =
         verb === "received"
             ? /^##\s+[^\n]*\bReceived\s*$/im
@@ -349,7 +349,7 @@ function getSectionBody(content: string, verb: "received" | "given"): string {
     return content.slice(sectionStart, sectionEnd);
 }
 
-function extractSectionRows(
+export function extractSectionRows(
     content: string,
     verb: "received" | "given"
 ): string[] {
@@ -411,11 +411,11 @@ type ParsedGivenWikiEntry = {
     receivedMember: string;
 };
 
-function userHistoryGivenKey(username: string): string {
+export function userHistoryGivenKey(username: string): string {
     return `userHistory:given:${wikiUsername(username)}`;
 }
 
-function userHistoryReceivedKey(username: string): string {
+export function userHistoryReceivedKey(username: string): string {
     return `userHistory:received:${wikiUsername(username)}`;
 }
 
@@ -424,15 +424,15 @@ function userHistoryReceivedKey(username: string): string {
  * Given wiki rows. This lets a later wiki -> Redis rebuild remove stale rows
  * when moderators delete or correct an existing wiki entry.
  */
-function userHistoryRecipientIndexKey(awarder: string): string {
+export function userHistoryRecipientIndexKey(awarder: string): string {
     return `userHistory:wikiRecipients:${wikiUsername(awarder)}`;
 }
 
-function unescapeMarkdownText(input: string): string {
+export function unescapeMarkdownText(input: string): string {
     return input.replace(/\\([\x20-\x2F\x3A-\x40\x5B-\x60\x7B-\x7E])/g, "$1");
 }
 
-function decodeMarkdownUrl(input: string): string {
+export function decodeMarkdownUrl(input: string): string {
     try {
         return decodeURI(input);
     } catch {
@@ -445,7 +445,7 @@ function decodeMarkdownUrl(input: string): string {
  * tiny deterministic offset so multiple otherwise-identical rows from the same
  * day remain distinct Redis sorted-set members and retain their wiki order.
  */
-function parseWikiHistoryDate(
+export function parseWikiHistoryDate(
     input: string,
     sequence: number
 ): { date: string; score: number } | undefined {
@@ -479,7 +479,7 @@ function parseWikiHistoryDate(
  * The Received wiki table alone cannot do that because it omits awarder and
  * commentUrl, so the awarder's Given history is the authoritative Redis source.
  */
-function parseGivenWikiRow(
+export function parseGivenWikiRow(
     row: string,
     awarder: string,
     sequence: number
@@ -523,7 +523,7 @@ function parseGivenWikiRow(
     };
 }
 
-async function getAllSortedSetEntries(
+export async function getAllSortedSetEntries(
     context: TriggerContext,
     key: string
 ): Promise<Array<{ member: string; score: number }>> {
@@ -532,7 +532,7 @@ async function getAllSortedSetEntries(
     return context.redis.zRange(key, 0, count - 1, { by: "rank" });
 }
 
-async function zAddInBatches(
+export async function zAddInBatches(
     context: TriggerContext,
     key: string,
     entries: Array<{ member: string; score: number }>,
@@ -546,7 +546,7 @@ async function zAddInBatches(
     }
 }
 
-function getRecipientFromGivenRedisMember(member: string): string | undefined {
+export function getRecipientFromGivenRedisMember(member: string): string | undefined {
     try {
         const parsed = JSON.parse(member) as Partial<RedisGivenHistoryEntry>;
         return typeof parsed.recipient === "string"
@@ -557,7 +557,7 @@ function getRecipientFromGivenRedisMember(member: string): string | undefined {
     }
 }
 
-function isReceivedRedisMemberFromAwarder(
+export function isReceivedRedisMemberFromAwarder(
     member: string,
     awarder: string
 ): boolean {
@@ -583,7 +583,7 @@ function isReceivedRedisMemberFromAwarder(
  * Therefore moderator edits/migrations in the wiki become authoritative instead
  * of leaving stale Redis history behind.
  */
-async function replaceUserHistoryRedisFromWiki(
+export async function replaceUserHistoryRedisFromWiki(
     context: TriggerContext,
     subredditName: string,
     awarder: string
@@ -722,7 +722,7 @@ async function replaceUserHistoryRedisFromWiki(
     return parsedEntries.length;
 }
 
-function buildCanonicalUserWikiBody(
+export function buildCanonicalUserWikiBody(
     content: string,
     username: string,
     capPoint: string,
@@ -759,7 +759,7 @@ u/${displayUsername} has given a total of 0 ${escapedPlural}.
     `.trim();
 }
 
-function withLatestPageNotice(
+export function withLatestPageNotice(
     content: string,
     subredditName: string,
     username: string,
@@ -770,7 +770,7 @@ function withLatestPageNotice(
     return body ? `${notice}\n\n${body}` : notice;
 }
 
-function countRowsInSection(content: string, heading: string): number {
+export function countRowsInSection(content: string, heading: string): number {
     const sectionStart = content.indexOf(heading);
     if (sectionStart < 0) return 0;
 
@@ -788,7 +788,7 @@ function countRowsInSection(content: string, heading: string): number {
         .filter((line) => !/^\|\s*:?-+:?\s*\|/.test(line)).length;
 }
 
-function appendRowToSection(
+export function appendRowToSection(
     content: string,
     heading: string,
     tableHeader: string,
@@ -864,7 +864,7 @@ function appendRowToSection(
     )}${section}${sectionSpacer}${content.slice(sectionEnd)}`;
 }
 
-function readSectionCount(
+export function readSectionCount(
     content: string,
     username: string,
     verb: "received" | "given"
@@ -883,7 +883,7 @@ function readSectionCount(
     return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function updateSectionCount(
+export function updateSectionCount(
     content: string,
     username: string,
     verb: "received" | "given",
@@ -928,7 +928,7 @@ export type UserWikiLifetimeTotals = {
  * still included. Explicit total lines are considered alongside actual table
  * rows, which also repairs totals created by older page-local implementations.
  */
-async function getUserWikiLifetimeTotals(
+export async function getUserWikiLifetimeTotals(
     context: TriggerContext,
     subredditName: string,
     username: string,
@@ -1002,7 +1002,7 @@ async function getUserWikiLifetimeTotals(
     };
 }
 
-async function refreshLifetimeTotalsOnPages(
+export async function refreshLifetimeTotalsOnPages(
     context: TriggerContext,
     subredditName: string,
     username: string,
@@ -1058,7 +1058,7 @@ async function refreshLifetimeTotalsOnPages(
     }
 }
 
-async function getStoredLatestPage(
+export async function getStoredLatestPage(
     context: TriggerContext,
     username: string
 ): Promise<number | undefined> {
@@ -1067,7 +1067,7 @@ async function getStoredLatestPage(
     return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-async function discoverLatestPage(
+export async function discoverLatestPage(
     context: TriggerContext,
     subredditName: string,
     username: string,
@@ -1108,7 +1108,7 @@ async function discoverLatestPage(
     return Math.max(1, pageNumber - 1);
 }
 
-async function refreshLatestPageLinks(
+export async function refreshLatestPageLinks(
     context: TriggerContext,
     subredditName: string,
     username: string,
@@ -1152,7 +1152,7 @@ async function refreshLatestPageLinks(
     }
 }
 
-async function ensureUserWikiInitialized(
+export async function ensureUserWikiInitialized(
     context: TriggerContext,
     subredditName: string,
     username: string,
@@ -1221,7 +1221,7 @@ async function ensureUserWikiInitialized(
     return latestPage;
 }
 
-async function appendUserWikiEntry(
+export async function appendUserWikiEntry(
     context: TriggerContext,
     subredditName: string,
     username: string,
@@ -1670,7 +1670,7 @@ type NormalizedLeaderboardEntry = CanonicalLeaderboardEntry & {
  * Safely decodes URL-encoded username data without throwing on malformed input.
  * A second pass handles values that were accidentally encoded twice.
  */
-function safeDecodeLeaderboardUsername(value: string): string {
+export function safeDecodeLeaderboardUsername(value: string): string {
     let result = value;
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -1701,7 +1701,7 @@ function safeDecodeLeaderboardUsername(value: string): string {
  *   /u/Photon_Chaser                    -> Photon_Chaser
  *   https://reddit.com/u/Photon_Chaser  -> Photon_Chaser
  */
-function normalizeLeaderboardUsernameForLookup(value: string): string {
+export function normalizeLeaderboardUsernameForLookup(value: string): string {
     let username = String(value).trim();
 
     // Handle a full Markdown link accidentally stored as the member.
@@ -1741,7 +1741,7 @@ function normalizeLeaderboardUsernameForLookup(value: string): string {
  * casing, removes differently-cased/escaped/encoded duplicates from Redis, and
  * returns a clean top-N leaderboard.
  */
-async function getCanonicalLeaderboardScores(
+export async function getCanonicalLeaderboardScores(
     context: JobContext,
     leaderboardSize: number
 ): Promise<CanonicalLeaderboardEntry[]> {
@@ -2090,7 +2090,7 @@ export async function updateLeaderboard(
     }
 }
 
-function modInfoTemplate(subredditName: string): string {
+export function modInfoTemplate(subredditName: string): string {
     return (
         `# TheRepBot Mod Info for r/${subredditName}\n\n` +
         `***This page is automatically managed by TheRepBot. Any edits will be overwritten.***\n\n` +

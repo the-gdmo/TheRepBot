@@ -75,7 +75,7 @@ export async function isSelfAwardModCommand(
     return parent.authorName === event.author.name;
 }
 
-async function handleSelfAwardModCommand(
+export async function handleSelfAwardModCommand(
     event: CommentSubmit | CommentUpdate,
     context: TriggerContext
 ) {
@@ -473,7 +473,7 @@ export async function awardPointToUserModCommand(
         return;
     }
 
-    await setUserScore(context, awardee, newScore, settings);
+    await setUserScore(context, awardee, awarder, newScore);
 }
 
 export async function executeModCommand(

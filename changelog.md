@@ -1,4 +1,8 @@
 # Changelog for RepBot
+## 31.6.25
+* Move `"[RepBot] - Set Flair Management For Specified User"` to subreddit mod menu only as it can target any user and didn't make sense in post/comment contexts
+* Add `"Super Awarder Settings"` section to settings (a way to award users via flair for a specified amount of awards given to users)
+* User can only become a super awarder after they award the point that gets them above the "Super Awarder Threshold"
 ## 31.6.24
 * Making sure the leaderboard updating function runs (doesn't run after app upgrade for all previous versions)
 ## 31.6.23

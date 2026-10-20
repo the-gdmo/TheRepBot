@@ -82,6 +82,7 @@ Devvit.addSchedulerJob({
     name: UPDATE_MODINFO_JOB,
     onRun: modInfoJob,
 });
+
 Devvit.addSchedulerJob({
     name: UPDATE_LEADERBOARD_JOB,
     onRun: updateLeaderboard,
@@ -129,7 +130,7 @@ export const manualPostRestrictionRemovalForm = Devvit.createForm(
 Devvit.addMenuItem({
     label: "[RepBot] - Set Flair Management For Specified User",
     forUserType: "moderator",
-    location: ["post", "comment"],
+    location: "subreddit",
     onPress: handleFlairToggleForUser,
 });
 
@@ -485,13 +486,13 @@ export async function manualSetFlairManagementForUserFormHandler(
     const isEnabled = event.values.isEnabled as string | undefined;
     const target = event.values.target as string | undefined;
 
-    if (!isEnabled) {
-        context.ui.showToast("Enablement status is required");
+    if (!target) {
+        context.ui.showToast("Target user is required");
         return;
     }
 
-    if (!target) {
-        context.ui.showToast("Target user is required");
+    if (!isEnabled) {
+        context.ui.showToast("Enablement status is required");
         return;
     }
 
@@ -527,7 +528,7 @@ export async function manualSetFlairManagementForUserFormHandler(
     );
 }
 
-function normalizeWikiPath(input: string): string {
+export function normalizeWikiPath(input: string): string {
     let path = input.trim();
 
     // Allow someone to paste:

@@ -2007,29 +2007,29 @@ export async function updateLeaderboard(
         console.log("Leaderboard: Leaderboard created.");
     }
 
-    const mode = leaderboardMode[0];
+    // const mode = leaderboardMode[0];
 
-    let correctPermissionLevel: number;
+    // let correctPermissionLevel: number;
 
-    switch (mode) {
-        case "subredditpermissions":
-            correctPermissionLevel = 0;
-            break;
+    // switch (mode) {
+    //     case "subredditpermissions":
+    //         correctPermissionLevel = 0;
+    //         break;
 
-        case "approvedcontributorsonly":
-            correctPermissionLevel = 1;
-            break;
+    //     case "approvedcontributorsonly":
+    //         correctPermissionLevel = 1;
+    //         break;
 
-        case "modonly":
-            correctPermissionLevel = 2;
-            break;
-        default:
-            logger.warn("⚠️ Unknown leaderboard mode, defaulting to mod only", {
-                mode,
-            });
-            correctPermissionLevel = 2;
-            break;
-    }
+    //     case "modonly":
+    //         correctPermissionLevel = 2;
+    //         break;
+    //     default:
+    //         logger.warn("⚠️ Unknown leaderboard mode, defaulting to mod only", {
+    //             mode,
+    //         });
+    //         correctPermissionLevel = 2;
+    //         break;
+    // }
 
     if (!currentWikiPage) {
         throw new Error(

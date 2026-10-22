@@ -13,4 +13,6 @@ export type LeaderboardData = {
     helpUrl: string | undefined;
     pointName: string | undefined;
     entries: LeaderboardEntry[];
+    /** Current viewer username, when Devvit can resolve it. */
+    currentUsername?: string;
 };

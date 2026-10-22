@@ -1,23 +1,993 @@
 {
-    "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
-    "name": "therepbot",
-    "blocks": {
-        "entry": "src/blocks/main.ts",
-        "triggers": [
-            "onPostSubmit",
-            "onCommentSubmit",
-            "onCommentUpdate",
-            "onAppInstall",
-            "onAppUpgrade"
-        ]
-    },
-    "media": {
-        "dir": "assets"
-    },
-    "marketingAssets": {
-        "icon": "assets/repbot.png"
-    },
-    "forms": {
-        "post-create-form": "/internal/form/create-post"
+  "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
+  "name": "therepbot",
+  "post": {
+    "dir": "dist/client",
+    "entrypoints": {
+      "default": {
+        "entry": "leaderboard.html",
+        "height": "tall"
+      }
     }
+  },
+  "server": {
+    "dir": "dist/server",
+    "entry": "index.cjs"
+  },
+  "media": {
+    "dir": "assets"
+  },
+  "marketingAssets": {
+    "icon": "assets/repbot.png"
+  },
+  "permissions": {
+    "reddit": true,
+    "redis": true
+  },
+  "triggers": {
+    "onPostSubmit": "/internal/triggers/on-post-submit",
+    "onCommentSubmit": "/internal/triggers/on-comment-submit",
+    "onCommentUpdate": "/internal/triggers/on-comment-update",
+    "onAppInstall": "/internal/triggers/on-app-install",
+    "onAppUpgrade": "/internal/triggers/on-app-upgrade"
+  },
+  "scheduler": {
+    "tasks": {
+      "upgradeNotifier": {
+        "endpoint": "/internal/scheduler/upgrade-notifier",
+        "cron": "* * * * *"
+      },
+      "modDigest": {
+        "endpoint": "/internal/scheduler/mod-digest",
+        "cron": "* * * * *"
+      },
+      "updateModInfo": {
+        "endpoint": "/internal/scheduler/update-modinfo",
+        "cron": "0 * * * *"
+      },
+      "updateLeaderboard": {
+        "endpoint": "/internal/scheduler/update-leaderboard",
+        "cron": "* * * * *"
+      },
+      "cleanupDeletedAccounts": {
+        "endpoint": "/internal/scheduler/cleanup",
+        "cron": "0 23 * * *"
+      },
+      "cleanupDeletedAccountsAdhoc": {
+        "endpoint": "/internal/scheduler/cleanup-adhoc"
+      },
+      "updatePostOfTheMonthAdhoc": {
+        "endpoint": "/internal/scheduler/post-of-the-month-adhoc",
+        "cron": "0 0 1 * *"
+      }
+    }
+  },
+  "menu": {
+    "items": [
+      {
+        "label": "[RepBot] - Set Flair Management For Specified User",
+        "forUserType": "moderator",
+        "location": "subreddit",
+        "endpoint": "/internal/menu/flair-toggle-for-user"
+      },
+      {
+        "label": "Transfer wiki page",
+        "description": "Copy one wiki page to another",
+        "forUserType": "moderator",
+        "location": "subreddit",
+        "endpoint": "/internal/menu/transfer-wiki"
+      },
+      {
+        "label": "[RepBot] - Remove post restriction from user",
+        "forUserType": "moderator",
+        "location": "post",
+        "endpoint": "/internal/menu/remove-post-restriction"
+      },
+      {
+        "label": "[RepBot] - Check User Posting Restriction",
+        "forUserType": "moderator",
+        "location": "post",
+        "endpoint": "/internal/menu/check-post-restriction"
+      },
+      {
+        "label": "[RepBot] - Check User Restriction",
+        "forUserType": "moderator",
+        "location": [
+          "post",
+          "comment"
+        ],
+        "endpoint": "/internal/menu/check-user-restriction"
+      },
+      {
+        "label": "[RepBot] - Pin User Comment",
+        "forUserType": "moderator",
+        "location": "comment",
+        "endpoint": "/internal/menu/pin-comment"
+      },
+      {
+        "label": "[RepBot] - Check Flair Management For User",
+        "forUserType": "moderator",
+        "location": [
+          "post",
+          "comment"
+        ],
+        "endpoint": "/internal/menu/check-flair-toggle"
+      },
+      {
+        "label": "[RepBot] - Toggle Flair Management For User",
+        "forUserType": "moderator",
+        "location": [
+          "post",
+          "comment"
+        ],
+        "endpoint": "/internal/menu/toggle-flair"
+      },
+      {
+        "label": "[RepBot] - Set User Score Manually",
+        "forUserType": "moderator",
+        "location": [
+          "post",
+          "comment"
+        ],
+        "endpoint": "/internal/menu/set-points"
+      },
+      {
+        "label": "[RepBot] - Set User Given/Received Totals",
+        "forUserType": "moderator",
+        "location": [
+          "post",
+          "comment"
+        ],
+        "endpoint": "/internal/menu/set-user-wiki-totals"
+      },
+      {
+        "label": "[RepBot] - Create Leaderboard",
+        "description": "Create a custom post displaying community points",
+        "forUserType": "moderator",
+        "location": "subreddit",
+        "endpoint": "/internal/menu/create-post"
+      }
+    ]
+  },
+  "forms": {
+    "post-create-form": "/internal/form/create-post",
+    "manualSetPointsForm": "/internal/form/manualSetPointsForm",
+    "manualSetUserWikiTotalsForm": "/internal/form/manualSetUserWikiTotalsForm",
+    "manualSetFlairManagementForm": "/internal/form/manualSetFlairManagementForm",
+    "manualSetFlairManagementForUserForm": "/internal/form/manualSetFlairManagementForUserForm",
+    "manualPostRestrictionRemovalForm": "/internal/form/manualPostRestrictionRemovalForm",
+    "transferWikiForm": "/internal/form/transferWikiForm"
+  },
+  "settings": {
+    "subreddit": {
+      "group_postCreationRestrictions": {
+        "type": "group",
+        "label": "Post Creation Restrictions",
+        "fields": {
+          "awardsRequiredToCreateNewPosts": {
+            "type": "number",
+            "label": "Awards required to create new posts",
+            "helpText": "Amount of awarded points required before a user can make a new post. Set to 0 to disable",
+            "defaultValue": 0,
+            "validationEndpoint": "/internal/validators/number-field-has-valid-option"
+          },
+          "moderatorsExempt": {
+            "type": "boolean",
+            "label": "Moderators Exempt",
+            "helpText": "Decide whether or not point awarding is required for moderators as well",
+            "defaultValue": true
+          },
+          "messageToRestrictedUsers": {
+            "type": "paragraph",
+            "label": "Initial Post Restriction Message (All placeholders allow single or double curly braces)",
+            "helpText": "Sent on initial post. Required even if not used. Placeholders Supported: requirement, name, commandsWithOr, commandsWithAnd, markdownGuide, subreddit, helpPage, discord",
+            "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
+            "defaultValue": "***ATTENTION to OP:*** You must award at least {requirement} {name}s by replying to the successful comments. Valid command(s) are {commandsWithAnd}. Failure to do so may result in a ban.\n\n*To hide text, write it like this: `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({markdownGuide})*."
+          },
+          "subsequentPostRestrictionMessage": {
+            "type": "paragraph",
+            "label": "Subsequent Post Restriction Message (All placeholders allow single or double curly braces)",
+            "helpText": "Required even if not used. Message to send users when they try to post while restricted from posting. Placeholders supported: permalink, title, name, commandsWithOr, commandsWithAnd, helpPage",
+            "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
+            "defaultValue": "***ATTENTION to OP:*** You must award {name}s by replying to the successful comments. Before you can create new posts, you must award **{requirement}** {name}s to users who respond on [{title}]({permalink})."
+          },
+          "notifyOnRestrictionLifted": {
+            "type": "select",
+            "label": "Notify on post restriction removal",
+            "helpText": "Choose how the bot should notify users when their posting restriction is fully removed.",
+            "defaultValue": "none",
+            "options": [
+              {
+                "label": "No Notification",
+                "value": "none"
+              },
+              {
+                "label": "Send user a private message",
+                "value": "replybypm"
+              },
+              {
+                "label": "Reply as comment",
+                "value": "replybycomment"
+              }
+            ],
+            "validationEndpoint": "/internal/validators/select-field-has-option-chosen"
+          },
+          "restrictionLiftedMessage": {
+            "type": "paragraph",
+            "label": "Message to send the user when their restriction is removed (All placeholders allow single or double curly braces)",
+            "helpText": "Required even if not used. Placeholders Supported: awarder, subreddit, requirement, name, helpPage, discord",
+            "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
+            "defaultValue": "Your posting restriction has been removed. You now have permission to make a post again in r/{subreddit}!"
+          }
+        }
+      },
+      "group_postOfTheMonth": {
+        "type": "group",
+        "label": "Post of the Month",
+        "fields": {
+          "enablePostOfTheMonth": {
+            "type": "boolean",
+            "label": "Enable Post Of The Month?",
+            "defaultValue": false
+          },
+          "postOfTheMonthFlairText": {
+            "type": "string",
+            "label": "Flair text to use for the Post Of The Month",
+            "helpText": "Optional. Must contain text for flair setting to work if Post Of The Month is enabled"
+          },
+          "postOfTheMonthFlairTemplate": {
+            "type": "string",
+            "label": "Flair template ID to use for the Post Of The Month",
+            "helpText": "Optional. Please choose either a CSS class or flair template, not both"
+          },
+          "postOfTheMonthFlairCSSClass": {
+            "type": "string",
+            "label": "CSS Class to use for the Post Of The Month",
+            "helpText": "Optional. Please choose either a CSS class or flair template, not both"
+          }
+        }
+      },
+      "group_corePointSystem": {
+        "type": "group",
+        "label": "Core Point System",
+        "fields": {
+          "accessControl": {
+            "type": "select",
+            "label": "Who can award points?",
+            "helpText": "Choose who is allowed to award points",
+            "options": [
+              {
+                "label": "Moderators Only",
+                "value": "moderators-only"
+              },
+              {
+                "label": "Moderators and Superusers",
+                "value": "moderators-and-superusers"
+              },
+              {
+                "label": "Moderators and Post Author (OP)",
+                "value": "moderators-and-op"
+              },
+              {
+                "label": "Moderators, Superusers, and Post Author (OP)",
+                "value": "moderators-superusers-and-op"
+              },
+              {
+                "label": "Everyone",
+                "value": "everyone"
+              }
+            ],
+            "validationEndpoint": "/internal/validators/select-field-has-option-chosen"
+          },
+          "flairFormatting": {
+            "type": "string",
+            "label": "Flair Formatting (All placeholders allow single or double curly braces)",
+            "helpText": "How the flair should be formatted. Placeholders Supported: place, total, symbol",
+            "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
+            "defaultValue": "{total}{symbol} | #{place}"
+          },
+          "pointTriggerWords": {
+            "type": "paragraph",
+            "label": "Trigger Words",
+            "helpText": "List of trigger words users can type to award points (e.g., !award, .point). Each command should be on a new line.",
+            "defaultValue": "!award\\n.award",
+            "validationEndpoint": "/internal/validators/validate-trigger-words"
+          },
+          "pointName": {
+            "type": "string",
+            "label": "Point Name",
+            "helpText": "Singular form of the name shown in award messages, like 'point', 'kudo', etc. Lowercase is recommended",
+            "defaultValue": "point",
+            "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text"
+          },
+          "pointSymbol": {
+            "type": "string",
+            "label": "Point Symbol",
+            "helpText": "Optional emoji or character to show alongside point totals. Leave empty for no symbol"
+          },
+          "existingFlairHandling": {
+            "type": "select",
+            "label": "Flair setting option",
+            "helpText": "If using a symbol, it must be set in the Point Symbol box",
+            "defaultValue": "overwritenumeric",
+            "options": [
+              {
+                "label": "Set flair to new score, if flair unset or flair is numeric (With Symbol)",
+                "value": "overwritenumericsymbol"
+              },
+              {
+                "label": "Set flair to new score, if flair unset or flair is numeric (Without Symbol)",
+                "value": "overwritenumeric"
+              },
+              {
+                "label": "Never set flair",
+                "value": "neverset"
+              }
+            ],
+            "validationEndpoint": "/internal/validators/select-field-has-option-chosen"
+          },
+          "baseCSSClass": {
+            "type": "string",
+            "label": "CSS class to use for points flairs",
+            "helpText": "Optional. Please choose either a CSS class or flair template, not both"
+          },
+          "baseFlairTemplate": {
+            "type": "string",
+            "label": "Flair template ID to use for points flairs",
+            "helpText": "Optional. Please choose either a CSS class or flair template, not both",
+            "validationEndpoint": "/internal/validators/validate-flair-template-id"
+          }
+        }
+      },
+      "group_awardEligibilityRestrictions": {
+        "type": "group",
+        "label": "Award Eligibility & Restrictions",
+        "fields": {
+          "allowUnflairedPosts": {
+            "type": "boolean",
+            "label": "Allow awarding points on unflaired posts?",
+            "defaultValue": true
+          },
+          "notifyOnUnflairedPost": {
+            "type": "select",
+            "label": "Notify users when they try to award points on a post without flair if it's not allowed",
+            "defaultValue": "none",
+            "options": [
+              {
+                "label": "No Notification",
+                "value": "none"
+              },
+              {
+                "label": "Send user a private message",
+                "value": "replybypm"
+              },
+              {
+                "label": "Reply as comment",
+                "value": "replybycomment"
+              }
+            ],
+            "validationEndpoint": "/internal/validators/select-field-has-option-chosen"
+          },
+          "unflairedPostMessage": {
+            "type": "paragraph",
+            "label": "Unflaired post message (All placeholders allow single or double curly braces)",
+            "helpText": "Message shown when a user tries to award points on a post without flair. Placeholders Supported: name",
+            "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
+            "defaultValue": "Points cannot be awarded on posts without flair. Please award only on flaired posts."
+          },
+          "notifyOnPointAlreadyAwardedToUser": {
+            "type": "select",
+            "label": "Notify on point already awarded to user",
+            "helpText": "How to notify the user when they try to use the normal command on a user who has already received a point for that comment",
+            "defaultValue": "none",
+            "options": [
+              {
+                "label": "No Notification",
+                "value": "none"
+              },
+              {
+                "label": "Send user a private message",
+                "value": "replybypm"
+              },
+              {
+                "label": "Reply as comment",
+                "value": "replybycomment"
+              }
+            ],
+            "validationEndpoint": "/internal/validators/select-field-has-option-chosen"
+          },
+          "pointAlreadyAwardedToUserMessage": {
+            "type": "paragraph",
+            "label": "Message to send users when they use the Normal Award Command, but the comment author has already received a point for the comment (All placeholders allow single or double curly braces)",
+            "helpText": "Placeholders Supported: awarder, awardee, name",
+            "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
+            "defaultValue": "{awardee} has already received a {name} for this post."
+          },
+          "notifyOnPostAuthorAward": {
+            "type": "select",
+            "label": "Notify on post author award",
+            "helpText": "How to notify the user when they try to award a point to the Post Author (OP)",
+            "defaultValue": "none",
+            "options": [
+              {
+                "label": "No Notification",
+                "value": "none"
+              },
+              {
+                "label": "Send user a private message",
+                "value": "replybypm"
+              },
+              {
+                "label": "Reply as comment",
+                "value": "replybycomment"
+              }
+            ],
+            "validationEndpoint": "/internal/validators/select-field-has-option-chosen"
+          },
+          "postAuthorAwardMessage": {
+            "type": "paragraph",
+            "label": "Message to send when someone tries to award the Post Author (OP)",
+            "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
+            "defaultValue": "The post author (OP) cannot be awarded {name}s."
+          },
+          "notifyOnModOnlyDisallowed": {
+            "type": "select",
+            "label": "Notify users when only moderators can award points",
+            "defaultValue": "none",
+            "options": [
+              {
+                "label": "No Notification",
+                "value": "none"
+              },
+              {
+                "label": "Send user a private message",
+                "value": "replybypm"
+              },
+              {
+                "label": "Reply as comment",
+                "value": "replybycomment"
+              }
+            ],
+            "validationEndpoint": "/internal/validators/select-field-has-option-chosen"
+          },
+          "modOnlyDisallowedMessage": {
+            "type": "paragraph",
+            "label": "Mod Only Disallowed Message (All placeholders allow single or double curly braces)",
+            "helpText": "Message shown when a user tries to award a point but only moderators can award points. Placeholders Supported: name, awarder",
+            "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
+            "defaultValue": "Only moderators can award {name}s."
+          },
+          "notifyOnModsAndPostAuthorDisallowed": {
+            "type": "select",
+            "label": "Notify users when only moderators and the Post Author (OP) can award points",
+            "options": [
+              {
+                "label": "No Notification",
+                "value": "none"
+              },
+              {
+                "label": "Send user a private message",
+                "value": "replybypm"
+              },
+              {
+                "label": "Reply as comment",
+                "value": "replybycomment"
+              }
+            ],
+            "validationEndpoint": "/internal/validators/select-field-has-option-chosen"
+          },
+          "modsAndPostAuthorDisallowedMessage": {
+            "type": "paragraph",
+            "label": "Mods and Post Author Disallowed Message (All placeholders allow single or double curly braces)",
+            "helpText": "Message shown when a user tries to award a point but only moderators and the Post Author (OP) can award points. Placeholders Supported: name, awarder",
+            "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
+            "defaultValue": "Only moderators and Post Authors (OPs) can award {name}s."
+          },
+          "notifyOnApprovedOnlyDisallowed": {
+            "type": "select",
+            "label": "Notify users when only moderators and approved users can award points",
+            "options": [
+              {
+                "label": "No Notification",
+                "value": "none"
+              },
+              {
+                "label": "Send user a private message",
+                "value": "replybypm"
+              },
+              {
+                "label": "Reply as comment",
+                "value": "replybycomment"
+              }
+            ],
+            "validationEndpoint": "/internal/validators/select-field-has-option-chosen"
+          },
+          "approvedOnlyDisallowedMessage": {
+            "type": "paragraph",
+            "label": "Approved Only Disallowed Message (All placeholders allow single or double curly braces)",
+            "helpText": "Message shown when a user tries to award a point but only mods and approved users can award points. Placeholders Supported: name, awarder",
+            "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
+            "defaultValue": "Only moderators and superusers can award {name}s."
+          },
+          "notifyOnOPOnlyDisallowed": {
+            "type": "select",
+            "label": "Notify Users When Only OP, Approved Users, And Moderators Can Award Points",
+            "defaultValue": "none",
+            "options": [
+              {
+                "label": "No Notification",
+                "value": "none"
+              },
+              {
+                "label": "Send user a private message",
+                "value": "replybypm"
+              },
+              {
+                "label": "Reply as comment",
+                "value": "replybycomment"
+              }
+            ],
+            "validationEndpoint": "/internal/validators/select-field-has-option-chosen"
+          },
+          "opOnlyDisallowedMessage": {
+            "type": "paragraph",
+            "label": "OP Only Disallowed Message (All placeholders allow single or double curly braces)",
+            "helpText": "Message shown when a user tries to award a point but only mods, approved users, and Post Authors (OPs) can award points. Placeholders Supported: name, awarder",
+            "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
+            "defaultValue": "Only moderators, approved users, and Post Authors (OPs) can award {name}s."
+          },
+          "notifyOnDisallowedFlair": {
+            "type": "select",
+            "label": "Notify users when they try to award points on a post with a disallowed flair",
+            "defaultValue": "none",
+            "options": [
+              {
+                "label": "No Notification",
+                "value": "none"
+              },
+              {
+                "label": "Send user a private message",
+                "value": "replybypm"
+              },
+              {
+                "label": "Reply as comment",
+                "value": "replybycomment"
+              }
+            ],
+            "validationEndpoint": "/internal/validators/select-field-has-option-chosen"
+          },
+          "disallowedFlairs": {
+            "type": "paragraph",
+            "label": "Disallowed Flairs",
+            "helpText": "Optional. Flairs where points cannot be awarded. Each flair should be on a new line"
+          },
+          "disallowedFlairMessage": {
+            "type": "paragraph",
+            "label": "Disallowed Flair Message",
+            "helpText": "Message shown when a user tries to award points on a post with a disallowed flair",
+            "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
+            "defaultValue": "Points cannot be awarded on posts with this flair. Please choose another post."
+          }
+        }
+      },
+      "group_moderatorTrustedUserSettings": {
+        "type": "group",
+        "label": "Moderator & Trusted User Settings",
+        "fields": {
+          "superUsers": {
+            "type": "paragraph",
+            "label": "A list of trusted users other than mods who can award points",
+            "helpText": "Optional. Each username should be on a new line"
+          },
+          "modAwardCommand": {
+            "type": "string",
+            "label": "Trusted User/Mod award command",
+            "helpText": "Optional. Alternate command for mods and trusted users to award reputation points",
+            "defaultValue": "!modaward",
+            "validationEndpoint": "/internal/validators/validate-mod-trigger-command"
+          },
+          "notifyOnAutoSuperuser": {
+            "type": "select",
+            "label": "Notify users who reach the auto trusted user threshold",
+            "defaultValue": "none",
+            "options": [
+              {
+                "label": "No Notification",
+                "value": "none"
+              },
+              {
+                "label": "Send user a private message",
+                "value": "replybypm"
+              },
+              {
+                "label": "Reply as comment",
+                "value": "replybycomment"
+              }
+            ],
+            "validationEndpoint": "/internal/validators/select-field-has-option-chosen"
+          },
+          "autoSuperuserThreshold": {
+            "type": "number",
+            "label": "Treat users with this many points as automatically a trusted user",
+            "helpText": "If zero, only explicitly named users above will be treated as trusted users",
+            "validationEndpoint": "/internal/validators/number-field-has-valid-option"
+          },
+          "AutoSuperuserTemplate": {
+            "type": "paragraph",
+            "label": "Message sent when a user reaches the trusted user threshold (All placeholders allow single or double curly braces)",
+            "helpText": "Placeholders Supported: name, threshold, command",
+            "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
+            "defaultValue": "Hello {awardee},\n\nNow that you have reached {threshold} points you can now award points yourself, even if normal users do not have permission to. Please use the command `{command}` if you'd like to do this."
+          },
+          "notifyOnTrustedUserAwardSuccess": {
+            "type": "select",
+            "label": "Notify on trusted user award success",
+            "options": [
+              {
+                "label": "No Notification",
+                "value": "none"
+              },
+              {
+                "label": "Send user a private message",
+                "value": "replybypm"
+              },
+              {
+                "label": "Reply as comment",
+                "value": "replybycomment"
+              }
+            ],
+            "validationEndpoint": "/internal/validators/select-field-has-option-chosen"
+          },
+          "trustedUserAwardSuccessMessage": {
+            "type": "paragraph",
+            "label": "Trusted User Award Success Message (All placeholders allow single or double curly braces)",
+            "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
+            "defaultValue": "Superuser u/{awarder} gave an award! u/{awardee} now has {total}{symbol} {name}s. {awardee}'s user page is located [here]({awardeePage}). Leaderboard is located [here]({leaderboard})."
+          },
+          "notifyOnModAwardSuccess": {
+            "type": "select",
+            "label": "Notify on mod award success",
+            "helpText": "How to notify users when a moderator or trusted user awards a point",
+            "defaultValue": "none",
+            "options": [
+              {
+                "label": "No Notification",
+                "value": "none"
+              },
+              {
+                "label": "Send user a private message",
+                "value": "replybypm"
+              },
+              {
+                "label": "Reply as comment",
+                "value": "replybycomment"
+              }
+            ],
+            "validationEndpoint": "/internal/validators/select-field-has-option-chosen"
+          },
+          "modAwardCommandSuccess": {
+            "type": "paragraph",
+            "label": "Mod Award Success Message (All placeholders allow single or double curly braces)",
+            "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
+            "defaultValue": "Moderator u/{awarder} gave an award! u/{awardee} now has {total}{symbol} {name}s. {awardee}'s user page is located [here]({awardeePage}). Leaderboard is located [here]({leaderboard})."
+          },
+          "notifyOnModAwardFail": {
+            "type": "select",
+            "label": "Notify on mod award fail",
+            "defaultValue": "none",
+            "options": [
+              {
+                "label": "No Notification",
+                "value": "none"
+              },
+              {
+                "label": "Send user a private message",
+                "value": "replybypm"
+              },
+              {
+                "label": "Reply as comment",
+                "value": "replybycomment"
+              }
+            ],
+            "validationEndpoint": "/internal/validators/select-field-has-option-chosen"
+          },
+          "modAwardCommandFail": {
+            "type": "paragraph",
+            "label": "Mod Award Fail Message (All placeholders allow single or double curly braces)",
+            "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
+            "defaultValue": "Hello {awarder}. You must be a moderator or trusted user to use {command}."
+          },
+          "modAwardAlreadyGiven": {
+            "type": "paragraph",
+            "label": "modAwardAlreadyGiven",
+            "helpText": "Optional. Placeholders Supported: awarder, awardee, name",
+            "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
+            "defaultValue": "{awardee} has already received a mod award for this comment."
+          }
+        }
+      },
+      "group_superAwarderSettings": {
+        "type": "group",
+        "label": "Super Awarder Settings",
+        "fields": {
+          "superAwarderFlairText": {
+            "type": "string",
+            "label": "superAwarderFlairText",
+            "helpText": "Placeholders Supported: total, symbol, place",
+            "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
+            "defaultValue": "Super Awarder | #{place} | {total}{symbol}"
+          },
+          "superAwarderThreshold": {
+            "type": "number",
+            "label": "Super Awarder Threshold",
+            "helpText": "Number of points a user must award to be considered a super awarder. Set to 0 to disable",
+            "defaultValue": 0
+          },
+          "superAwarderCSSClass": {
+            "type": "string",
+            "label": "superAwarderCSSClass",
+            "helpText": "Optional. Please choose either a CSS class or flair template, not both"
+          },
+          "superAwarderFlairTemplate": {
+            "type": "string",
+            "label": "superAwarderFlairTemplate",
+            "helpText": "Optional. Please choose either a CSS class or flair template, not both",
+            "validationEndpoint": "/internal/validators/validate-flair-template-id"
+          }
+        }
+      },
+      "group_awardNotificationsMessages": {
+        "type": "group",
+        "label": "Award Notifications & Messages",
+        "fields": {
+          "UnrestrictedPostingMessage": {
+            "type": "paragraph",
+            "label": "Unrestricted Posting Message (All placeholders allow single or double curly braces)",
+            "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
+            "defaultValue": "***ATTENTION to OP:*** Please award {name}s by replying to successful comments. Valid command(s) are {commandsWithAnd}.\n\nFailure to do so may result in a ban.\n\n*To hide text, write it like this: `>!Text goes here!<` = >!Text goes here!<. [Reddit Markdown Guide]({markdownGuide})*."
+          },
+          "notifyOnSelfAward": {
+            "type": "select",
+            "label": "Notify users when they try to award themselves",
+            "defaultValue": "none",
+            "options": [
+              {
+                "label": "No Notification",
+                "value": "none"
+              },
+              {
+                "label": "Send user a private message",
+                "value": "replybypm"
+              },
+              {
+                "label": "Reply as comment",
+                "value": "replybycomment"
+              }
+            ],
+            "validationEndpoint": "/internal/validators/select-field-has-option-chosen"
+          },
+          "selfAwardMessage": {
+            "type": "paragraph",
+            "label": "Self Award Message (All placeholders allow single or double curly braces)",
+            "helpText": "Shown when someone tries to award themselves. Placeholders Supported: name, awarder",
+            "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
+            "defaultValue": "Hello {awarder}, you cannot award a {name} to yourself."
+          },
+          "notifyOnSuccess": {
+            "type": "select",
+            "label": "Notify users when a point is awarded successfully",
+            "defaultValue": "none",
+            "options": [
+              {
+                "label": "No Notification",
+                "value": "none"
+              },
+              {
+                "label": "Send user a private message",
+                "value": "replybypm"
+              },
+              {
+                "label": "Reply as comment",
+                "value": "replybycomment"
+              }
+            ],
+            "validationEndpoint": "/internal/validators/select-field-has-option-chosen"
+          },
+          "successMessage": {
+            "type": "paragraph",
+            "label": "Normal Award Success Message (All placeholders allow single or double curly braces)",
+            "helpText": "Message when a point is awarded. Placeholders Supported: awardeePage, awarderPage, awardee, awarder, symbol, total, name, leaderboard",
+            "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
+            "defaultValue": "+1 {name} awarded to u/{awardee} by u/{awarder}. Total: {total}{symbol}. {awardee}'s user page is located [here]({awardeePage}). Leaderboard is located [here]({leaderboard})."
+          },
+          "notifyUsersWhoCannotAwardPoints": {
+            "type": "select",
+            "label": "Notify a user if they are not allowed to award points",
+            "options": [
+              {
+                "label": "No Notification",
+                "value": "none"
+              },
+              {
+                "label": "Send user a private message",
+                "value": "replybypm"
+              },
+              {
+                "label": "Reply as comment",
+                "value": "replybycomment"
+              }
+            ],
+            "validationEndpoint": "/internal/validators/select-field-has-option-chosen"
+          },
+          "usersWhoCantAwardPoints": {
+            "type": "paragraph",
+            "label": "Users Who Cannot Award Points (No u/)",
+            "helpText": "List of usernames who cannot award points, even if they are mods or approved users. Each username should be on a new line"
+          },
+          "notifyOnBlockedUser": {
+            "type": "select",
+            "label": "How to notify users when they are blocked from awarding points",
+            "defaultValue": "none",
+            "options": [
+              {
+                "label": "No Notification",
+                "value": "none"
+              },
+              {
+                "label": "Send user a private message",
+                "value": "replybypm"
+              },
+              {
+                "label": "Reply as comment",
+                "value": "replybycomment"
+              }
+            ],
+            "validationEndpoint": "/internal/validators/select-field-has-option-chosen"
+          },
+          "usersWhoCannotAwardPointsMessage": {
+            "type": "paragraph",
+            "label": "User Cannot Award Points Message (All placeholders allow single or double curly braces)",
+            "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
+            "defaultValue": "Hello u/{awarder}, you do not have permission to award {name}s in r/{subreddit}."
+          },
+          "notifyOnBotAward": {
+            "type": "select",
+            "label": "Notify a user if they try to award the bot",
+            "defaultValue": "none",
+            "options": [
+              {
+                "label": "No Notification",
+                "value": "none"
+              },
+              {
+                "label": "Send user a private message",
+                "value": "replybypm"
+              },
+              {
+                "label": "Reply as comment",
+                "value": "replybycomment"
+              }
+            ],
+            "validationEndpoint": "/internal/validators/select-field-has-option-chosen"
+          },
+          "botAwardMessage": {
+            "type": "paragraph",
+            "label": "Bot Award Message (All placeholders allow single or double curly braces)",
+            "helpText": "Message shown when someone tries to award the bot. Placeholders Supported: name, awardee",
+            "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
+            "defaultValue": "You can't award u/{awardee} {name}s."
+          }
+        }
+      },
+      "group_postFlairSettings": {
+        "type": "group",
+        "label": "Post Flair Settings",
+        "fields": {
+          "setPostFlairOnThanks": {
+            "type": "boolean",
+            "label": "Set post flair when a reputation point is awarded",
+            "helpText": "This can be used to mark a question as resolved, or answered",
+            "defaultValue": false
+          },
+          "setPostFlairOnThanksText": {
+            "type": "string",
+            "label": "Post Flair Text",
+            "helpText": "Optional. Please enter the text to display for the post flair"
+          },
+          "setPostFlairOnThanksCSSClass": {
+            "type": "string",
+            "label": "Post Flair CSS Class",
+            "helpText": "Optional. Please choose either a CSS class or flair template, not both"
+          },
+          "setPostFlairOnThanksTemplate": {
+            "type": "string",
+            "label": "Post Flair Template ID",
+            "helpText": "Optional. Please choose either a CSS class or flair template, not both",
+            "validationEndpoint": "/internal/validators/validate-flair-template-id"
+          }
+        }
+      },
+      "group_leaderboardCommunitySettings": {
+        "type": "group",
+        "label": "Leaderboard & Community Settings",
+        "fields": {
+          "leaderboardSize": {
+            "type": "number",
+            "label": "Leaderboard Size",
+            "helpText": "Number of users to show on the leaderboard wiki page (1-1,000)",
+            "defaultValue": 50,
+            "validationEndpoint": "/internal/validators/validate-leaderboard-size"
+          },
+          "discordServerLink": {
+            "type": "string",
+            "label": "Discord Server Link",
+            "helpText": "Optional. Link to your subreddit's discord server. A non-expiring link is recommended."
+          },
+          "leaderboardName": {
+            "type": "string",
+            "label": "Leaderboard Wiki Name",
+            "helpText": "Name of the wiki page for your subreddit's leaderboard (e.g. leaderboard). Singular form is recommended as there is only one leaderboard per subreddit",
+            "defaultValue": "leaderboard",
+            "validationEndpoint": "/internal/validators/validate-leaderboard-name"
+          },
+          "pointSystemHelpPage": {
+            "type": "string",
+            "label": "Point System Help Page",
+            "helpText": "Optional. Name of the wiki page for explaining your subreddit's point system (e.g. pointsystem)."
+          }
+        }
+      },
+      "group_moderatorSummarySettings": {
+        "type": "group",
+        "label": "Moderator Summary Settings",
+        "fields": {
+          "digestNewMessageEachDay": {
+            "type": "boolean",
+            "label": "Create a new Modmail conversation for each summary?",
+            "defaultValue": false
+          },
+          "digestFrequency": {
+            "type": "select",
+            "label": "Frequency of summary messages",
+            "options": [
+              {
+                "label": "Never",
+                "value": "Never"
+              },
+              {
+                "label": "Daily",
+                "value": "Daily"
+              },
+              {
+                "label": "Weekly",
+                "value": "Weekly"
+              },
+              {
+                "label": "Monthly",
+                "value": "Monthly"
+              }
+            ],
+            "defaultValue": "Monthly",
+            "validationEndpoint": "/internal/validators/select-field-has-option-chosen"
+          }
+        }
+      },
+      "group_upgradeNotificationSettings": {
+        "type": "group",
+        "label": "Upgrade Notification Settings",
+        "fields": {
+          "upgradeNotifier": {
+            "type": "boolean",
+            "label": "Upgrade notifications",
+            "helpText": "Receive a message when a new version of RepBot is released",
+            "defaultValue": true
+          }
+        }
+      }
+    }
+  },
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "vite build"
+  }
 }

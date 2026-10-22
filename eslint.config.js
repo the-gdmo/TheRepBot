@@ -21,12 +21,10 @@ export default defineConfig([
   },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
-    files: ['src/blocks/**/*.{ts,tsx,mjs,cjs,js}'],
     languageOptions: {
       ecmaVersion: 2023,
       globals: globals.node,
       parserOptions: {
-        project: ['./tools/tsconfig.blocks.json'],
         tsconfigRootDir: import.meta.dirname,
       },
     },

@@ -1,4 +1,8 @@
 # Changelog for RepBot
+## 31.7.0
+* Update to latest devvit version
+* Refactor all code to work with Devvit Web (previous was blocks, which will eventually be fully deprecated)
+* Remove wiki leaderboard options for the time being. You won't be able to stop the leaderboard from updating at this point in time
 ## 31.6.25
 * Move `"[RepBot] - Set Flair Management For Specified User"` to subreddit mod menu only as it can target any user and didn't make sense in post/comment contexts
 * Add `"Super Awarder Settings"` section to settings (a way to award users via flair for a specified amount of awards given to users)

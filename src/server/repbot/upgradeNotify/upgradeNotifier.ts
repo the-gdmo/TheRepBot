@@ -19,10 +19,7 @@ export async function getNewVersionInfo(
 ): Promise<AppUpdate | undefined> {
     let wikiPage: WikiPage;
     try {
-        wikiPage = await reddit.getWikiPage(
-            UPDATE_SUBREDDIT,
-            UPDATE_WIKI_PAGE
-        );
+        wikiPage = await reddit.getWikiPage(UPDATE_SUBREDDIT, UPDATE_WIKI_PAGE);
         if (!wikiPage) {
             const wikiPageOptions = {
                 subredditName: UPDATE_SUBREDDIT,
@@ -98,8 +95,7 @@ export async function checkForUpdates(_: unknown, context: JobContext) {
             return;
         }
 
-        const subredditName =
-            (await reddit.getCurrentSubreddit()).name;
+        const subredditName = (await reddit.getCurrentSubreddit()).name;
 
         const update = await getNewVersionInfo(context);
 
@@ -156,6 +152,13 @@ export async function checkForUpdates(_: unknown, context: JobContext) {
 
         await redis.set(redisKey, update.version);
     } catch (error) {
+        if (error instanceof TypeError) {
+            logger.info(
+                `TypeError occurred while checking for updates, returning`,
+                { error }
+            );
+            return;
+        }
         await reddit.modMail.createModNotification({
             subredditId: context.subredditId as `t5_${string}`,
             subject: `RepBot Update Error`,

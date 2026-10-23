@@ -1,4 +1,6 @@
 # Changelog for RepBot
+## 31.7.3
+* Slightly alter wording of leaderboard custom post heading (ie, switched to "RepBot Leaderboard" instead of "The RepBot Leaderboard")
 ## 31.7.0
 * Update to latest devvit version
 * Refactor all code to work with Devvit Web (previous was blocks, which will eventually be fully deprecated)

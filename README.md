@@ -58,9 +58,12 @@ This app is open source and licensed under the BSD 3-Clause License. You can fin
 
 NOTE: If you remove the app from your subreddit, it will delete all user specific data and you will have to manually restore it to users. The bot can use numeric flair to update the user's flair, but it cannot do so if there is any special characters between numbers (eg 12!3, 1@6, etc.)
 
-* If you have a leaderboard post on your subreddit currently, it will stop working once you update from version 28.0.0 onwards.
+* NOTE: If you have a leaderboard post on your subreddit currently from v28.0.0, I cannot guaranteee that the v31.7.0+ leaderboard will carry over. There is a fair chance you will have to make a new post via `[RepBot] - Create Leaderboard` in the subreddit-level mod/burger menu
 
 # Latest Changes
+## 31.7.3
+* Slightly alter wording of leaderboard custom post (this will automatically update any existing posts, so you don't need to make a new post for this to go into effect)
+* Add clarification on how leaderboard posts work in the "About" section of this README
 ## 31.7.0
 * Update to latest devvit version
 * Refactor all code to work with Devvit Web (previous was blocks, which will eventually be fully deprecated)

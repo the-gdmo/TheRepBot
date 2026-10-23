@@ -1,5 +1,6 @@
 import chalk from "chalk";
 import type { TriggerContext } from "./compat";
+import { reddit } from "@devvit/web/server";
 
 export enum LogLevel {
     INFO = "INFO",
@@ -41,9 +42,8 @@ async function sendModPM(
 ): Promise<void> {
     try {
         const subreddit =
-            context.subredditName ??
-            (await context.reddit.getCurrentSubreddit()).name;
-        await context.reddit.sendPrivateMessage({
+            (await reddit.getCurrentSubreddit()).name;
+        await reddit.sendPrivateMessage({
             to: `/r/${subreddit}`,
             subject: "TheRepBot Error Alert",
             text: message.slice(0, 10_000),

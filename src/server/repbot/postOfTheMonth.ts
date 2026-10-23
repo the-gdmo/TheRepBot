@@ -1,4 +1,4 @@
-import { settings } from "@devvit/web/server";
+import { reddit, settings } from "@devvit/web/server";
 import type { Post, TriggerContext } from "./compat";
 import { logger } from "./logger";
 
@@ -38,10 +38,10 @@ export async function addPostOfTheMonthFlair(
         return;
     }
 
-    const subreddit = await context.reddit.getCurrentSubreddit();
+    const subreddit = await reddit.getCurrentSubreddit();
     const subredditName = subreddit.name;
 
-    // const safeWiki = new SafeWikiClient(context.reddit);
+    // const safeWiki = new SafeWikiClient(reddit);
 
     // let existingPage;
     // try {
@@ -68,7 +68,7 @@ export async function addPostOfTheMonthFlair(
     // }
 
     // ──────────────── FETCH TOP POSTS THIS MONTH ────────────────
-    const topPostsListing = context.reddit.getTopPosts({
+    const topPostsListing = reddit.getTopPosts({
         timeframe: "month",
         subredditName,
         limit: 50,
@@ -90,9 +90,9 @@ export async function addPostOfTheMonthFlair(
     // ──────────────── LOG NEW POSTS ────────────────
     // for (const post of allPosts) {
     //     const seenKey = `potm:seen-posts:${post.id}`;
-    //     const alreadySeen = await context.redis.exists(seenKey);
+    //     const alreadySeen = await redis.exists(seenKey);
     //     if (!alreadySeen) {
-    //         await context.redis.set(seenKey, "1");
+    //         await redis.set(seenKey, "1");
     //         logger.info("🆕 New Post of the Month entry detected", {
     //             postId: post.id,
     //             score: post.score,
@@ -117,7 +117,7 @@ export async function addPostOfTheMonthFlair(
     });
 
     // Apply flair
-    await context.reddit.setPostFlair({
+    await reddit.setPostFlair({
         subredditName,
         postId: winnerPost.id,
         text: postOfTheMonthFlairText,
@@ -161,7 +161,7 @@ export async function addPostOfTheMonthFlair(
     //             trackingPage,
     //         });
     //     } else {
-    //         await context.reddit.updateWikiPage({
+    //         await reddit.updateWikiPage({
     //             subredditName,
     //             page: trackingPage,
     //             content,

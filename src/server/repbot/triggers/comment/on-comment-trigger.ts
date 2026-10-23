@@ -317,7 +317,7 @@ export async function setUserScore(
     });
 
     // Queue cleanup checks for both users.
-    await setCleanupForUsers([awardee, awarder], context);
+    await setCleanupForUsers([awardee, awarder]);
 
     // Queue a leaderboard update.
 

@@ -1,5 +1,9 @@
 import { Hono } from "hono";
-import { createCompatContext, toUiResponse, type UiCapture } from "../repbot/compat";
+import {
+    createCompatContext,
+    toUiResponse,
+    type UiCapture,
+} from "../repbot/compat";
 import {
     manualSetPointsFormHandler,
     manualSetUserWikiTotalsFormHandler,
@@ -57,8 +61,7 @@ forms.post("/create-post", async (c) => {
         const values = await c.req.json<CreatePostFormValues>();
 
         // Resolve subreddit safely.
-        const subredditName =
-            context.subredditName ?? (await reddit.getCurrentSubreddit())?.name;
+        const subredditName = (await reddit.getCurrentSubreddit())?.name;
 
         if (!subredditName) {
             throw new Error("Subreddit name could not be determined");
@@ -111,7 +114,7 @@ forms.post("/create-post", async (c) => {
                 `This leaderboard displays all users ranked by their total ${pointName}s in this subreddit, from highest to lowest.\n\n` +
                     `It is updated periodically, but you can also refresh it manually by clicking the refresh button at the top of the leaderboard.\n\n` +
                     `[Mod info regarding the leaderboard](https://reddit.com/r/${subredditName}/wiki/therepbot/modinfo)`,
-                {},
+                {}
             ),
         });
 
@@ -138,14 +141,14 @@ forms.post("/create-post", async (c) => {
                     appearance: "neutral",
                 },
             },
-            400,
+            400
         );
     }
 });
 
 function formatMessage(
     template: string,
-    placeholders: Record<string, string>,
+    placeholders: Record<string, string>
 ): string {
     let result = template;
 
@@ -161,7 +164,7 @@ function formatMessage(
         !result
             .trim()
             .endsWith(
-                "\n\n---\n\n^(I am a bot - please contact [my creator](https://reddit.com/message/compose?to=/r/TheRepBot) with any questions)",
+                "\n\n---\n\n^(I am a bot - please contact [my creator](https://reddit.com/message/compose?to=/r/TheRepBot) with any questions)"
             )
     ) {
         result = result.trim() + footer;
@@ -170,17 +173,17 @@ function formatMessage(
     return result;
 }
 
-const formHandlers: Record<
-    string,
-    (event: any, context: any) => Promise<any>
-> = {
-    "/manualSetPointsForm": manualSetPointsFormHandler,
-    "/manualSetUserWikiTotalsForm": manualSetUserWikiTotalsFormHandler,
-    "/manualSetFlairManagementForm": manualSetFlairManagementFormHandler,
-    "/manualSetFlairManagementForUserForm": manualSetFlairManagementForUserFormHandler,
-    "/manualPostRestrictionRemovalForm": manualPostRestrictionRemovalHandler,
-    "/transferWikiForm": transferWikiFormHandler,
-};
+const formHandlers: Record<string, (event: any, context: any) => Promise<any>> =
+    {
+        "/manualSetPointsForm": manualSetPointsFormHandler,
+        "/manualSetUserWikiTotalsForm": manualSetUserWikiTotalsFormHandler,
+        "/manualSetFlairManagementForm": manualSetFlairManagementFormHandler,
+        "/manualSetFlairManagementForUserForm":
+            manualSetFlairManagementForUserFormHandler,
+        "/manualPostRestrictionRemovalForm":
+            manualPostRestrictionRemovalHandler,
+        "/transferWikiForm": transferWikiFormHandler,
+    };
 
 for (const [path, handler] of Object.entries(formHandlers)) {
     forms.post(path, async (c) => {
@@ -188,14 +191,8 @@ for (const [path, handler] of Object.entries(formHandlers)) {
         const values = data.values ?? data;
         const capture: UiCapture = {};
 
-        await handler(
-            { ...data, values },
-            createCompatContext(data, capture),
-        );
+        await handler({ ...data, values }, createCompatContext(data, capture));
 
-        return c.json<UiResponse>(
-            toUiResponse(capture) as UiResponse,
-            200,
-        );
+        return c.json<UiResponse>(toUiResponse(capture) as UiResponse, 200);
     });
 }

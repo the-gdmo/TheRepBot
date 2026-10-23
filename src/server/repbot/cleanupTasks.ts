@@ -1,5 +1,4 @@
-import { settings } from "@devvit/web/server";
-import type { TriggerContext } from "./compat";
+import { reddit, redis, scheduler, settings } from "@devvit/web/server";
 import { addDays, addMinutes, subMinutes } from "date-fns";
 import { CronExpressionParser } from "cron-parser";
 import {
@@ -17,15 +16,12 @@ interface CleanupEntry {
     score: number;
 }
 
-export async function setCleanupForUsers(
-    usernames: string[],
-    context: TriggerContext
-): Promise<void> {
+export async function setCleanupForUsers(usernames: string[]): Promise<void> {
     if (usernames.length === 0) {
         return;
     }
 
-    await context.redis.zAdd(
+    await redis.zAdd(
         CLEANUP_LOG_KEY,
         ...usernames.map((username: string) => ({
             member: username,
@@ -34,12 +30,9 @@ export async function setCleanupForUsers(
     );
 }
 
-async function userActive(
-    username: string,
-    context: TriggerContext
-): Promise<boolean> {
+async function userActive(username: string): Promise<boolean> {
     try {
-        const user = await context.reddit.getUserByUsername(username);
+        const user = await reddit.getUserByUsername(username);
         return !!user;
     } catch {
         return false;
@@ -53,24 +46,20 @@ interface UserActive {
 
 export async function cleanupDeletedAccounts(
     _: unknown,
-    context: TriggerContext
 ): Promise<void> {
     const now = Date.now();
-    const items: CleanupEntry[] = await context.redis.zRange(
-        CLEANUP_LOG_KEY,
-        0,
-        now,
-        { by: "score" }
-    );
+    const items: CleanupEntry[] = await redis.zRange(CLEANUP_LOG_KEY, 0, now, {
+        by: "score",
+    });
 
     if (items.length === 0) {
-        await scheduleAdhocCleanup(context);
+        await scheduleAdhocCleanup();
         return;
     }
 
     const leaderboardSize =
         (await settings.get<number>("leaderboardSize")) ?? 50;
-    await context.reddit.getAppUser(); // Ensure Reddit is reachable
+    await reddit.getAppUser(); // Ensure Reddit is reachable
 
     const itemsToCheck = leaderboardSize;
     const usersToCheck: string[] = items
@@ -79,7 +68,7 @@ export async function cleanupDeletedAccounts(
 
     const userStatuses: UserActive[] = [];
     for (const username of usersToCheck) {
-        const isActive = await userActive(username, context);
+        const isActive = await userActive(username);
         userStatuses.push({ username, isActive });
     }
 
@@ -91,14 +80,14 @@ export async function cleanupDeletedAccounts(
         .map((u: UserActive) => u.username);
 
     if (activeUsers.length > 0) {
-        await setCleanupForUsers(activeUsers, context);
+        await setCleanupForUsers(activeUsers);
     }
 
     if (deletedUsers.length > 0) {
-        await context.redis.zRem(POINTS_STORE_KEY, deletedUsers);
-        await context.redis.zRem(CLEANUP_LOG_KEY, deletedUsers);
+        await redis.zRem(POINTS_STORE_KEY, deletedUsers);
+        await redis.zRem(CLEANUP_LOG_KEY, deletedUsers);
 
-        await context.scheduler.runJob({
+        await scheduler.runJob({
             name: UPDATE_LEADERBOARD_JOB,
             runAt: new Date(),
             data: {
@@ -108,23 +97,21 @@ export async function cleanupDeletedAccounts(
     }
 
     if (items.length > itemsToCheck) {
-        await context.scheduler.runJob({
+        await scheduler.runJob({
             name: "cleanupDeletedAccounts",
             runAt: new Date(),
         });
     } else {
-        await scheduleAdhocCleanup(context);
+        await scheduleAdhocCleanup();
     }
 }
 
-export async function populateCleanupLogAndScheduleCleanup(
-    context: TriggerContext
-): Promise<void> {
+export async function populateCleanupLogAndScheduleCleanup(): Promise<void> {
     const scoreUsers: string[] = (
-        await context.redis.zRange(POINTS_STORE_KEY, 0, -1)
+        await redis.zRange(POINTS_STORE_KEY, 0, -1)
     ).map((u: CleanupEntry) => u.member);
     const cleanupUsers: string[] = (
-        await context.redis.zRange(CLEANUP_LOG_KEY, 0, -1)
+        await redis.zRange(CLEANUP_LOG_KEY, 0, -1)
     ).map((u: CleanupEntry) => u.member);
 
     const toAdd = scoreUsers.filter((u: string) => !cleanupUsers.includes(u));
@@ -133,7 +120,7 @@ export async function populateCleanupLogAndScheduleCleanup(
     );
 
     if (toAdd.length > 0) {
-        await context.redis.zAdd(
+        await redis.zAdd(
             CLEANUP_LOG_KEY,
             ...toAdd.map((username: string) => ({
                 member: username,
@@ -146,15 +133,15 @@ export async function populateCleanupLogAndScheduleCleanup(
     }
 
     if (toRemove.length > 0) {
-        await context.redis.zRem(CLEANUP_LOG_KEY, toRemove);
+        await redis.zRem(CLEANUP_LOG_KEY, toRemove);
     }
 
     const redisKey = "prevTimeBetweenChecks";
-    const prev = await context.redis.get(redisKey);
+    const prev = await redis.get(redisKey);
     const newValue = JSON.stringify(DAYS_BETWEEN_CHECKS);
 
     if (newValue !== prev && cleanupUsers.length > 0) {
-        await context.redis.zAdd(
+        await redis.zAdd(
             CLEANUP_LOG_KEY,
             ...cleanupUsers.map((username: string) => ({
                 member: username,
@@ -164,30 +151,26 @@ export async function populateCleanupLogAndScheduleCleanup(
                 ).getTime(),
             }))
         );
-        await context.redis.set(redisKey, newValue);
+        await redis.set(redisKey, newValue);
     }
 
     type ScheduledJob = { id: string; name: string };
 
-    const jobs = await context.scheduler.listJobs();
+    const jobs = await scheduler.listJobs();
 
     const adhocJobs = jobs.filter(
         (job: ScheduledJob) => job.name === ADHOC_CLEANUP_JOB
     );
 
     await Promise.all(
-        adhocJobs.map((job: ScheduledJob) =>
-            context.scheduler.cancelJob(job.id)
-        )
+        adhocJobs.map((job: ScheduledJob) => scheduler.cancelJob(job.id))
     );
 
-    await scheduleAdhocCleanup(context);
+    await scheduleAdhocCleanup();
 }
 
-export async function scheduleAdhocCleanup(
-    context: TriggerContext
-): Promise<void> {
-    const nextEntries: CleanupEntry[] = await context.redis.zRange(
+export async function scheduleAdhocCleanup(): Promise<void> {
+    const nextEntries: CleanupEntry[] = await redis.zRange(
         CLEANUP_LOG_KEY,
         0,
         0,
@@ -210,7 +193,7 @@ export async function scheduleAdhocCleanup(
         .toDate();
 
     if (nextAdhocTime < subMinutes(nextScheduledTime, 5)) {
-        await context.scheduler.runJob({
+        await scheduler.runJob({
             name: ADHOC_CLEANUP_JOB,
             runAt: nextAdhocTime < new Date() ? new Date() : nextAdhocTime,
         });

@@ -1,4 +1,4 @@
-import { settings } from "@devvit/web/server";
+import { reddit, redis, settings } from "@devvit/web/server";
 import type { TriggerContext } from "../../compat";
 import { logger } from "../../logger";
 import { CommentSubmit, CommentUpdate, PostSubmit } from "@devvit/protos";
@@ -165,7 +165,7 @@ export async function checkIgnoredContext(
             const ignoredText = getIgnoredContextType(comment, trigger);
             if (ignoredText) {
                 const ignoreKey = `ignoreDM:${event.author.name.toLowerCase()}:${ignoredText}`;
-                const alreadyConfirmed = await context.redis.exists(ignoreKey);
+                const alreadyConfirmed = await redis.exists(ignoreKey);
 
                 if (!alreadyConfirmed) {
                     const contextLabel =
@@ -189,13 +189,13 @@ export async function checkIgnoredContext(
 
                     ---`;
 
-                    await context.reddit.sendPrivateMessage({
+                    await reddit.sendPrivateMessage({
                         to: event.author.name,
                         subject: `Your ${trigger} command was ignored`,
                         text: dmText,
                     });
 
-                    await context.redis.set(
+                    await redis.set(
                         `pendingConfirm:${event.author.name.toLowerCase()}`,
                         ignoredText
                     );

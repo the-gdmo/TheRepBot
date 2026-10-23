@@ -15,7 +15,7 @@ import {
     transferWikiFormHandler,
 } from "../repbot/moderation";
 import type { UiResponse } from "@devvit/web/shared";
-import { context, reddit, redis, settings } from "@devvit/web/server";
+import { reddit, redis, settings } from "@devvit/web/server";
 import { POINTS_STORE_KEY } from "../repbot/triggers/utils/redisKeys";
 
 type CreatePostFormValues = {

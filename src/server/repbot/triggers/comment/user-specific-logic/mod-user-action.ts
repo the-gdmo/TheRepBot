@@ -1,4 +1,4 @@
-import { settings } from "@devvit/web/server";
+import { reddit, redis, scheduler, settings } from "@devvit/web/server";
 import type { CommentSubmit, CommentUpdate } from "@devvit/protos";
 import type { TriggerContext, User } from "../../../compat";
 import {
@@ -90,13 +90,13 @@ export async function handleSelfAwardModCommand(
             name: pointName,
         });
         if (settingNotifyOnSelfAward === "none") {
-            const selfAwardMessage = await context.reddit.submitComment({
-                id: event.comment.id,
+            const selfAwardMessage = await reddit.submitComment({
+                id: event.comment.id as `t1_${string}`,
                 text: selfText,
             });
             await selfAwardMessage.distinguish();
         } else if (settingNotifyOnSelfAward === "replybypm") {
-            await context.reddit.sendPrivateMessage({
+            await reddit.sendPrivateMessage({
                 to: awarder,
                 subject: `You tried to award yourself a ${pointName}`,
                 text: selfText,
@@ -114,7 +114,7 @@ export async function isDuplicateModAward(
     context: TriggerContext
 ): Promise<boolean> {
     const key = await getModDupKey(event, context);
-    const exists = await context.redis.exists(key);
+    const exists = await redis.exists(key);
     return exists === 1;
 }
 
@@ -143,13 +143,13 @@ export async function handleDuplicateModAward(
         "none";
 
     if (notify === "replyascomment") {
-        const modAwardDupeMessage = await context.reddit.submitComment({
-            id: event.comment!.id,
+        const modAwardDupeMessage = await reddit.submitComment({
+            id: event.comment!.id as `t1_${string}`,
             text: modAwardAlreadyGivenMessage,
         });
         await modAwardDupeMessage.distinguish();
     } else if (notify === "replybypm") {
-        await context.reddit.sendPrivateMessage({
+        await reddit.sendPrivateMessage({
             to: awarder,
             subject: "Mod award already given",
             text: modAwardAlreadyGivenMessage,
@@ -191,13 +191,13 @@ export async function handleUnauthorizedModCommand(
         "none";
 
     if (notify === "replyascomment") {
-        const modAwardFailMessage = await context.reddit.submitComment({
-            id: event.comment!.id,
+        const modAwardFailMessage = await reddit.submitComment({
+            id: event.comment!.id as `t1_${string}`,
             text: failMsg,
         });
         await modAwardFailMessage.distinguish();
     } else if (notify === "replybypm") {
-        await context.reddit.sendPrivateMessage({
+        await reddit.sendPrivateMessage({
             to: awarder,
             subject: "Mod Award Command Not Allowed",
             text: failMsg,
@@ -245,7 +245,7 @@ export async function awardPointToUserModCommand(
     let user: User | undefined;
 
     try {
-        user = await context.reddit.getUserByUsername(awarder);
+        user = await reddit.getUserByUsername(awarder);
     } catch {
         user = undefined;
     }
@@ -255,7 +255,7 @@ export async function awardPointToUserModCommand(
     let recipient: User | undefined;
 
     try {
-        recipient = await context.reddit.getUserByUsername(awardee);
+        recipient = await reddit.getUserByUsername(awardee);
     } catch {
         recipient = undefined;
     }
@@ -274,7 +274,7 @@ export async function awardPointToUserModCommand(
     let flairShouldBeManaged: boolean;
 
     const key = `flairToggle:${awardee}`;
-    const exists = await context.redis.exists(key);
+    const exists = await redis.exists(key);
 
     if (exists) {
         flairShouldBeManaged = false;
@@ -284,14 +284,14 @@ export async function awardPointToUserModCommand(
 
     const username = awardee;
 
-    const scoreFromRedis = await context.redis.zScore(
+    const scoreFromRedis = await redis.zScore(
         POINTS_STORE_KEY,
         username
     );
 
     if (scoreFromRedis === undefined || scoreFromRedis === null) return;
 
-    await context.redis.zAdd(POINTS_STORE_KEY, {
+    await redis.zAdd(POINTS_STORE_KEY, {
         member: username,
         score: scoreFromRedis + 1,
     });
@@ -354,7 +354,7 @@ export async function awardPointToUserModCommand(
         return;
     }
 
-    await context.scheduler.runJob({
+    await scheduler.runJob({
         name: UPDATE_LEADERBOARD_JOB,
         runAt: new Date(),
         data: {
@@ -397,15 +397,15 @@ export async function awardPointToUserModCommand(
         if (
             modNotifyMode === "replyascomment"
         ) {
-            const modAwardSuccessMessage = await context.reddit.submitComment({
-                id: event.comment.id,
+            const modAwardSuccessMessage = await reddit.submitComment({
+                id: event.comment.id as `t1_${string}`,
                 text: modSuccessMessage,
             });
             await modAwardSuccessMessage.distinguish();
         } else if (
             modNotifyMode === "replybypm"
         ) {
-            await context.reddit.sendPrivateMessage({
+            await reddit.sendPrivateMessage({
                 to: awarder,
                 subject: "Mod Award Successful",
                 text: modSuccessMessage,
@@ -426,8 +426,8 @@ export async function awardPointToUserModCommand(
             "replyascomment"
         ) {
             const trustedUserSuccessComment =
-                await context.reddit.submitComment({
-                    id: event.comment.id,
+                await reddit.submitComment({
+                    id: event.comment.id as `t1_${string}`,
                     text: trustedUserMessage,
                 });
             await trustedUserSuccessComment.distinguish();
@@ -435,7 +435,7 @@ export async function awardPointToUserModCommand(
             trustedUserNotifyMode ===
             "replybypm"
         ) {
-            await context.reddit.sendPrivateMessage({
+            await reddit.sendPrivateMessage({
                 to: awarder,
                 subject: "Superuser Award Successful",
                 text: trustedUserMessage,
@@ -493,7 +493,7 @@ export async function executeModCommand(
     let user: User | undefined;
 
     try {
-        user = await context.reddit.getUserByUsername(awarder);
+        user = await reddit.getUserByUsername(awarder);
     } catch {
         user = undefined;
     }

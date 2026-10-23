@@ -61,6 +61,8 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * NOTE: If you have a leaderboard post on your subreddit currently from v28.0.0, I cannot guaranteee that the v31.7.0+ leaderboard will carry over. There is a fair chance you will have to make a new post via `[RepBot] - Create Leaderboard` in the subreddit-level mod/burger menu
 
 # Latest Changes
+## 31.7.4
+* Fixed an issue where comments wouldn't register with the bot due to code not handling any form of permissions due to "everyone" not being handled
 ## 31.7.3
 * Slightly alter wording of leaderboard custom post (this will automatically update any existing posts, so you don't need to make a new post for this to go into effect)
 * Add clarification on how leaderboard posts work in the "About" section of this README
@@ -72,7 +74,5 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * Move `"[RepBot] - Set Flair Management For Specified User"` to subreddit mod menu only as it can target any user and didn't make sense in post/comment contexts
 * Add `"Super Awarder Settings"` section to settings (a way to award users via flair for a specified amount of awards given to users)
 * User can only become a super awarder after they award the point that gets them above the "Super Awarder Threshold"
-## 31.6.24
-* Making sure the leaderboard updating function runs (doesn't run after app upgrade for all previous versions)
 
 For older versions, please see the [full changelog](https://github.com/the-gdmo/therepbot/blob/main/changelog.md).

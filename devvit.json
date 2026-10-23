@@ -699,8 +699,8 @@
           },
           "modAwardAlreadyGiven": {
             "type": "paragraph",
-            "label": "modAwardAlreadyGiven",
-            "helpText": "Optional. Placeholders Supported: awarder, awardee, name",
+            "label": "Mod Award Already Given Message",
+            "helpText": "Placeholders Supported: awarder, awardee, name",
             "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
             "defaultValue": "{awardee} has already received a mod award for this comment."
           }
@@ -712,7 +712,7 @@
         "fields": {
           "superAwarderFlairText": {
             "type": "string",
-            "label": "superAwarderFlairText",
+            "label": "Super Awarder Flair Text",
             "helpText": "Placeholders Supported: total, symbol, place",
             "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
             "defaultValue": "Super Awarder | #{place} | {total}{symbol}"
@@ -725,12 +725,12 @@
           },
           "superAwarderCSSClass": {
             "type": "string",
-            "label": "superAwarderCSSClass",
+            "label": "Super Awarder CSS Class",
             "helpText": "Optional. Please choose either a CSS class or flair template, not both"
           },
           "superAwarderFlairTemplate": {
             "type": "string",
-            "label": "superAwarderFlairTemplate",
+            "label": "Super Awarder Flair Template",
             "helpText": "Optional. Please choose either a CSS class or flair template, not both",
             "validationEndpoint": "/internal/validators/validate-flair-template-id"
           }

@@ -1,4 +1,4 @@
-import { ScheduledJobEvent, settings } from "@devvit/web/server";
+import { reddit, redis, ScheduledJobEvent, settings } from "@devvit/web/server";
 import type {
     JobContext,
     JSONObject,
@@ -64,7 +64,7 @@ export async function modDigestJob(
             return;
         }
 
-        const lastSentRaw = await context.redis.get(lastSentKey);
+        const lastSentRaw = await redis.get(lastSentKey);
         const parsed = lastSentRaw === null ? NaN : Number(lastSentRaw);
         const lastSentAt = Number.isFinite(parsed) ? parsed : undefined;
 
@@ -102,7 +102,7 @@ export async function modDigestJob(
 
         // Ensure only one scheduled invocation rotates/sends these counters.
         // The lease expires if a job crashes. Devvit SET NX returns "OK" on success.
-        const lockResult = await context.redis.set(lockKey, `${now}`, {
+        const lockResult = await redis.set(lockKey, `${now}`, {
             nx: true,
         });
 
@@ -114,7 +114,7 @@ export async function modDigestJob(
         ownsLock = true;
 
         // Recheck after getting the lease, since another job may have sent.
-        const lastSentAfterLock = await context.redis.get(lastSentKey);
+        const lastSentAfterLock = await redis.get(lastSentKey);
         const lastSentNum =
             lastSentAfterLock === null ? NaN : Number(lastSentAfterLock);
 
@@ -134,13 +134,13 @@ export async function modDigestJob(
 
         // A failed send leaves :pending for the next attempt. Never overwrite it.
         // RENAME is atomic: subsequent awards/posts start a fresh active hash.
-        const hasPending = await context.redis.exists(DIGEST_PENDING_KEY);
+        const hasPending = await redis.exists(DIGEST_PENDING_KEY);
 
-        if (!hasPending && (await context.redis.exists(DIGEST_STATS_KEY))) {
-            await context.redis.rename(DIGEST_STATS_KEY, DIGEST_PENDING_KEY);
+        if (!hasPending && (await redis.exists(DIGEST_STATS_KEY))) {
+            await redis.rename(DIGEST_STATS_KEY, DIGEST_PENDING_KEY);
         }
 
-        const values = await context.redis.hGetAll(DIGEST_PENDING_KEY);
+        const values = await redis.hGetAll(DIGEST_PENDING_KEY);
         const moderators: Array<{ username: string; count: number }> = [];
         const users: Array<{ username: string; count: number }> = [];
         let postsCreated = 0;
@@ -206,11 +206,11 @@ export async function modDigestJob(
 
         const [previousConversationId, previousConversationType] =
             await Promise.all([
-                context.redis.get(conversationKey),
-                context.redis.get(conversationTypeKey),
+                redis.get(conversationKey),
+                redis.get(conversationTypeKey),
             ]);
 
-        const modMail = context.reddit.modMail as ModMailService;
+        const modMail = reddit.modMail as ModMailService;
         let conversationId: string | undefined;
 
         if (
@@ -243,16 +243,16 @@ export async function modDigestJob(
 
         // The message has succeeded. Keep active (new) counters untouched and
         // remove ONLY the frozen batch that was just reported.
-        await context.redis.set(lastSentKey, now.toString());
+        await redis.set(lastSentKey, now.toString());
 
         if (conversationId) {
             await Promise.all([
-                context.redis.set(conversationKey, conversationId),
-                context.redis.set(conversationTypeKey, desiredConversationType),
+                redis.set(conversationKey, conversationId),
+                redis.set(conversationTypeKey, desiredConversationType),
             ]);
         }
 
-        await context.redis.del(DIGEST_PENDING_KEY);
+        await redis.del(DIGEST_PENDING_KEY);
 
         logger.info("Reputation Bot mod digest sent; reported stats reset", {
             subreddit: subredditName,
@@ -273,7 +273,7 @@ export async function modDigestJob(
         );
     } finally {
         if (ownsLock) {
-            await context.redis.del(lockKey);
+            await redis.del(lockKey);
         }
     }
 }

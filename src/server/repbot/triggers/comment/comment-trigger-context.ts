@@ -1,4 +1,4 @@
-import { settings } from "@devvit/web/server";
+import { reddit, redis, settings } from "@devvit/web/server";
 import type { CommentSubmit, CommentUpdate } from "@devvit/protos";
 import type { Comment, TriggerContext } from "../../compat";
 import {
@@ -97,11 +97,11 @@ export async function userBecomesSuperUser(
 
     // Prevent duplicate notifications if multiple events arrive after the threshold is reached.
     const notificationKey = `autoSuperuserNotified:${recipient.toLowerCase()}`;
-    if (await context.redis.exists(notificationKey)) return;
+    if (await redis.exists(notificationKey)) return;
 
     let recipientUser;
     try {
-        recipientUser = await context.reddit.getUserByUsername(recipient);
+        recipientUser = await reddit.getUserByUsername(recipient);
     } catch (err) {
         logger.warn("Could not look up auto-superuser notification recipient", {
             recipient,
@@ -126,7 +126,7 @@ export async function userBecomesSuperUser(
             parentComment.id,
             notifyOnAutoSuperuserMode
         );
-        await context.redis.set(notificationKey, "1");
+        await redis.set(notificationKey, "1");
     } catch (err) {
         logger.error("Failed to send auto-superuser notification", {
             recipient,
@@ -137,7 +137,7 @@ export async function userBecomesSuperUser(
 }
 
 export async function _replyToUser(
-    context: TriggerContext,
+    _: TriggerContext,
     toUserName: string,
     messageBody: string,
     commentId: string,
@@ -147,11 +147,9 @@ export async function _replyToUser(
     if (mode === "none" || mode === "") return;
 
     if (mode === "replybypm") {
-        const subredditName =
-            context.subredditName ??
-            (await context.reddit.getCurrentSubredditName());
+        const subredditName = (await reddit.getCurrentSubreddit()).name;
 
-        await context.reddit.sendPrivateMessage({
+        await reddit.sendPrivateMessage({
             subject: `Message from r/${subredditName}`,
             text: messageBody,
             to: toUserName,
@@ -168,19 +166,19 @@ export async function _replyToUser(
         // The key is based on the comment being replied to, so retries do not
         // create duplicate public replies.
         const redisKey = `shouldComment:${commentId}`;
-        if (await context.redis.exists(redisKey)) {
+        if (await redis.exists(redisKey)) {
             logger.info("A reply already exists for this comment", {
                 commentId,
             });
             return;
         }
 
-        const newComment = await context.reddit.submitComment({
-            id: commentId,
+        const newComment = await reddit.submitComment({
+            id: commentId as `t1_${string}`,
             text: messageBody,
         });
         await newComment.distinguish();
-        await context.redis.set(redisKey, "1");
+        await redis.set(redisKey, "1");
 
         logger.info("Auto-superuser public comment reply sent", {
             commentId,
@@ -197,12 +195,12 @@ export async function _replyToUser(
 
 export async function getParentComment(
     event: CommentSubmit | CommentUpdate,
-    context: TriggerContext
+    _: TriggerContext
 ): Promise<Comment | undefined> {
     if (!event.comment) return undefined;
 
     try {
-        return await context.reddit.getCommentById(event.comment.parentId);
+        return await reddit.getCommentById(event.comment.parentId as `t1_${string}`);
     } catch (err) {
         logger.debug("Could not retrieve parent comment", {
             commentId: event.comment.id,

@@ -3,7 +3,7 @@ import type { Context } from "hono";
 import type { TriggerResponse } from "@devvit/web/shared";
 import { redis, scheduler } from "@devvit/web/server";
 import { logger } from "./logger";
-import { createCompatContext } from "./compat";
+// import { createCompatContext } from "./compat";
 
 function jsonResponse(
     body: TriggerResponse,
@@ -79,8 +79,8 @@ export const onAppUpgrade = async (_c: Context): Promise<Response> => {
         }
 
         // IMPORTANT: supply the compatibility context, which includes redis.
-        const compatContext = createCompatContext();
-        await populateCleanupLogAndScheduleCleanup(compatContext);
+        // const compatContext = createCompatContext();
+        await populateCleanupLogAndScheduleCleanup();
 
         logger.info("App-upgrade cleanup scheduling completed");
 

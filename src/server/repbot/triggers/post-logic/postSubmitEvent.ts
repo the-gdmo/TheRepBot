@@ -1,4 +1,4 @@
-import { settings } from "@devvit/web/server";
+import { reddit, redis, settings } from "@devvit/web/server";
 import type { PostSubmit } from "@devvit/protos";
 import type { TriggerContext } from "../../compat";
 import { logger } from "../../logger";
@@ -92,8 +92,8 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
             }
         );
 
-        const unrestrictedPostingComment = await context.reddit.submitComment({
-            id: event.post.id,
+        const unrestrictedPostingComment = await reddit.submitComment({
+            id: event.post.id as `t3_${string}`,
             text: unrestrictedPostingMessage,
         });
 
@@ -105,14 +105,14 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
 
     const subredditName = event.subreddit.name;
     const authorName = event.author.name;
-    const author = await context.reddit.getUserByUsername(authorName);
+    const author = await reddit.getUserByUsername(authorName);
 
     if (!author) {
         logger.warn("❌ Could not fetch author object", { authorName });
         return;
     }
 
-    if (author.username === (await context.reddit.getAppUser()).username) {
+    if (author.username === (await reddit.getAppUser())!.username) {
         logger.info("🤖 Post submitted by RepBot, skipping post restriction");
         return;
     }
@@ -149,8 +149,8 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
         const subsequentTemplate =
             (settingSubsequentPostRestrictionMessage as string) ?? "";
 
-        const title = await context.redis.get(lastValidPostTitleKey);
-        const lastValidPost = await context.redis.get(lastValidPostKey);
+        const title = await redis.get(lastValidPostTitleKey);
+        const lastValidPost = await redis.get(lastValidPostKey);
         const requirement =
             (settingAwardsRequiredToCreateNewPosts as number) ?? 0;
 
@@ -170,15 +170,15 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
             }
         );
         // Post restriction comment
-        const subsequentPostRestrictionMsg = await context.reddit.submitComment(
+        const subsequentPostRestrictionMsg = await reddit.submitComment(
             {
-                id: event.post.id,
+                id: event.post.id as `t3_${string}`,
                 text: subsequentRestrictionMsg,
             }
         );
 
         await subsequentPostRestrictionMsg.distinguish(true);
-        await context.reddit.remove(event.post.id, false);
+        await reddit.remove(event.post.id as `t3_${string}`, false);
 
         logger.info("🚫 Removed post from restricted user", {
             username: author.username,
@@ -208,21 +208,21 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
             markdownGuide: "https://www.reddit.com/wiki/markdown",
         }
     );
-    const initialPostRestrictionMessage = await context.reddit.submitComment({
-        id: event.post.id,
+    const initialPostRestrictionMessage = await reddit.submitComment({
+        id: event.post.id as `t3_${string}`,
         text: formattedText,
     });
 
     await initialPostRestrictionMessage.distinguish(true);
 
     // Save the valid post info
-    await context.redis.set(lastValidPostKey, event.post.permalink);
-    await context.redis.set(lastValidPostTitleKey, event.post.title);
+    await redis.set(lastValidPostKey, event.post.permalink);
+    await redis.set(lastValidPostTitleKey, event.post.title);
 
     logger.info("🧹 Restricted user after they made a new post", {
         author: author.username,
         restrictedFlagExists,
     });
-    await context.redis.set(restrictedUserKey, "1");
-    await context.redis.set(awardsRequiredKey, "0");
+    await redis.set(restrictedUserKey, "1");
+    await redis.set(awardsRequiredKey, "0");
 }

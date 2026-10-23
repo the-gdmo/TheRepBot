@@ -1,6 +1,7 @@
 import type { Context, FormOnSubmitEvent, JSONObject, MenuItemOnPressEvent, User } from "./compat";
 import { SafeWikiClient } from "./utility";
 import { logger } from "./logger";
+import { reddit, redis } from "@devvit/web/server";
 
 export const manualSetPointsForm = { name: "manualSetPointsForm", title: "Set user score manually" };
 export const manualSetUserWikiTotalsForm = { name: "manualSetUserWikiTotalsForm", title: "Set user given/received totals" };
@@ -24,7 +25,7 @@ export async function handleCommentPin(
     }
 
     try {
-        const comment = await context.reddit.getCommentById(event.targetId);
+        const comment = await reddit.getCommentById(event.targetId as `t1_${string}`);
         if (!comment) {
             context.ui.showToast({
                 text: "Comment not found",
@@ -32,15 +33,15 @@ export async function handleCommentPin(
             return;
         }
 
-        const appUser = await context.reddit.getAppUser();
+        const appUser = await reddit.getAppUser();
 
-        if (comment.authorName !== appUser.username) {
+        if (comment.authorName !== appUser!.username) {
             context.ui.showToast({
                 text: "Only comments created by u/therepbot can be pinned",
             });
             logger.warn("❌ Attempted to pin non-bot comment", {
                 commentAuthor: comment.authorName,
-                botUsername: appUser.username,
+                botUsername: appUser!.username,
             });
             return;
         }
@@ -100,7 +101,7 @@ export async function handleFlairToggle(
 
         const username = await getAuthorFromTarget(context, event.targetId);
         const key = `flairToggle:${username}`;
-        const exists = await context.redis.exists(key);
+        const exists = await redis.exists(key);
 
         if (!username) {
             context.ui.showToast(
@@ -156,7 +157,7 @@ export async function checkFlairToggle(
     }
 
     const key = `flairToggle:${username}`;
-    const exists = await context.redis.exists(key);
+    const exists = await redis.exists(key);
 
     if (exists) {
         context.ui.showToast(
@@ -170,19 +171,19 @@ export async function checkFlairToggle(
 }
 
 export async function getAuthorFromTarget(
-    context: Context,
+    _: Context,
     targetId: string
 ): Promise<string | null> {
     if (!targetId) return null;
     try {
         // Try comment first
-        const comment = await context.reddit.getCommentById(targetId);
+        const comment = await reddit.getCommentById(targetId as `t1_${string}`);
         return comment?.authorName ?? null;
     } catch {}
 
     try {
         // Try post fallback
-        const post = await context.reddit.getPostById(targetId);
+        const post = await reddit.getPostById(targetId as `t3_${string}`);
         return post?.authorName ?? null;
     } catch {}
 
@@ -206,11 +207,11 @@ export async function manualSetFlairManagementFormHandler(
     }
 
     if (!context.commentId) return;
-    const comment = await context.reddit.getCommentById(context.commentId);
+    const comment = await reddit.getCommentById(context.commentId);
 
     let user: User | undefined;
     try {
-        user = await context.reddit.getUserByUsername(comment.authorName);
+        user = await reddit.getUserByUsername(comment.authorName);
     } catch {
         //
     }
@@ -243,9 +244,9 @@ export async function manualSetFlairManagementFormHandler(
 
     // enabled = no key
     if (enabled.test(value)) {
-        await context.redis.del(key);
+        await redis.del(key);
     } else if (disabled.test(value)) {
-        await context.redis.set(key, "disabled");
+        await redis.set(key, "disabled");
     }
 
     context.ui.showToast(
@@ -330,9 +331,9 @@ export async function manualSetFlairManagementForUserFormHandler(
 
     // enabled = no key
     if (enabled.test(isEnabled)) {
-        await context.redis.del(key);
+        await redis.del(key);
     } else if (disabled.test(isEnabled)) {
-        await context.redis.set(key, "disabled");
+        await redis.set(key, "disabled");
     }
 
     context.ui.showToast(
@@ -368,8 +369,8 @@ export async function transferWikiFormHandler(event: FormOnSubmitEvent<JSONObjec
     return;
   }
   try {
-    const subreddit = await context.reddit.getCurrentSubreddit();
-    const safeWiki = new SafeWikiClient(context.reddit);
+    const subreddit = await reddit.getCurrentSubreddit();
+    const safeWiki = new SafeWikiClient(reddit);
     const result = await safeWiki.copyWikiPage(subreddit.name, sourcePage, destinationPage);
     context.ui.showToast(result === "created" ? `Created wiki/${destinationPage} from wiki/${sourcePage}.` : `Updated wiki/${destinationPage} from wiki/${sourcePage}.`);
   } catch (error) {

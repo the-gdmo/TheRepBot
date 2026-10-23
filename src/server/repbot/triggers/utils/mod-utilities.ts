@@ -1,4 +1,4 @@
-import { settings } from "@devvit/web/server";
+import { reddit, redis, scheduler, settings } from "@devvit/web/server";
 import type {
     Context,
     FormOnSubmitEvent,
@@ -42,7 +42,7 @@ export async function handleUserRestrictionCheck(
         contentType = "post";
         targetId = event.targetId;
 
-        const post = await context.reddit.getPostById(targetId);
+        const post = await reddit.getPostById(targetId as `t3_${string}`);
         targetAuthor = post?.authorName;
     }
 
@@ -50,7 +50,7 @@ export async function handleUserRestrictionCheck(
         contentType = "comment";
         targetId = event.targetId;
 
-        const comment = await context.reddit.getCommentById(targetId);
+        const comment = await reddit.getCommentById(targetId as `t1_${string}`);
         targetAuthor = comment?.authorName;
     }
 
@@ -64,7 +64,7 @@ export async function handleUserRestrictionCheck(
     // ─────────────────────────────────────────────
     // Fetch user being checked
     // ─────────────────────────────────────────────
-    const user = await context.reddit.getUserByUsername(targetAuthor);
+    const user = await reddit.getUserByUsername(targetAuthor);
     if (!user) return;
 
     const settingAwardsRequiredToCreateNewPosts = await settings.get(
@@ -84,7 +84,7 @@ export async function handleUserRestrictionCheck(
     }
 
     const awardsRequiredKey = await getAwardsRequiredKey(user);
-    const raw = await context.redis.get(awardsRequiredKey);
+    const raw = await redis.get(awardsRequiredKey);
 
     const restrictedFlagExists = await restrictedKeyExists(
         context,
@@ -94,12 +94,12 @@ export async function handleUserRestrictionCheck(
     // ─────────────────────────────────────────────
     // Moderator exemption check
     // ─────────────────────────────────────────────
-    const subreddit = await context.reddit.getCurrentSubreddit();
+    const subreddit = await reddit.getCurrentSubreddit();
     const subredditName = subreddit.name;
 
     const modsExempt = (settingModeratorsExempt as boolean) ?? true;
 
-    const filteredModeratorList = await context.reddit
+    const filteredModeratorList = await reddit
         .getModerators({
             subredditName,
             username: targetAuthor,
@@ -137,7 +137,7 @@ export async function handlePostRestrictionCheck(
     context: Context
 ) {
     if (event.location === "post" && event.targetId) {
-        const post = await context.reddit.getPostById(event.targetId);
+        const post = await reddit.getPostById(event.targetId as `t3_${string}`);
 
         if (!post?.authorName) {
             context.ui.showToast({
@@ -146,7 +146,7 @@ export async function handlePostRestrictionCheck(
             return;
         }
 
-        const user = await context.reddit.getUserByUsername(post.authorName);
+        const user = await reddit.getUserByUsername(post.authorName);
 
         if (!user) return;
 
@@ -167,15 +167,15 @@ export async function handlePostRestrictionCheck(
         }
 
         const awardsRequiredKey = await getAwardsRequiredKey(user);
-        const raw = await context.redis.get(awardsRequiredKey);
+        const raw = await redis.get(awardsRequiredKey);
         const restrictedFlagExists = await restrictedKeyExists(
             context,
             user.username
         );
 
-        const subreddit = await context.reddit.getCurrentSubreddit();
+        const subreddit = await reddit.getCurrentSubreddit();
         const subredditName = subreddit.name;
-        const username = await context.reddit.getCurrentUser();
+        const username = await reddit.getCurrentUser();
         if (!username) return;
 
         logger.info(`Testing Vals:`, {
@@ -189,7 +189,7 @@ export async function handlePostRestrictionCheck(
 
         const modsExempt = (settingModeratorsExempt as boolean) ?? true;
 
-        const filteredModeratorList = await context.reddit
+        const filteredModeratorList = await reddit
             .getModerators({ subredditName, username: username.username })
             .all();
 
@@ -227,17 +227,17 @@ export async function handlePostRestrictionCheck(
 
 export async function resolveMenuTargetUsername(
     event: MenuItemOnPressEvent,
-    context: Context
+    _: Context
 ): Promise<string | undefined> {
     if (!event.targetId) return;
 
     if (event.location === "comment") {
-        const comment = await context.reddit.getCommentById(event.targetId);
+        const comment = await reddit.getCommentById(event.targetId as `t1_${string}`);
         return comment?.authorName;
     }
 
     if (event.location === "post") {
-        const post = await context.reddit.getPostById(event.targetId);
+        const post = await reddit.getPostById(event.targetId as `t3_${string}`);
         return post?.authorName;
     }
 }
@@ -246,12 +246,12 @@ export async function resolveFormTargetUsername(
     context: Context
 ): Promise<string | undefined> {
     if (context.commentId) {
-        const comment = await context.reddit.getCommentById(context.commentId);
+        const comment = await reddit.getCommentById(context.commentId);
         return comment?.authorName;
     }
 
     if (context.postId) {
-        const post = await context.reddit.getPostById(context.postId);
+        const post = await reddit.getPostById(context.postId);
         return post?.authorName;
     }
 }
@@ -277,7 +277,7 @@ export async function handleManualUserWikiTotalsSetting(
 
         let user: User | undefined;
         try {
-            user = await context.reddit.getUserByUsername(targetAuthor);
+            user = await reddit.getUserByUsername(targetAuthor);
         } catch {
             // Shadowbanned/deleted users cannot be safely targeted by this form.
         }
@@ -370,7 +370,7 @@ export async function manualSetUserWikiTotalsFormHandler(
 
         let user: User | undefined;
         try {
-            user = await context.reddit.getUserByUsername(targetAuthor);
+            user = await reddit.getUserByUsername(targetAuthor);
         } catch {
             //
         }
@@ -420,7 +420,7 @@ export async function handleManualPointSetting(
 
     let user: User | undefined;
     try {
-        user = await context.reddit.getUserByUsername(targetAuthor);
+        user = await reddit.getUserByUsername(targetAuthor);
     } catch {
         //
     }
@@ -475,7 +475,7 @@ export async function manualSetPointsFormHandler(
 
     let awardee: User | undefined;
     try {
-        awardee = await context.reddit.getUserByUsername(targetAuthor);
+        awardee = await reddit.getUserByUsername(targetAuthor);
     } catch {
         //
     }
@@ -493,7 +493,7 @@ export async function manualSetPointsFormHandler(
             );
             return;
         }
-        awarder = await context.reddit.getUserByUsername(context.username);
+        awarder = await reddit.getUserByUsername(context.username);
     } catch {
         //
     }
@@ -508,7 +508,7 @@ export async function manualSetPointsFormHandler(
     let recipientFlairShouldBeManaged: boolean;
 
     const recipientKey = `flairToggle:${awardee.username}`;
-    const recipientKeyExists = await context.redis.exists(recipientKey);
+    const recipientKeyExists = await redis.exists(recipientKey);
 
     if (recipientKeyExists) {
         recipientFlairShouldBeManaged = false;
@@ -527,7 +527,7 @@ export async function manualSetPointsFormHandler(
     setUserScore(context, awardee.username, awarder.username, newScore);
 
     // Trigger leaderboard update
-    await context.scheduler.runJob({
+    await scheduler.runJob({
         name: UPDATE_LEADERBOARD_JOB,
         runAt: new Date(),
         data: {
@@ -542,10 +542,10 @@ export async function handleManualPostRestrictionRemoval(
     event: MenuItemOnPressEvent,
     context: Context
 ) {
-    const post = await context.reddit.getPostById(event.targetId);
+    const post = await reddit.getPostById(event.targetId as `t3_${string}`);
     let user: User | undefined;
     try {
-        user = await context.reddit.getUserByUsername(post.authorName);
+        user = await reddit.getUserByUsername(post.authorName);
     } catch {
         //
     }
@@ -598,7 +598,7 @@ export async function manualPostRestrictionRemovalHandler(
     }
 
     // 🔹 Fetch the post
-    const post = await context.reddit.getPostById(context.postId);
+    const post = await reddit.getPostById(context.postId);
     if (!post) {
         context.ui.showToast("❌ Could not fetch post data");
         logger.error(
@@ -613,7 +613,7 @@ export async function manualPostRestrictionRemovalHandler(
     // 🔹 Fetch post author
     let user: User | undefined;
     try {
-        user = await context.reddit.getUserByUsername(post.authorName);
+        user = await reddit.getUserByUsername(post.authorName);
     } catch (err) {
         logger.error("❌ Failed to fetch post author", {
             authorName: post.authorName,
@@ -659,11 +659,11 @@ export async function manualPostRestrictionRemovalHandler(
     }
     // ──────────────── Remove All Restriction Data ────────────────
     await Promise.all([
-        context.redis.del(lastValidPostKey),
-        context.redis.del(lastValidTitleKey),
-        context.redis.del(requiredKey),
-        context.redis.del(restrictionKey),
-        context.redis.del(awaitingPostKey),
+        redis.del(lastValidPostKey),
+        redis.del(lastValidTitleKey),
+        redis.del(requiredKey),
+        redis.del(restrictionKey),
+        redis.del(awaitingPostKey),
     ]);
 
     logger.info("✅ Restriction fully removed from Redis", {
@@ -685,7 +685,7 @@ export async function manualPostRestrictionRemovalHandler(
 }
 
 export async function updateAuthorRedisManualRestrictionRemoval(
-    context: TriggerContext,
+    _: TriggerContext,
     username: string
 ) {
     const restrictedKey = `restrictedUser:${username}`;
@@ -693,8 +693,8 @@ export async function updateAuthorRedisManualRestrictionRemoval(
 
     try {
         const deleted = await Promise.all([
-            context.redis.del(restrictedKey),
-            context.redis.del(lastValidPostKey),
+            redis.del(restrictedKey),
+            redis.del(lastValidPostKey),
         ]);
 
         logger.info("🧹 Manual restriction removal complete", {
@@ -711,7 +711,7 @@ export async function updateAuthorRedisManualRestrictionRemoval(
 }
 
 export async function updateAuthorRedisManualRequirementRemoval(
-    context: TriggerContext,
+    _: TriggerContext,
     username: string
 ) {
     const requiredKey = `awardsRequired:${username}`;
@@ -719,8 +719,8 @@ export async function updateAuthorRedisManualRequirementRemoval(
 
     try {
         const deleted = await Promise.all([
-            context.redis.del(requiredKey),
-            context.redis.del(lastValidPostKey),
+            redis.del(requiredKey),
+            redis.del(lastValidPostKey),
         ]);
 
         logger.info("🧹 Manual requirement removal complete", {

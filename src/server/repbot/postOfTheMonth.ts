@@ -4,7 +4,7 @@ import { logger } from "./logger";
 
 export async function addPostOfTheMonthFlair(
     _: unknown,
-    context: TriggerContext
+    _context: TriggerContext
 ): Promise<void> {
     const settingEnablePostOfTheMonth = await settings.get("enablePostOfTheMonth");
     const settingPostOfTheMonthFlairText = await settings.get("postOfTheMonthFlairText");

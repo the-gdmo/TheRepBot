@@ -1,4 +1,6 @@
 # Changelog for RepBot
+## 31.7.4
+* Fixed an issue where comments wouldn't register with the bot due to code not handling any form of permissions due to "everyone" not being handled
 ## 31.7.3
 * Slightly alter wording of leaderboard custom post heading (ie, switched to "RepBot Leaderboard" instead of "The RepBot Leaderboard")
 ## 31.7.0

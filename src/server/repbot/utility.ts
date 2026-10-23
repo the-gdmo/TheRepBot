@@ -6,13 +6,14 @@ import type {
     WikiPage,
 } from "./compat";
 import { logger } from "./logger";
+import { reddit, redis } from "@devvit/web/server";
 
 export async function isModerator(
-    context: TriggerContext,
+    _: TriggerContext,
     subredditName: string,
     username: string
 ): Promise<boolean> {
-    const filteredModeratorList = await context.reddit
+    const filteredModeratorList = await reddit
         .getModerators({ subredditName, username })
         .all();
     return filteredModeratorList.length > 0;
@@ -25,13 +26,13 @@ export async function getSubredditName(
         return context.subredditName;
     }
 
-    const subredditName = await context.redis.get("subredditname");
+    const subredditName = await redis.get("subredditname");
     if (subredditName) {
         return subredditName;
     }
 
-    const subreddit = await context.reddit.getCurrentSubreddit();
-    await context.redis.set("subredditname", subreddit.name);
+    const subreddit = await reddit.getCurrentSubreddit();
+    await redis.set("subredditname", subreddit.name);
     return subreddit.name;
 }
 
@@ -175,7 +176,7 @@ export class SafeWikiClient {
 
 export async function handleConfirmReply(
     event: CommentUpdate,
-    context: TriggerContext
+    _: TriggerContext
 ) {
     if (!event.comment || !event.author) return;
 
@@ -184,7 +185,7 @@ export async function handleConfirmReply(
 
     const username = event.author.name.toLowerCase();
     const pendingKey = `pendingConfirm:${username}`;
-    const contextType = await context.redis.get(pendingKey);
+    const contextType = await redis.get(pendingKey);
 
     // If no pending confirmation, nothing to do
     if (!contextType) {
@@ -193,11 +194,11 @@ export async function handleConfirmReply(
     }
 
     // Store that this user has confirmed this type
-    await context.redis.set(`ignoreDM:${username}:${contextType}`, "true");
-    await context.redis.del(pendingKey);
+    await redis.set(`ignoreDM:${username}:${contextType}`, "true");
+    await redis.del(pendingKey);
 
     // DM the user acknowledging confirmation
-    await context.reddit.sendPrivateMessage({
+    await reddit.sendPrivateMessage({
         to: event.author.name,
         subject: "Confirmation received ✅",
         text: `Got it — you won't be notified again when you use commands inside ${contextType} text.`,

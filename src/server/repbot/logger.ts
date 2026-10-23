@@ -37,7 +37,7 @@ function colorize(level: LogLevel, message: string): string {
 }
 
 async function sendModPM(
-    context: TriggerContext,
+    _: TriggerContext,
     message: string
 ): Promise<void> {
     try {

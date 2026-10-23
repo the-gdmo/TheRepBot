@@ -1,3 +1,4 @@
+import { redis } from "@devvit/web/server";
 import type { TriggerContext } from "../../compat";
 
 /**
@@ -14,7 +15,7 @@ export const DIGEST_STATS_KEY = "repbot:modDigest:stats";
 export const DIGEST_PENDING_KEY = `${DIGEST_STATS_KEY}:pending`;
 
 export async function recordDigestPointAward(
-    context: TriggerContext,
+    _: TriggerContext,
     awarder: string,
     awarderIsModerator: boolean
 ): Promise<void> {
@@ -22,9 +23,9 @@ export async function recordDigestPointAward(
     if (!normalized) return;
     const field = `${awarderIsModerator ? "mod" : "user"}:${normalized}`;
     // Atomic increment; one point per successfully applied award.
-    await context.redis.hIncrBy(DIGEST_STATS_KEY, field, 1);
+    await redis.hIncrBy(DIGEST_STATS_KEY, field, 1);
 }
 
-export async function recordDigestPost(context: TriggerContext): Promise<void> {
-    await context.redis.hIncrBy(DIGEST_STATS_KEY, "posts", 1);
+export async function recordDigestPost(_: TriggerContext): Promise<void> {
+    await redis.hIncrBy(DIGEST_STATS_KEY, "posts", 1);
 }

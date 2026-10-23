@@ -1,4 +1,4 @@
-import { settings } from "@devvit/web/server";
+import { reddit, redis, settings } from "@devvit/web/server";
 import type { TriggerContext, User } from "../../compat";
 import { formatMessage, ScoreResult } from "./common-utilities";
 import { getParentComment } from "../comment/comment-trigger-context";
@@ -7,11 +7,11 @@ import { logger } from "../../logger";
 import { POINTS_STORE_KEY } from "./redisKeys";
 
 export const isModerator = async (
-    context: TriggerContext,
+    _: TriggerContext,
     subName: string,
     awarder: string
 ) => {
-    const filteredModeratorList = await context.reddit
+    const filteredModeratorList = await reddit
         .getModerators({ subredditName: subName, username: awarder })
         .all();
     return filteredModeratorList.length > 0;
@@ -63,7 +63,7 @@ export async function getUserIsSuperuser(
     if (autoSuperuserThreshold) {
         let user: User | undefined;
         try {
-            user = await context.reddit.getUserByUsername(awarder);
+            user = await reddit.getUserByUsername(awarder);
         } catch {
             return false;
         }
@@ -108,7 +108,7 @@ export async function handleAutoSuperuserPromotion(
 
     if (threshold <= 0 || newScore < threshold) return;
 
-    if (await context.redis.exists(`superUserHandled:${awardee}`)) {
+    if (await redis.exists(`superUserHandled:${awardee}`)) {
         logger.info(`User has already been notified they are a superuser`, {
             awardee,
             threshold,
@@ -116,7 +116,7 @@ export async function handleAutoSuperuserPromotion(
         return;
     }
 
-    await context.redis.set(`superUserHandled:${awardee}`, "1");
+    await redis.set(`superUserHandled:${awardee}`, "1");
 
     const notifyMode = settingNotifyOnAutoSuperuser ?? ["none"];
 
@@ -136,13 +136,13 @@ export async function handleAutoSuperuserPromotion(
 
     try {
         // if (notifyMode === AutoSuperuserReplyOptions.ReplyByPM) {
-        await context.reddit.sendPrivateMessage({
+        await reddit.sendPrivateMessage({
             to: awardee,
             subject: `You are now a trusted user in r/${event.subreddit.name}`,
             text: superUserNotification,
         });
         // } else if (notifyMode === AutoSuperuserReplyOptions.ReplyAsComment) {
-        //     const superUserNotificationMessage = await context.reddit.submitComment({
+        //     const superUserNotificationMessage = await reddit.submitComment({
         //         id: commentId,
         //         text: superUserNotification,
         //     });
@@ -182,7 +182,7 @@ export async function getCurrentScore(
      *
      * This MUST match the key used by setUserScore().
      */
-    const scoreFromRedis = await context.redis.zScore(
+    const scoreFromRedis = await redis.zScore(
         POINTS_STORE_KEY,
         username
     );
@@ -292,7 +292,7 @@ export async function getCurrentScore(
      * in their Reddit flair.
      */
     if (scoreFromRedis === undefined) {
-        await context.redis.zAdd(POINTS_STORE_KEY, {
+        await redis.zAdd(POINTS_STORE_KEY, {
             member: username,
             score: finalScore,
         });
@@ -308,7 +308,7 @@ export async function getCurrentScore(
      * Get their proper DESCENDING leaderboard position for
      * diagnostics.
      */
-    const leaderboard = await context.redis.zRange(POINTS_STORE_KEY, 0, -1, {
+    const leaderboard = await redis.zRange(POINTS_STORE_KEY, 0, -1, {
         by: "rank",
         reverse: true,
     });
@@ -335,7 +335,7 @@ export async function getCurrentScore(
 
     let flairShouldBeManaged: boolean;
     const key = `flairToggle:${username}`;
-    const exists = await context.redis.exists(key);
+    const exists = await redis.exists(key);
 
     if (exists) {
         flairShouldBeManaged = false;

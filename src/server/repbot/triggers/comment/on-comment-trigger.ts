@@ -1,4 +1,4 @@
-import { settings } from "@devvit/web/server";
+import { reddit, redis, scheduler, settings } from "@devvit/web/server";
 import type { CommentSubmit, CommentUpdate } from "@devvit/protos";
 import type { TriggerContext, Comment, User } from "../../compat";
 import {
@@ -89,7 +89,7 @@ async function setFlairForUser(
     const settingPointName = await settings.get<string>("pointName");
     const pointName = settingPointName ?? "point";
     const subredditName = await getSubredditName(context);
-    const safeWiki = new SafeWikiClient(context.reddit);
+    const safeWiki = new SafeWikiClient(reddit);
 
     const baseCssClass = settingBaseCSSClass || undefined;
 
@@ -98,7 +98,9 @@ async function setFlairForUser(
     const superAwarderCSSClass = settingSuperAwarderCSSClass || undefined;
 
     // Use the base template until a dedicated Super Awarder template setting exists.
-    const superAwarderFlairTemplate = baseFlairTemplate;
+    const superAwarderFlairTemplate = await settings.get<string>(
+        "superAwarderFlairTemplate"
+    );
 
     const flairFormatting = await settings.get<string>("flairFormatting");
 
@@ -119,7 +121,7 @@ async function setFlairForUser(
         username: string
     ): Promise<number> => {
         const redisKey = `awardsGiven:${username}`;
-        const cached = await context.redis.get(redisKey);
+        const cached = await redis.get(redisKey);
 
         if (cached && cached !== null && cached !== "") {
             const parsed = Number.parseInt(cached, 10);
@@ -155,7 +157,7 @@ async function setFlairForUser(
             }
         }
 
-        await context.redis.set(redisKey, count.toString());
+        await redis.set(redisKey, count.toString());
         return count;
     };
 
@@ -163,7 +165,7 @@ async function setFlairForUser(
     // - If their cache already exists, increment it.
     // - Otherwise initialize it from their wiki without incrementing it.
     const awarderAwardsGivenKey = `awardsGiven:${awarder}`;
-    const cachedAwarderCount = await context.redis.get(awarderAwardsGivenKey);
+    const cachedAwarderCount = await redis.get(awarderAwardsGivenKey);
 
     if (
         cachedAwarderCount &&
@@ -174,16 +176,13 @@ async function setFlairForUser(
         const currentCount =
             Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
 
-        await context.redis.set(
-            awarderAwardsGivenKey,
-            (currentCount + 1).toString()
-        );
+        await redis.set(awarderAwardsGivenKey, (currentCount + 1).toString());
     } else {
         await getOrInitializeAwardsGiven(awarder);
     }
 
     // Get the received-points leaderboard once for both users.
-    const leaderboard = await context.redis.zRange(POINTS_STORE_KEY, 0, -1, {
+    const leaderboard = await redis.zRange(POINTS_STORE_KEY, 0, -1, {
         by: "rank",
         reverse: true,
     });
@@ -194,9 +193,7 @@ async function setFlairForUser(
     for (const username of usernames) {
         try {
             // Respect each user's own flair opt-out.
-            const flairDisabled = await context.redis.exists(
-                `flairToggle:${username}`
-            );
+            const flairDisabled = await redis.exists(`flairToggle:${username}`);
 
             if (flairDisabled) {
                 logger.info("Skipping flair update because user opted out", {
@@ -206,8 +203,7 @@ async function setFlairForUser(
             }
 
             // Received-points total and leaderboard position.
-            const score =
-                (await context.redis.zScore(POINTS_STORE_KEY, username)) ?? 0;
+            const score = (await redis.zScore(POINTS_STORE_KEY, username)) ?? 0;
 
             const index = leaderboard.findIndex(
                 (member: { member: string; score: number }) =>
@@ -261,7 +257,7 @@ async function setFlairForUser(
                 cssClass = undefined;
             }
 
-            await context.reddit.setUserFlair({
+            await reddit.setUserFlair({
                 subredditName: context.subredditName,
                 username,
                 cssClass,
@@ -306,7 +302,7 @@ export async function setUserScore(
         "existingFlairHandling"
     );
 
-    await context.redis.zAdd(POINTS_STORE_KEY, {
+    await redis.zAdd(POINTS_STORE_KEY, {
         member: awardee,
         score: newScore.score,
     });
@@ -321,8 +317,8 @@ export async function setUserScore(
 
     // Queue a leaderboard update.
 
-    if (!(await context.redis.get(`awardsGiven:${awarder}`))) {
-        const safeWiki = new SafeWikiClient(context.reddit);
+    if (!(await redis.get(`awardsGiven:${awarder}`))) {
+        const safeWiki = new SafeWikiClient(reddit);
         const subredditName = await getSubredditName(context);
         const latestPage = await discoverLatestPage(
             subredditName,
@@ -352,17 +348,16 @@ export async function setUserScore(
             );
 
             if (awardsGiven !== undefined) {
-                await context.redis.set(`awardsGiven:${awarder}`, awardsGiven);
+                await redis.set(`awardsGiven:${awarder}`, awardsGiven);
             } else {
-                await context.redis.set(`awardsGiven:${awarder}`, "1");
+                await redis.set(`awardsGiven:${awarder}`, "1");
             }
         }
     }
 
-    const awarderScore =
-        (await context.redis.get(`awardsGiven:${awarder}`)) ?? "0";
+    const awarderScore = (await redis.get(`awardsGiven:${awarder}`)) ?? "0";
 
-    await context.scheduler.runJob({
+    await scheduler.runJob({
         name: UPDATE_LEADERBOARD_JOB,
         runAt: new Date(),
         data: {
@@ -745,7 +740,7 @@ export async function unflairedPostLogic(
         // 🔑 One response per award attempt (per comment)
         const responseKey = `unflairedResponse:${event.comment.id}`;
 
-        if (await context.redis.exists(responseKey)) {
+        if (await redis.exists(responseKey)) {
             logger.debug("ℹ️ Unflaired post response already sent — skipping", {
                 commentId: event.comment.id,
             });
@@ -761,18 +756,16 @@ export async function unflairedPostLogic(
 
         try {
             if (notifyUnflaired === "replybypm") {
-                await context.reddit.sendPrivateMessage({
+                await reddit.sendPrivateMessage({
                     to: awarder,
                     subject: `Awards disabled for unflaired posts`,
                     text: unflairedMessage,
                 });
             } else if (notifyUnflaired === "replybycomment") {
-                const unflairedPostMessage = await context.reddit.submitComment(
-                    {
-                        id: event.comment.id,
-                        text: unflairedMessage,
-                    }
-                );
+                const unflairedPostMessage = await reddit.submitComment({
+                    id: event.comment.id as `t1_${string}`,
+                    text: unflairedMessage,
+                });
                 await unflairedPostMessage.distinguish();
             }
         } catch (err) {
@@ -782,7 +775,7 @@ export async function unflairedPostLogic(
             );
         }
 
-        await context.redis.set(responseKey, "1");
+        await redis.set(responseKey, "1");
         return; // ⛔ Stop award flow ONLY for unflaired posts
     }
 }
@@ -865,7 +858,7 @@ export async function flairTextNotAllowedLogic(
 
         const responseKey = `disallowedFlairResponse:${event.comment.id}`;
 
-        if (await context.redis.exists(responseKey)) {
+        if (await redis.exists(responseKey)) {
             logger.debug(
                 "♻️ Disallowed flair already handled for this comment",
                 {
@@ -876,21 +869,21 @@ export async function flairTextNotAllowedLogic(
         }
 
         // Mark handled BEFORE replying
-        await context.redis.set(responseKey, "1");
+        await redis.set(responseKey, "1");
 
         logger.info("🚫 Award blocked due to disallowed flair", {
             postFlair: postFlairText,
         });
 
         if (notifyFlairIgnored === "replybypm") {
-            await context.reddit.sendPrivateMessage({
+            await reddit.sendPrivateMessage({
                 to: awarder,
                 subject: `${pointName}s cannot be awarded on ${event.post.title}`,
                 text: flairTextDisallowedMessage,
             });
         } else if (notifyFlairIgnored === "replybycomment") {
-            const disallowedFlairMessage = await context.reddit.submitComment({
-                id: event.comment.id,
+            const disallowedFlairMessage = await reddit.submitComment({
+                id: event.comment.id as `t1_${string}`,
                 text: flairTextDisallowedMessage,
             });
             await disallowedFlairMessage.distinguish();
@@ -901,7 +894,7 @@ export async function flairTextNotAllowedLogic(
 
 export async function selfAwardAttemptLogic(
     event: CommentSubmit | CommentUpdate,
-    context: TriggerContext,
+    _: TriggerContext,
     awarder: string,
     recipient: string
 ) {
@@ -923,13 +916,13 @@ export async function selfAwardAttemptLogic(
             name: pointName,
         });
         if (notifySelf === "replybycomment") {
-            const selfAwardMessage = await context.reddit.submitComment({
-                id: event.comment.id,
+            const selfAwardMessage = await reddit.submitComment({
+                id: event.comment.id as `t1_${string}`,
                 text: selfText,
             });
             await selfAwardMessage.distinguish();
         } else if (notifySelf === "replybypm") {
-            await context.reddit.sendPrivateMessage({
+            await reddit.sendPrivateMessage({
                 to: awarder,
                 subject: `You tried to award yourself a ${pointName}`,
                 text: selfText,
@@ -962,7 +955,7 @@ export async function replyToUser(
 
     // 🔑 One reply per comment + notify type
     const responseKey = `replyToUser:${notifyMode}:${commentId}`;
-    if (await context.redis.exists(responseKey)) {
+    if (await redis.exists(responseKey)) {
         logger.debug("♻️ replyToUser: response already sent", {
             commentId,
             notifyMode,
@@ -972,7 +965,7 @@ export async function replyToUser(
 
     try {
         if (notifyMode === "replybypm") {
-            await context.reddit.sendPrivateMessage({
+            await reddit.sendPrivateMessage({
                 to: recipient,
                 subject: "Award not allowed",
                 text: message,
@@ -983,8 +976,8 @@ export async function replyToUser(
                 commentId,
             });
         } else if (notifyMode === "replybycomment") {
-            const reply = await context.reddit.submitComment({
-                id: commentId,
+            const reply = await reddit.submitComment({
+                id: commentId as `t1_${string}`,
                 text: message,
             });
             await reply.distinguish();
@@ -1000,7 +993,7 @@ export async function replyToUser(
         }
 
         // ✅ Mark handled AFTER success
-        await context.redis.set(responseKey, "1");
+        await redis.set(responseKey, "1");
     } catch (err) {
         logger.error("❌ replyToUser failed", {
             recipient,
@@ -1018,7 +1011,6 @@ export async function userHasPermission(
     devvitContext: TriggerContext
 ): Promise<boolean> {
     const settingPointName = await settings.get<string>("pointName");
-    const settingAccessControl = await settings.get<string>("accessControl");
 
     if (!event.post || !event.comment) return false;
 
@@ -1028,16 +1020,25 @@ export async function userHasPermission(
     const isSuperUser = commentTriggerContext.isSuperUser;
     const isOP = awarderID === event.post.authorId;
 
-    const accessControl = settingAccessControl ?? "everyone";
+    const settingAccessControl = await settings.get<string[]>("accessControl");
+    const accessControl = settingAccessControl ?? ["everyone"];
 
     const hasPermission =
-        accessControl === "everyone" ||
-        (accessControl === "moderators-only" && isMod) ||
-        (accessControl === "moderators-and-superusers" &&
+        accessControl.includes("everyone") ||
+        (accessControl.includes("moderators-only") && isMod) ||
+        (accessControl.includes("moderators-and-superusers") &&
             (isMod || isSuperUser)) ||
-        (accessControl === "moderators-superusers-and-op" &&
-            (isMod || isSuperUser || isOP)) ||
-        (accessControl === "moderators-and-op" && (isMod || isOP));
+        (accessControl.includes("moderators-and-op") && (isMod || isOP)) ||
+        (accessControl.includes("moderators-superusers-and-op") &&
+            (isMod || isSuperUser || isOP));
+
+    logger.debug("Permission check", {
+        accessControl,
+        isMod,
+        isSuperUser,
+        isOP,
+        hasPermission,
+    });
 
     logger.debug("Permission check", {
         accessControl,
@@ -1054,7 +1055,7 @@ export async function userHasPermission(
         // Read the exact setting names directly. Avoid computed appSettings keys,
         // which hide the actual Devvit Web setting names from type checking.
         switch (accessControl) {
-            case "moderators-only":
+            case ["moderators-only"]:
                 denyMessageSetting = await settings.get<string>(
                     "modOnlyDisallowedMessage"
                 );
@@ -1063,7 +1064,7 @@ export async function userHasPermission(
                 );
                 break;
 
-            case "moderators-and-superusers":
+            case ["moderators-and-superusers"]:
                 denyMessageSetting = await settings.get<string>(
                     "approvedOnlyDisallowedMessage"
                 );
@@ -1072,7 +1073,7 @@ export async function userHasPermission(
                 );
                 break;
 
-            case "moderators-superusers-and-op":
+            case ["moderators-superusers-and-op"]:
                 denyMessageSetting = await settings.get<string>(
                     "opOnlyDisallowedMessage"
                 );
@@ -1081,7 +1082,7 @@ export async function userHasPermission(
                 );
                 break;
 
-            case "moderators-and-op":
+            case ["moderators-and-op"]:
                 denyMessageSetting = await settings.get<string>(
                     "modsAndPostAuthorDisallowedMessage"
                 );
@@ -1089,7 +1090,6 @@ export async function userHasPermission(
                     "notifyOnModsAndPostAuthorDisallowed"
                 );
                 break;
-
             default:
                 logger.warn("⚠️ Unknown accessControl value", {
                     accessControl,
@@ -1164,7 +1164,7 @@ export async function recipientIsBot(
 
 export async function handleIgnoredContext(
     event: CommentSubmit | CommentUpdate,
-    context: TriggerContext,
+    _: TriggerContext,
     trigger: string
 ): Promise<void> {
     if (!event.comment || !event.author || !event.subreddit) return;
@@ -1174,7 +1174,7 @@ export async function handleIgnoredContext(
     if (!ignoredType) return;
 
     const ignoreKey = `normalCommandIgnoreDM:${event.author.name.toLowerCase()}:${ignoredType}`;
-    const alreadyConfirmed = await context.redis.exists(ignoreKey);
+    const alreadyConfirmed = await redis.exists(ignoreKey);
 
     if (alreadyConfirmed) return;
 
@@ -1194,13 +1194,13 @@ export async function handleIgnoredContext(
         {}
     );
 
-    await context.reddit.sendPrivateMessage({
+    await reddit.sendPrivateMessage({
         to: event.author.name,
         subject: `Your ${trigger} command was ignored`,
         text: dmText,
     });
 
-    await context.redis.set(
+    await redis.set(
         `pendingConfirm:${event.author.name.toLowerCase()}`,
         ignoredType
     );
@@ -1216,7 +1216,7 @@ export async function handleIgnoredContext(
 
 export async function ignoredContextNeedsHandling(
     event: CommentSubmit | CommentUpdate,
-    context: TriggerContext,
+    _: TriggerContext,
     trigger: string
 ): Promise<boolean> {
     if (!event.comment || !event.author || !event.subreddit) return false;
@@ -1226,7 +1226,7 @@ export async function ignoredContextNeedsHandling(
     if (!ignoredType) return false;
 
     const ignoreKey = `normalCommandIgnoreDM:${event.author.name.toLowerCase()}:${ignoredType}`;
-    const alreadyConfirmed = await context.redis.exists(ignoreKey);
+    const alreadyConfirmed = await redis.exists(ignoreKey);
 
     if (alreadyConfirmed) return true;
 

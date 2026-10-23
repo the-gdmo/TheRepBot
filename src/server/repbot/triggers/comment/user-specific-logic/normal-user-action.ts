@@ -1,4 +1,4 @@
-import { settings } from "@devvit/web/server";
+import { Context, reddit, redis, settings } from "@devvit/web/server";
 import type { TriggerContext, User } from "../../../compat";
 import {
     formatMessage,
@@ -417,7 +417,7 @@ export async function updateAuthorRedis(
  */
 export async function executeUserCommand(
     event: CommentSubmit | CommentUpdate,
-    context: TriggerContext
+    context: Context
 ): Promise<boolean> {
     const parentComment = await getParentComment(event, context);
 
@@ -440,7 +440,7 @@ export async function executeUserCommand(
     let user: User | undefined;
 
     try {
-        user = await context.reddit.getUserByUsername(awarder);
+        user = await reddit.getUserByUsername(awarder);
     } catch {
         user = undefined;
     }
@@ -480,14 +480,14 @@ export async function executeUserCommand(
 
         if (notifyBlockedUserMode === "replyascomment") {
             const userIsBlockedFromAwardingPointsMessage =
-                await context.reddit.submitComment({
-                    id: event.comment.id,
+                await reddit.submitComment({
+                    id: event.comment.id as `t1_${string}`,
                     text: blockedMessage,
                 });
 
             await userIsBlockedFromAwardingPointsMessage.distinguish();
         } else if (notifyBlockedUserMode === "replybypm") {
-            await context.reddit.sendPrivateMessage({
+            await reddit.sendPrivateMessage({
                 to: awarder,
                 text: blockedMessage,
                 subject:
@@ -515,14 +515,14 @@ export async function executeUserCommand(
         );
 
         if (notifyNormalSelfAwardMode === "replyascomment") {
-            const selfAwardComment = await context.reddit.submitComment({
-                id: event.comment.id,
+            const selfAwardComment = await reddit.submitComment({
+                id: event.comment.id as `t1_${string}`,
                 text: selfAwardTemplate,
             });
 
             await selfAwardComment.distinguish();
         } else if (notifyNormalSelfAwardMode === "replybypm") {
-            await context.reddit.sendPrivateMessage({
+            await reddit.sendPrivateMessage({
                 to: awarder,
                 text: selfAwardTemplate,
                 subject: `You tried to award yourself a ${pointName}`,
@@ -534,7 +534,7 @@ export async function executeUserCommand(
 
     let originalPoster: User | undefined;
     try {
-        originalPoster = await context.reddit.getUserById(event.post.authorId);
+        originalPoster = await reddit.getUserByUsername(awarder);
     } catch (err) {
         logger.error(
             `Original poster could not be found in executeUserCommand(), returning`
@@ -555,13 +555,13 @@ export async function executeUserCommand(
         );
 
         if (notifyMode === "replyascomment") {
-            const postAuthorAwardComment = await context.reddit.submitComment({
-                id: event.comment.id,
+            const postAuthorAwardComment = await reddit.submitComment({
+                id: event.comment.id as `t1_${string}`,
                 text: formattedPostAuthorAwardMessage,
             });
             postAuthorAwardComment.distinguish();
         } else if (notifyMode === "replybypm") {
-            await context.reddit.sendPrivateMessage({
+            await reddit.sendPrivateMessage({
                 to: awarder,
                 subject: `You do not have permission to award ${pointName}s to Post Authors`,
                 text: formattedPostAuthorAwardMessage,
@@ -573,7 +573,7 @@ export async function executeUserCommand(
     // 🛑 Duplicate award check
     const key = `userAwardGiven:${parentComment.id}:${event.post.id}:${event.subreddit.name}`;
 
-    const alreadyAwarded = await context.redis.exists(key);
+    const alreadyAwarded = await redis.exists(key);
 
     if (alreadyAwarded) {
         const alreadyAwardedTemplate = formatMessage(
@@ -595,8 +595,8 @@ export async function executeUserCommand(
             notifyMode ===
             "replyascomment"
         ) {
-            const alreadyAwardedMessage = await context.reddit.submitComment({
-                id: event.comment.id,
+            const alreadyAwardedMessage = await reddit.submitComment({
+                id: event.comment.id as `t1_${string}`,
                 text: alreadyAwardedTemplate,
             });
 
@@ -605,7 +605,7 @@ export async function executeUserCommand(
             notifyMode ===
             "replybypm"
         ) {
-            await context.reddit.sendPrivateMessage({
+            await reddit.sendPrivateMessage({
                 to: awarder,
                 subject:
                     `[This comment](${parentComment.permalink}) ` +
@@ -627,7 +627,7 @@ export async function executeUserCommand(
     let awardee: User | undefined;
 
     try {
-        awardee = await context.reddit.getUserByUsername(recipient);
+        awardee = await reddit.getUserByUsername(recipient);
     } catch {
         awardee = undefined;
     }
@@ -635,7 +635,7 @@ export async function executeUserCommand(
     if (!awardee) return false;
 
     // Mark the award as processed only after the recipient is resolved.
-    await context.redis.set(key, "1");
+    await redis.set(key, "1");
 
     // 🏆 Award point + side effects
     await awardPointToUserNormalCommand(event, context, awarder, awardee);
@@ -645,7 +645,7 @@ export async function executeUserCommand(
         (await settings.get<string>("pointTriggerWords")) ?? "!award\n.award";
 
     const currentScore =
-        (await context.redis.zScore(POINTS_STORE_KEY, recipient)) ?? 0;
+        (await redis.zScore(POINTS_STORE_KEY, recipient)) ?? 0;
 
     await handleAutoSuperuserPromotion(
         event,

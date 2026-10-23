@@ -1,4 +1,4 @@
-import { settings } from "@devvit/web/server";
+import { reddit, redis, settings } from "@devvit/web/server";
 import type { JobContext, WikiPage } from "../compat";
 import { lt } from "semver";
 import json2md from "json2md";
@@ -19,7 +19,7 @@ export async function getNewVersionInfo(
 ): Promise<AppUpdate | undefined> {
     let wikiPage: WikiPage;
     try {
-        wikiPage = await context.reddit.getWikiPage(
+        wikiPage = await reddit.getWikiPage(
             UPDATE_SUBREDDIT,
             UPDATE_WIKI_PAGE
         );
@@ -36,7 +36,7 @@ export async function getNewVersionInfo(
                 ]),
                 reason: "Create update notifier wiki page",
             };
-            await context.reddit.createWikiPage(wikiPageOptions);
+            await reddit.createWikiPage(wikiPageOptions);
         }
     } catch (err) {
         logger.error("Update Checker: Error getting wiki page", {
@@ -99,8 +99,7 @@ export async function checkForUpdates(_: unknown, context: JobContext) {
         }
 
         const subredditName =
-            context.subredditName ??
-            (await context.reddit.getCurrentSubredditName());
+            (await reddit.getCurrentSubreddit()).name;
 
         const update = await getNewVersionInfo(context);
 
@@ -127,7 +126,7 @@ export async function checkForUpdates(_: unknown, context: JobContext) {
 
         const redisKey = "update-notification-sent";
 
-        const notificationSent = await context.redis.get(redisKey);
+        const notificationSent = await redis.get(redisKey);
 
         if (notificationSent === update.version) {
             logger.info("Update Checker: Notification already sent", {
@@ -149,15 +148,15 @@ export async function checkForUpdates(_: unknown, context: JobContext) {
             p: `To install this update, or to disable these notifications, visit the [**RepBot Configuration Page**](https://developers.reddit.com/r/${subredditName}/apps/${context.appSlug}) for /r/${subredditName}.`,
         });
 
-        await context.reddit.modMail.createModNotification({
+        await reddit.modMail.createModNotification({
             subredditId: context.subredditId as `t5_${string}`,
             subject: `New RepBot Update Available: v${update.version}`,
             bodyMarkdown: json2md(message),
         });
 
-        await context.redis.set(redisKey, update.version);
+        await redis.set(redisKey, update.version);
     } catch (error) {
-        await context.reddit.modMail.createModNotification({
+        await reddit.modMail.createModNotification({
             subredditId: context.subredditId as `t5_${string}`,
             subject: `RepBot Update Error`,
             bodyMarkdown: `An error occurred while checking for RepBot updates: ${error}`,

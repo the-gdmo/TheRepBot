@@ -152,10 +152,12 @@ export async function checkForUpdates(_: unknown, context: JobContext) {
 
         await redis.set(redisKey, update.version);
     } catch (error) {
-        if (error instanceof TypeError) {
+        if (
+            error instanceof TypeError &&
+            error.message.includes("Invalid Version")
+        ) {
             logger.info(
-                `TypeError occurred while checking for updates, returning`,
-                { error }
+                "Invalid Version TypeError occurred while checking for updates, returning"
             );
             return;
         }

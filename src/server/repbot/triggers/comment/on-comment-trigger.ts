@@ -104,7 +104,7 @@ async function setFlairForUser(
 
     const flairFormatting = await settings.get<string>("flairFormatting");
 
-    const pointSymbol = (await settings.get<string>("pointName")) ?? "point";
+    const pointSymbol = (await settings.get<string>("pointSymbol")) ?? "";
 
     const superAwarderThreshold =
         (await settings.get<number>("superAwarderThreshold")) ?? 0;

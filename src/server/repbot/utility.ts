@@ -176,7 +176,6 @@ export class SafeWikiClient {
 
 export async function handleConfirmReply(
     event: CommentUpdate,
-    _: TriggerContext
 ) {
     if (!event.comment || !event.author) return;
 

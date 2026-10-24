@@ -34,7 +34,7 @@ triggers.post("/on-comment-update", async (c) => {
     const data = await c.req.json().catch(() => ({}));
     const context = createCompatContext(data);
     await handleThanksEvent(data, context);
-    await handleConfirmReply(data, context);
+    await handleConfirmReply(data);
     return c.json({ status: "ok" });
 });
 triggers.post("/on-post-submit", (c) => run(c, onPostSubmit));

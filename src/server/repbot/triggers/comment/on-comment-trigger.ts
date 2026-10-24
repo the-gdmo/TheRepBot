@@ -235,12 +235,9 @@ async function setFlairForUser(
 
             // Replace both supported placeholder styles.
             const replacements: Record<string, string> = {
-                "{{place}}": placeText,
-                "{place}": placeText,
-                "{{total}}": score.toString(),
-                "{total}": score.toString(),
-                "{{symbol}}": pointSymbol,
-                "{symbol}": pointSymbol,
+                "place": placeText,
+                "total": score.toString(),
+                "symbol": pointSymbol,
             };
 
             if (!flairText) {
@@ -249,7 +246,16 @@ async function setFlairForUser(
             }
 
             for (const [placeholder, value] of Object.entries(replacements)) {
-                flairText = flairText.replaceAll(placeholder, value);
+                const singleRegex = new RegExp(`{${placeholder}}`, "gi");
+                const doubleRegex = new RegExp(`{{${placeholder}}}`, "gi");
+                if (doubleRegex.test(flairText)) {
+                    logger.debug(`Replacing {{${placeholder}}} with ${value}`);
+                    flairText = flairText.replaceAll(doubleRegex, value);
+                } else if (singleRegex.test(flairText)) {
+                    logger.debug(`Replacing {${placeholder}} with ${value}`);
+                    flairText = flairText.replaceAll(singleRegex, value);
+                    flairText = flairText.replaceAll(placeholder, value);
+                }
             }
 
             // A flair template ID takes precedence over the CSS class.

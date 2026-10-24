@@ -182,10 +182,7 @@ export async function getCurrentScore(
      *
      * This MUST match the key used by setUserScore().
      */
-    const scoreFromRedis = await redis.zScore(
-        POINTS_STORE_KEY,
-        username
-    );
+    const scoreFromRedis = await redis.zScore(POINTS_STORE_KEY, username);
 
     logger.debug("Retrieved stored score", {
         username,
@@ -217,7 +214,7 @@ export async function getCurrentScore(
          * Escape characters that have special meaning inside regex.
          */
         const escapeRegex = (text: string): string =>
-            text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            text.replace(/[.*+?^${}()|[\]\\]/gi, "\\$&");
 
         /**
          * Escape the normal text first.
@@ -234,17 +231,22 @@ export async function getCurrentScore(
         /**
          * {total} is the value we actually want to capture.
          */
-        pattern = pattern.replace(escapeRegex("{total}"), "(\\d+)");
+        pattern = pattern.replaceAll(escapeRegex("{{total}}"), "(\\d+)");
+        pattern = pattern.replaceAll(escapeRegex("{total}"), "(\\d+)");
 
         /**
          * {place} must be numeric, but we don't need to capture it.
          */
+        pattern = pattern.replaceAll(escapeRegex("{{place}}"), "\\d+");
         pattern = pattern.replaceAll(escapeRegex("{place}"), "\\d+");
-
         /**
          * Match the configured point symbol exactly rather than
          * matching arbitrary text with .*?.
          */
+        pattern = pattern.replaceAll(
+            escapeRegex("{{symbol}}"),
+            escapeRegex(pointSymbol)
+        );
         pattern = pattern.replaceAll(
             escapeRegex("{symbol}"),
             escapeRegex(pointSymbol)

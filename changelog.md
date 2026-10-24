@@ -1,4 +1,7 @@
 # Changelog for RepBot
+## 31.7.7
+* Fix flair formatting `symbol` placeholder (previous called the point name by accident)
+* Make flair formatting placeholders case-insensitive and work properly
 ## 31.7.6
 * Remove error logging from update checker if it is a Invalid Version (backend thing to remove excessive modmail notifications from test subreddit)
 * Fixed an issue where comments wouldn't register with the bot due to code not handling any form of permissions due to "everyone" not being handled

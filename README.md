@@ -61,7 +61,8 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * NOTE: If you have a leaderboard post on your subreddit currently from v28.0.0, I cannot guaranteee that the v31.7.0+ leaderboard will carry over. There is a fair chance you will have to make a new post via `[RepBot] - Create Leaderboard` in the subreddit-level mod/burger menu
 
 # Latest Changes
-## 31.7.7
+## 31.7.8
+* Fix custom leaderboard post to be viewable on (hopefully) all devices without scrolling (checked an iphone 12 and s26 ultra and it works fine there)
 * Fix flair formatting `symbol` placeholder (previous called the point name by accident)
 * Make flair formatting placeholders case-insensitive and work properly
 ## 31.7.6

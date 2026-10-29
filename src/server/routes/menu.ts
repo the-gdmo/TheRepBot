@@ -3,11 +3,11 @@ import type { UiResponse } from "@devvit/web/shared";
 import { redis } from "@devvit/web/server";
 import { createCompatContext, toUiResponse, type UiCapture } from "../repbot/compat";
 import { handleCommentPin, handleFlairToggle, checkFlairToggle, handleFlairToggleForUser, transferWikiForm } from "../repbot/moderation";
-import { handleManualPointSetting, handleManualUserWikiTotalsSetting, handleManualPostRestrictionRemoval, handlePostRestrictionCheck, handleUserRestrictionCheck } from "../repbot/triggers/utils/mod-utilities";
+import { handleManualPointSetting, handleManualUserWikiTotalsSetting, handleManualPostRestrictionRemoval, handlePostRestrictionCheck, handleUserRestrictionCheck } from "../core/clientCore/utils/mod-utilities";
 
 export const menu = new Hono();
 const NUMBER_OF_USERS_KEY = "leaderboard:numberOfUsers";
-const menuHandlers: Record<string, (event: any, context: any) => Promise<any>> = {
+const menuHandlers: Record<string, (event: any : any) => Promise<any>> = {
   "/flair-toggle-for-user": handleFlairToggleForUser,
   "/remove-post-restriction": handleManualPostRestrictionRemoval,
   "/check-post-restriction": handlePostRestrictionCheck,

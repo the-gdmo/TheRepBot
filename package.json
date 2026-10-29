@@ -54,7 +54,8 @@
   "allowScripts": {
     "esbuild@0.25.9": true,
     "esbuild@0.27.4": true,
-    "protobufjs@7.5.8": true
+    "protobufjs@7.5.8": true,
+    "protobufjs@7.6.5": true
   },
   "devDependencies": {
     "@types/json2md": "^1.5.4",

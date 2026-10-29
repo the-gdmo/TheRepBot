@@ -1,14 +1,18 @@
-import { ScheduledJobEvent, settings, reddit, redis } from "@devvit/web/server";
-import type {
-    JobContext,
-    JSONObject,
-    TriggerContext,
+import {
+    settings,
+    reddit,
+    redis,
     WikiPage,
-} from "./compat";
-import { getSubredditName, SafeWikiClient } from "./utility";
+    ScheduledJobEvent,
+} from "@devvit/web/server";
+import {
+    getSubredditName,
+    SafeWikiClient,
+} from "../core/clientCore/utils/utility";
 import pluralize from "pluralize";
-import { logger } from "./logger";
-import { POINTS_STORE_KEY } from "./triggers/utils/redisKeys";
+import { logger } from "../core/clientCore/utils/logger";
+import { POINTS_STORE_KEY } from "../core/clientCore/utils/redisKeys";
+import { JsonObject } from "@devvit/shared-types/json.js";
 
 export function capitalize(word: string): string {
     return word.charAt(0).toUpperCase() + word.slice(1);
@@ -151,7 +155,7 @@ export function parseLeaderboardWikiEntries(
  * page can intentionally seed Redis from that page once as well.
  */
 export async function replaceLeaderboardRedisFromExistingWikiOnce(
-    _: JobContext,
+    _: unknown,
     subredditName: string,
     wikiPageName: string,
     wikiPage: WikiPage
@@ -535,16 +539,12 @@ export async function getAllSortedSetEntries(
 }
 
 export async function zAddInBatches(
-    _: TriggerContext,
     key: string,
     entries: Array<{ member: string; score: number }>,
     batchSize = 100
 ): Promise<void> {
     for (let index = 0; index < entries.length; index += batchSize) {
-        await redis.zAdd(
-            key,
-            ...entries.slice(index, index + batchSize)
-        );
+        await redis.zAdd(key, ...entries.slice(index, index + batchSize));
     }
 }
 
@@ -588,7 +588,6 @@ export function isReceivedRedisMemberFromAwarder(
  * of leaving stale Redis history behind.
  */
 export async function replaceUserHistoryRedisFromWiki(
-    context: TriggerContext,
     subredditName: string,
     awarder: string
 ): Promise<number> {
@@ -674,7 +673,6 @@ export async function replaceUserHistoryRedisFromWiki(
     // Replace the awarder's Given set completely.
     await redis.del(givenKey);
     await zAddInBatches(
-        context,
         givenKey,
         parsedEntries.map((entry) => ({
             member: entry.givenMember,
@@ -694,11 +692,7 @@ export async function replaceUserHistoryRedisFromWiki(
     }
 
     for (const [recipient, entries] of receivedByRecipient) {
-        await zAddInBatches(
-            context,
-            userHistoryReceivedKey(recipient),
-            entries
-        );
+        await zAddInBatches(userHistoryReceivedKey(recipient), entries);
     }
 
     await redis.set(
@@ -1215,7 +1209,6 @@ export async function ensureUserWikiInitialized(
 }
 
 export async function appendUserWikiEntry(
-    _: TriggerContext,
     subredditName: string,
     username: string,
     kind: "received" | "given",
@@ -1341,10 +1334,7 @@ export async function appendUserWikiEntry(
         if (!created) {
             throw new Error(`Failed to create ${newPagePath}`);
         }
-        await redis.set(
-            userWikiLatestPageKey(username),
-            String(latestPage)
-        );
+        await redis.set(userWikiLatestPageKey(username), String(latestPage));
 
         // Only rotation requires touching older pages: update their top notice so
         // every numbered page links directly to the true newest page.
@@ -1378,10 +1368,7 @@ export async function appendUserWikiEntry(
         content: candidate,
         reason: `Updated wiki history for ${username}`,
     });
-    await redis.set(
-        userWikiLatestPageKey(username),
-        String(latestPage)
-    );
+    await redis.set(userWikiLatestPageKey(username), String(latestPage));
     await refreshLifetimeTotalsOnPages(
         subredditName,
         username,
@@ -1405,12 +1392,10 @@ export async function appendUserWikiEntry(
  * direction so corrections can intentionally be lower than the number of rows.
  */
 export async function getUserWikiLifetimeTotalsForUser(
-    _: TriggerContext,
     username: string
 ): Promise<UserWikiLifetimeTotals> {
     username = wikiUsername(username);
-    const subredditName =
-        (await reddit.getCurrentSubreddit()).name;
+    const subredditName = (await reddit.getCurrentSubreddit()).name;
     const safeWiki = new SafeWikiClient(reddit);
     const latestPage = await ensureUserWikiInitialized(
         subredditName,
@@ -1432,7 +1417,6 @@ export async function getUserWikiLifetimeTotalsForUser(
  * and persisted as overrides so future awards increment from the correction.
  */
 export async function setUserWikiLifetimeTotalsForUser(
-    _: TriggerContext,
     username: string,
     totals: UserWikiLifetimeTotals
 ): Promise<UserWikiLifetimeTotals> {
@@ -1449,8 +1433,7 @@ export async function setUserWikiLifetimeTotalsForUser(
         );
     }
 
-    const subredditName =
-        (await reddit.getCurrentSubreddit()).name;
+    const subredditName = (await reddit.getCurrentSubreddit()).name;
     const settingPointName = await settings.get("pointName");
     const pointName = (settingPointName as string) ?? "point";
     const plural = pluralize(pointName);
@@ -1496,7 +1479,6 @@ export async function setUserWikiLifetimeTotalsForUser(
 }
 
 export async function updateUserWiki(
-    context: TriggerContext,
     awarder: string,
     recipient: string,
     data: {
@@ -1510,9 +1492,7 @@ export async function updateUserWiki(
 
     const settingPointName = await settings.get("pointName");
     const pointName = (settingPointName as string) ?? "point";
-    const subredditName =
-        
-        (await reddit.getCurrentSubreddit()).name;
+    const subredditName = (await reddit.getCurrentSubreddit()).name;
 
     const plural = pluralize(pointName);
     const capPoint = escapeMarkdownText(capitalize(pointName));
@@ -1523,7 +1503,6 @@ export async function updateUserWiki(
     // Write the wiki first. The wiki is the authoritative history, so Redis is
     // rebuilt from the actual persisted Given rows after both pages are updated.
     await appendUserWikiEntry(
-        context,
         subredditName,
         awarder,
         "given",
@@ -1540,7 +1519,6 @@ export async function updateUserWiki(
     );
 
     await appendUserWikiEntry(
-        context,
         subredditName,
         recipient,
         "received",
@@ -1561,7 +1539,6 @@ export async function updateUserWiki(
     // This also imports legacy/migrated wiki rows instead of only saving the new
     // award that happened during this invocation.
     const redisHistoryCount = await replaceUserHistoryRedisFromWiki(
-        context,
         subredditName,
         awarder
     );
@@ -1709,7 +1686,7 @@ export function normalizeLeaderboardUsernameForLookup(value: string): string {
  * returns a clean top-N leaderboard.
  */
 export async function getCanonicalLeaderboardScores(
-    _: JobContext,
+    _: unknown,
     leaderboardSize: number
 ): Promise<CanonicalLeaderboardEntry[]> {
     // Fetch extra rows because multiple Redis members can represent one account.
@@ -1792,9 +1769,7 @@ export async function getCanonicalLeaderboardScores(
         for (const candidate of lookupCandidates) {
             try {
                 // Pass the raw username here. URL encoding belongs only in links.
-                const redditUser = await reddit.getUserByUsername(
-                    candidate
-                );
+                const redditUser = await reddit.getUserByUsername(candidate);
 
                 if (redditUser?.username) {
                     canonicalUsername = redditUser.username;
@@ -1889,8 +1864,8 @@ export async function getCanonicalLeaderboardScores(
 }
 
 export async function updateLeaderboard(
-    event: ScheduledJobEvent<JSONObject | undefined>,
-    context: JobContext
+    _: unknown,
+    event: ScheduledJobEvent<JsonObject | undefined>
 ) {
     const settingPointName = await settings.get<string>("pointName");
     // const leaderboardMode = await settings.get<string>("leaderboardMode");
@@ -1918,7 +1893,7 @@ export async function updateLeaderboard(
     const leaderboardSize =
         (settingLeaderboardSize as number | undefined) ?? 50;
 
-    const subredditName = await getSubredditName(context);
+    const subredditName = await getSubredditName();
     const pointName = (settingPointName as string) ?? "point";
     const helpPage = settingPointSystemHelpPage as string | undefined;
 
@@ -1931,7 +1906,7 @@ export async function updateLeaderboard(
     const wikiPage = await safeWiki.getWikiPage(subredditName, wikiPageName);
     if (wikiPage) {
         await replaceLeaderboardRedisFromExistingWikiOnce(
-            context,
+            event,
             subredditName,
             wikiPageName,
             wikiPage
@@ -1942,7 +1917,7 @@ export async function updateLeaderboard(
     // Resolve stored members through Reddit so escaped/encoded/specially-cased
     // usernames are repaired before the leaderboard is rendered.
     const highScores = await getCanonicalLeaderboardScores(
-        context,
+        event,
         leaderboardSize
     );
 
@@ -2072,10 +2047,7 @@ export function modInfoTemplate(subredditName: string): string {
     );
 }
 
-export async function modInfoJob(
-    _: ScheduledJobEvent<JSONObject | undefined>,
-    _context: JobContext
-) {
+export async function modInfoJob(_: unknown) {
     const subreddit = await reddit.getCurrentSubreddit();
     const subredditName = subreddit.name;
     const safeWiki = new SafeWikiClient(reddit);

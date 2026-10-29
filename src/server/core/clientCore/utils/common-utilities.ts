@@ -1,10 +1,9 @@
 import { reddit, redis, settings } from "@devvit/web/server";
-import type { TriggerContext } from "../../compat";
-import { logger } from "../../logger";
-import { CommentSubmit, CommentUpdate, PostSubmit } from "@devvit/protos";
+import { logger } from "./logger";
+import { OnCommentCreateRequest, OnCommentUpdateRequest } from "@devvit/web/shared";
 
 export function formatMessage(
-    event: CommentSubmit | CommentUpdate | PostSubmit,
+    event: OnCommentCreateRequest | OnCommentUpdateRequest,
     template: string,
     placeholders: Record<string, string>
 ): string {
@@ -31,10 +30,9 @@ export function formatMessage(
 }
 
 export async function triggerUsed(
-    context: TriggerContext,
     commentBody: string
 ) {
-    const allTriggers = await getTriggers(context);
+    const allTriggers = await getTriggers();
 
     const triggerUsed = allTriggers.find((t) => commentBody.includes(t));
 
@@ -50,7 +48,7 @@ export async function triggerUsed(
     return usedCommand;
 }
 
-export async function modCommandValue(_context: TriggerContext) {
+export async function modCommandValue() {
     const settingModAwardCommand = await settings.get("modAwardCommand");
     const modCommand = ((settingModAwardCommand as string) ?? "")
         .toLowerCase()
@@ -58,7 +56,7 @@ export async function modCommandValue(_context: TriggerContext) {
     return modCommand;
 }
 
-export async function userCommandValues(_context: TriggerContext) {
+export async function userCommandValues() {
     const settingPointTriggerWords = await settings.get("pointTriggerWords");
     const userCommands = (
         (settingPointTriggerWords as string) ?? "!award\n.award"
@@ -78,7 +76,7 @@ export function escapeForRegex(string: string) {
     return string.replace(regex, (match) => `${match}`);
 }
 
-export async function getTriggers(_context: TriggerContext) {
+export async function getTriggers() {
     const settingModAwardCommand = await settings.get("modAwardCommand");
     const settingPointTriggerWords = await settings.get("pointTriggerWords");
     const userCommands = (
@@ -150,12 +148,11 @@ export function getIgnoredContextType(
 }
 
 export async function checkIgnoredContext(
-    context: TriggerContext,
-    event: CommentSubmit | CommentUpdate,
+    event: OnCommentCreateRequest | OnCommentUpdateRequest,
     comment: string
 ) {
     // Check ignored contexts for each trigger in comment
-    for (const trigger of await getTriggers(context)) {
+    for (const trigger of await getTriggers()) {
         if (!new RegExp(`${trigger}`, "i").test(comment)) continue;
 
         if (!event.author) return;

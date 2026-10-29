@@ -6,7 +6,7 @@ import {
     CLEANUP_JOB_CRON,
     UPDATE_LEADERBOARD_JOB,
 } from "./constants";
-import { POINTS_STORE_KEY } from "./triggers/utils/redisKeys";
+import { POINTS_STORE_KEY } from "../core/clientCore/utils/redisKeys";
 
 const CLEANUP_LOG_KEY = "cleanupStore";
 const DAYS_BETWEEN_CHECKS = 28;

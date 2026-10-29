@@ -1,5 +1,4 @@
 import chalk from "chalk";
-import type { TriggerContext } from "./compat";
 import { reddit } from "@devvit/web/server";
 
 export enum LogLevel {
@@ -37,7 +36,6 @@ function colorize(level: LogLevel, message: string): string {
 }
 
 async function sendModPM(
-    _: TriggerContext,
     message: string
 ): Promise<void> {
     try {
@@ -91,13 +89,13 @@ export const logger = {
     error: async (
         message: string,
         placeholders?: Record<string, any>,
-        triggerContext?: TriggerContext
+        triggerContext?: any
     ) => {
         const msg = formatMessage(LogLevel.ERROR, message, placeholders);
         const colored = colorize(LogLevel.ERROR, msg);
         logToConsole(LogLevel.ERROR, colored);
         if (triggerContext) {
-            await sendModPM(triggerContext, msg);
+            await sendModPM(msg);
         }
     },
 };

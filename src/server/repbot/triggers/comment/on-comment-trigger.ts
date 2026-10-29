@@ -1,32 +1,30 @@
-import { reddit, redis, scheduler, settings } from "@devvit/web/server";
-import type { CommentSubmit, CommentUpdate } from "@devvit/protos";
-import type { TriggerContext, Comment, User } from "../../compat";
+import { context, reddit, redis, scheduler, settings } from "@devvit/web/server";
 import {
     _replyToUser,
     CommentTriggerContext,
     getParentComment,
 } from "./comment-trigger-context";
-import { logger } from "../../logger";
+import { logger } from "../../../core/clientCore/utils/logger";
 import {
     commentContainsUserCommand,
     executeUserCommand,
-} from "./user-specific-logic/normal-user-action";
+} from "../../../core/clientCore/user-specific-logic/normal-user-action";
 import {
     commentContainsModCommand,
     executeModCommand,
-} from "./user-specific-logic/mod-user-action";
+} from "../../../core/clientCore/user-specific-logic/mod-user-action";
 import {
     formatMessage,
     getIgnoredContextType,
     getTriggers,
     modCommandValue,
     ScoreResult,
-} from "../utils/common-utilities";
+} from "../../../core/clientCore/utils/common-utilities";
 import { setCleanupForUsers } from "../../cleanupTasks";
-import { getCurrentScore } from "../utils/user-utilities";
-import { POINTS_STORE_KEY } from "../utils/redisKeys";
+import { getCurrentScore } from "../../../core/clientCore/utils/user-utilities";
+import { POINTS_STORE_KEY } from "../../../core/clientCore/utils/redisKeys";
 import { UPDATE_LEADERBOARD_JOB } from "../../constants";
-import { getSubredditName, SafeWikiClient } from "../../utility";
+import { getSubredditName, SafeWikiClient } from "../../../core/clientCore/utils/utility";
 import {
     capitalize,
     discoverLatestPage,
@@ -35,6 +33,7 @@ import {
     getStoredLatestPage,
 } from "../../leaderboard";
 import pluralize from "pluralize";
+import { OnCommentCreateRequest, OnCommentUpdateRequest, T1 } from "@devvit/web/shared";
 
 export function getAwardsGivenFromWiki(
     wikiContent: string,
@@ -69,7 +68,7 @@ export function getAwardsGivenFromWiki(
 }
 
 async function setFlairForUser(
-    context: TriggerContext,
+     
     awarder: string,
     awardee: string
 ): Promise<void> {
@@ -88,19 +87,19 @@ async function setFlairForUser(
 
     const settingPointName = await settings.get<string>("pointName");
     const pointName = settingPointName ?? "point";
-    const subredditName = await getSubredditName(context);
+    const subredditName = await getSubredditName();
     const safeWiki = new SafeWikiClient(reddit);
 
-    const baseCssClass = settingBaseCSSClass || undefined;
+    const baseCssClass = settingBaseCSSClass ?? undefined;
 
-    const baseFlairTemplate = settingBaseFlairTemplate || undefined;
+    const baseFlairTemplate = settingBaseFlairTemplate ?? undefined;
 
-    const superAwarderCSSClass = settingSuperAwarderCSSClass || undefined;
+    const superAwarderCSSClass = settingSuperAwarderCSSClass ?? undefined;
 
     // Use the base template until a dedicated Super Awarder template setting exists.
     const superAwarderFlairTemplate = await settings.get<string>(
         "superAwarderFlairTemplate"
-    );
+    ) ?? undefined;
 
     const flairFormatting = await settings.get<string>("flairFormatting");
 
@@ -235,9 +234,9 @@ async function setFlairForUser(
 
             // Replace both supported placeholder styles.
             const replacements: Record<string, string> = {
-                "place": placeText,
-                "total": score.toString(),
-                "symbol": pointSymbol,
+                place: placeText,
+                total: score.toString(),
+                symbol: pointSymbol,
             };
 
             if (!flairText) {
@@ -292,7 +291,7 @@ async function setFlairForUser(
 }
 
 export async function setUserScore(
-    context: TriggerContext,
+     
     awardee: string,
     awarder: string,
     newScore: ScoreResult
@@ -403,18 +402,17 @@ export async function setUserScore(
 
     if (!context.subredditName) {
         logger.error(
-            "❌ No subreddit name found in context, cannot set user flair"
+            "❌ No subreddit name found in  cannot set user flair"
         );
         return;
     }
 
     // Set the recipient's flair using values fetched individually from Devvit Web settings.
-    await setFlairForUser(context, awarder, awardee);
+    await setFlairForUser( awarder, awardee);
 }
 
 export async function handleThanksEvent(
-    event: CommentSubmit | CommentUpdate,
-    devvitContext: TriggerContext
+    event: OnCommentCreateRequest | OnCommentUpdateRequest,
 ) {
     if (!event.post || !event.author || !event.comment) {
         logger.warn("❌ Missing required event data", { event });
@@ -427,10 +425,7 @@ export async function handleThanksEvent(
     const commentTriggerContext = new CommentTriggerContext();
     await commentTriggerContext.init(event, devvitContext);
 
-    const parentComment: Comment | undefined = await getParentComment(
-        event,
-        devvitContext
-    );
+    const parentComment: Comment | undefined = await getParentComment(event);
     if (!parentComment) {
         logger.warn("❌ Parent comment not found", {
             commentId: event.comment.id,
@@ -486,7 +481,7 @@ export async function handleThanksEvent(
     let recipient: User | undefined;
 
     try {
-        recipient = await devvitContext.reddit.getUserByUsername(awardee);
+        recipient = await reddit.getUserByUsername(awardee);
     } catch {
         recipient = undefined;
     }
@@ -515,7 +510,7 @@ export async function handleThanksEvent(
     let user: User | undefined;
 
     try {
-        user = await devvitContext.reddit.getUserByUsername(awarder);
+        user = await reddit.getUserByUsername(awarder);
     } catch {
         user = undefined;
     }
@@ -602,7 +597,7 @@ export async function handleThanksEvent(
             //recipient is OP
             let originalPoster: User | undefined;
             try {
-                originalPoster = await devvitContext.reddit.getUserById(
+                originalPoster = await reddit.getUserById(
                     event.post.authorId
                 );
             } catch (err) {
@@ -624,13 +619,13 @@ export async function handleThanksEvent(
 
                 if (notifyMode === "replybycomment") {
                     const postAuthorAwardComment =
-                        await devvitContext.reddit.submitComment({
+                        await reddit.submitComment({
                             id: event.comment.id,
                             text: formattedPostAuthorAwardMessage,
                         });
                     postAuthorAwardComment.distinguish();
                 } else if (notifyMode === "replybypm") {
-                    await devvitContext.reddit.sendPrivateMessage({
+                    await reddit.sendPrivateMessage({
                         to: awarder,
                         subject: `You do not have permission to award ${pointName}s to Post Authors`,
                         text: formattedPostAuthorAwardMessage,
@@ -672,15 +667,15 @@ export async function handleThanksEvent(
             const notify = (settingNotifyOnModAwardFail ?? ["none"])[0];
 
             if (notify === "replybypm") {
-                await devvitContext.reddit.sendPrivateMessage({
+                await reddit.sendPrivateMessage({
                     to: awarder,
                     text: modAwardFailMsg,
                     subject: "Unsuccessful Award",
                 });
             } else if (notify === "replybycomment") {
                 const modAwardFailComment =
-                    await devvitContext.reddit.submitComment({
-                        id: event.comment.id,
+                    await reddit.submitComment({
+                        id: event.comment.id as T1,
                         text: modAwardFailMsg,
                     });
 
@@ -701,8 +696,8 @@ export async function handleThanksEvent(
 }
 
 export async function unflairedPostLogic(
-    event: CommentSubmit | CommentUpdate,
-    context: TriggerContext,
+    event: OnCommentCreateRequest | OnCommentUpdateRequest,
+     
     awarder: string
 ) {
     const settingAllowUnflairedPosts = await settings.get<boolean>(
@@ -787,8 +782,8 @@ export async function unflairedPostLogic(
 }
 
 export async function flairTextNotAllowedLogic(
-    event: CommentSubmit | CommentUpdate,
-    context: TriggerContext,
+    event: OnCommentCreateRequest | OnCommentUpdateRequest,
+     
     awarder: string,
     commentBody: string,
     triggerUsed: string
@@ -899,8 +894,7 @@ export async function flairTextNotAllowedLogic(
 }
 
 export async function selfAwardAttemptLogic(
-    event: CommentSubmit | CommentUpdate,
-    _: TriggerContext,
+    event: OnCommentCreateRequest | OnCommentUpdateRequest,
     awarder: string,
     recipient: string
 ) {
@@ -939,7 +933,7 @@ export async function selfAwardAttemptLogic(
     }
 }
 export async function replyToUser(
-    context: TriggerContext,
+     
     notifyMode: string,
     recipient: string,
     message: string,
@@ -1011,11 +1005,10 @@ export async function replyToUser(
 }
 
 export async function userHasPermission(
-    event: CommentSubmit | CommentUpdate,
+    event: OnCommentCreateRequest | OnCommentUpdateRequest,
     awarderID: string,
     commentTriggerContext: CommentTriggerContext,
-    devvitContext: TriggerContext
-): Promise<boolean> {
+    ): Promise<boolean> {
     const settingPointName = await settings.get<string>("pointName");
 
     if (!event.post || !event.comment) return false;
@@ -1123,8 +1116,7 @@ export async function userHasPermission(
 }
 
 export async function recipientIsBot(
-    event: CommentSubmit | CommentUpdate,
-    devvitContext: TriggerContext,
+    event: OnCommentCreateRequest | OnCommentUpdateRequest,
     awarder: string,
     recipient: string
 ) {
@@ -1156,7 +1148,7 @@ export async function recipientIsBot(
             { name: pointName, awardee: recipient }
         );
 
-        const awardGivenToBotMessage = await devvitContext.reddit.submitComment(
+        const awardGivenToBotMessage = await reddit.submitComment(
             {
                 id: event.comment.id,
                 text: botAwardMessage,
@@ -1169,8 +1161,7 @@ export async function recipientIsBot(
 }
 
 export async function handleIgnoredContext(
-    event: CommentSubmit | CommentUpdate,
-    _: TriggerContext,
+    event: OnCommentCreateRequest | OnCommentUpdateRequest,
     trigger: string
 ): Promise<void> {
     if (!event.comment || !event.author || !event.subreddit) return;
@@ -1221,8 +1212,7 @@ export async function handleIgnoredContext(
 }
 
 export async function ignoredContextNeedsHandling(
-    event: CommentSubmit | CommentUpdate,
-    _: TriggerContext,
+    event: OnCommentCreateRequest | OnCommentUpdateRequest,
     trigger: string
 ): Promise<boolean> {
     if (!event.comment || !event.author || !event.subreddit) return false;

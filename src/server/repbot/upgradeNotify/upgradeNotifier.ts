@@ -1,8 +1,7 @@
-import { reddit, redis, settings } from "@devvit/web/server";
-import type { JobContext, WikiPage } from "../compat";
+import { context, Context, reddit, redis, settings, WikiPage } from "@devvit/web/server";
 import { lt } from "semver";
 import json2md from "json2md";
-import { logger } from "../logger";
+import { logger } from "../../core/clientCore/utils/logger";
 
 interface AppUpdate {
     appname: string;
@@ -15,7 +14,7 @@ const UPDATE_WIKI_PAGE = "upgrade-notifier";
 
 //todo: Figure out how to run this to test if it works correctly
 export async function getNewVersionInfo(
-    context: JobContext
+    context: Context
 ): Promise<AppUpdate | undefined> {
     let wikiPage: WikiPage;
     try {
@@ -86,7 +85,7 @@ export async function getNewVersionInfo(
     return update;
 }
 
-export async function checkForUpdates(_: unknown, context: JobContext) {
+export async function checkForUpdates(_: unknown) {
     try {
         const notificationsEnabled = await settings.get("upgradeNotifier");
 

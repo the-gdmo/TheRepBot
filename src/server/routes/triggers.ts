@@ -1,7 +1,5 @@
 import { Hono } from "hono";
-import { createCompatContext } from "../repbot/compat";
-import { handleConfirmReply } from "../repbot/utility";
-import { handleThanksEvent } from "../repbot/triggers/comment/on-comment-trigger";
+import { handleConfirmReply } from "../core/clientCore/utils/utility";
 import { onPostSubmit } from "../repbot/triggers/post-logic/postSubmitEvent";
 import { cleanupDeletedAccounts } from "../repbot/cleanupTasks";
 import { modInfoJob, updateLeaderboard } from "../repbot/leaderboard";
@@ -9,16 +7,17 @@ import { modDigestJob } from "../repbot/modDigest";
 import { addPostOfTheMonthFlair } from "../repbot/postOfTheMonth";
 import { checkForUpdates } from "../repbot/upgradeNotify/upgradeNotifier";
 import { onAppInstall, onAppUpgrade } from "../repbot/installEvents";
+import { onCommentCreate } from "../core/triggers/onCommentCreate";
+import { onCommentUpdate } from "../core/triggers/onCommentUpdate";
 
 export const triggers = new Hono();
 async function run(
     c: any,
-    handler: (event: any, context: any) => Promise<any>,
+    handler: (event: any) => Promise<any>,
     eventOverride?: any
 ) {
     const data = await c.req.json().catch(() => ({}));
-    const ctx = createCompatContext(data);
-    await handler(eventOverride ?? data, ctx);
+    await handler(eventOverride ?? data);
     return c.json({ status: "ok" });
 }
 triggers.post("/on-app-install", async (c) => {
@@ -29,22 +28,29 @@ triggers.post("/on-app-install", async (c) => {
     return c.json({ status: "ok" });
 });
 triggers.post("/on-app-upgrade", (c) => run(c, onAppUpgrade));
-triggers.post("/on-comment-submit", (c) => run(c, handleThanksEvent));
 triggers.post("/on-comment-update", async (c) => {
     const data = await c.req.json().catch(() => ({}));
-    const context = createCompatContext(data);
-    await handleThanksEvent(data, context);
+    await onCommentCreate(data);
+    return c.json({ status: "ok" });
+});
+triggers.post("/on-comment-update", async (c) => {
+    const data = await c.req.json().catch(() => ({}));
+    await onCommentUpdate(data);
     await handleConfirmReply(data);
     return c.json({ status: "ok" });
 });
-triggers.post("/on-post-submit", (c) => run(c, onPostSubmit));
+triggers.post("/on-comment-update", async (c) => {
+    const data = await c.req.json().catch(() => ({}));
+    await onPostSubmit(data);
+    await handleConfirmReply(data);
+    return c.json({ status: "ok" });
+});
 
 export const jobs = new Hono();
 const job =
-    (handler: (event: any, context: any) => Promise<any>) => async (c: any) => {
+    (handler: (event: any) => Promise<any>) => async (c: any) => {
         const request = await c.req.json().catch(() => ({}));
-        const ctx = createCompatContext(request);
-        await handler(request.data ?? request, ctx);
+        await handler(request.data ?? request);
         return c.json({ status: "ok" });
     };
 jobs.post("/upgrade-notifier", job(checkForUpdates));

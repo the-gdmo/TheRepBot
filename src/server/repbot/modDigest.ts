@@ -1,23 +1,20 @@
-import { reddit, redis, ScheduledJobEvent, settings } from "@devvit/web/server";
-import type {
-    JobContext,
-    JSONObject,
+import {
+    Context,
     ModMailService,
-    TriggerContext,
-} from "./compat";
-import { logger } from "./logger";
+    reddit,
+    redis,
+    settings,
+} from "@devvit/web/server";
+import { logger } from "../core/clientCore/utils/logger";
 import {
     DIGEST_PENDING_KEY,
     DIGEST_STATS_KEY,
-} from "./triggers/utils/digest-stats";
+} from "../core/clientCore/utils/digest-stats";
 /**
  * The only digest values are the current reporting window's award and post
  * counters. Reputation balances, flair, wiki history and leaderboard stay put.
  */
-export async function modDigestJob(
-    _: ScheduledJobEvent<JSONObject | undefined>,
-    context: JobContext
-) {
+export async function modDigestJob(_: unknown, context: Context) {
     const subredditName = context.subredditName;
     if (!subredditName) {
         logger.warn("Mod digest: no subredditName; aborting");
@@ -269,7 +266,7 @@ export async function modDigestJob(
                 subreddit: subredditName,
                 error: error instanceof Error ? error.message : String(error),
             },
-            context as TriggerContext
+            context
         );
     } finally {
         if (ownsLock) {

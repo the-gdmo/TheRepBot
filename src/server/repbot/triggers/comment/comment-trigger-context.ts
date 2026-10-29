@@ -1,13 +1,12 @@
-import { reddit, redis, settings } from "@devvit/web/server";
-import type { CommentSubmit, CommentUpdate } from "@devvit/protos";
-import type { Comment, TriggerContext } from "../../compat";
+import { Comment , reddit, redis, settings } from "@devvit/web/server";
 import {
     getUserCanAward,
     getUserIsSuperuser,
     isModerator,
-} from "../utils/user-utilities";
-import { logger } from "../../logger";
-import { formatMessage } from "../utils/common-utilities";
+} from "../../../core/clientCore/utils/user-utilities";
+import { logger } from "../../../core/clientCore/utils/logger";
+import { formatMessage } from "../../../core/clientCore/utils/common-utilities";
+import { OnCommentCreateRequest, OnCommentUpdateRequest, T1 } from "@devvit/web/shared";
 
 const AUTO_SUPERUSER_TEMPLATE_DEFAULT =
     "Hello {awardee},\n\nNow that you have reached {threshold} points you can now award points yourself, even if normal users do not have permission to. Please use the command `{command}` if you'd like to do this.";
@@ -40,31 +39,28 @@ export class CommentTriggerContext {
     }
 
     public async init(
-        event: CommentSubmit | CommentUpdate,
-        context: TriggerContext
+        event: OnCommentCreateRequest | OnCommentUpdateRequest,
     ) {
         if (!event.author || !event.subreddit) return;
 
         this._awarder = event.author.name;
         this._subredditName = event.subreddit.name;
         this._isMod = await isModerator(
-            context,
             this._subredditName,
             this._awarder
         );
-        this._isSuperUser = await getUserIsSuperuser(context, this._awarder);
-        this._userCanAward = await getUserCanAward(context, this._awarder);
+        this._isSuperUser = await getUserIsSuperuser(this._awarder);
+        this._userCanAward = await getUserCanAward(this._awarder);
     }
 }
 
 export async function userBecomesSuperUser(
-    event: CommentSubmit | CommentUpdate,
+    event: OnCommentCreateRequest | OnCommentUpdateRequest,
     userScore: number,
-    context: TriggerContext
 ) {
     if (!event.comment || !event.author) return;
 
-    const parentComment = await getParentComment(event, context);
+    const parentComment = await getParentComment(event);
     if (!parentComment) return;
 
     const recipient = parentComment.authorName;
@@ -120,7 +116,6 @@ export async function userBecomesSuperUser(
 
     try {
         await _replyToUser(
-            context,
             recipientUser.username,
             autoSuperUserMessage,
             parentComment.id,
@@ -137,7 +132,6 @@ export async function userBecomesSuperUser(
 }
 
 export async function _replyToUser(
-    _: TriggerContext,
     toUserName: string,
     messageBody: string,
     commentId: string,
@@ -194,13 +188,12 @@ export async function _replyToUser(
 }
 
 export async function getParentComment(
-    event: CommentSubmit | CommentUpdate,
-    _: TriggerContext
+    event: OnCommentCreateRequest | OnCommentUpdateRequest,
 ): Promise<Comment | undefined> {
     if (!event.comment) return undefined;
 
     try {
-        return await reddit.getCommentById(event.comment.parentId as `t1_${string}`);
+        return await reddit.getCommentById(event.comment.parentId as T1);
     } catch (err) {
         logger.debug("Could not retrieve parent comment", {
             commentId: event.comment.id,

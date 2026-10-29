@@ -1,19 +1,19 @@
 import { reddit, redis, settings } from "@devvit/web/server";
 import type { PostSubmit } from "@devvit/protos";
 import type { TriggerContext } from "../../compat";
-import { logger } from "../../logger";
+import { logger } from "../../../core/clientCore/utils/logger";
 import {
     getAwardsRequiredKey,
     getLastValidPostKey,
     getLastValidPostTitleKey,
     getRestrictedKey,
     restrictedKeyExists,
-} from "../utils/redisKeys";
-import { isModerator } from "../utils/user-utilities";
-import { formatMessage } from "../utils/common-utilities";
-import { recordDigestPost } from "../utils/digest-stats";
+} from "../../../core/clientCore/utils/redisKeys";
+import { isModerator } from "../../../core/clientCore/utils/user-utilities";
+import { formatMessage } from "../../../core/clientCore/utils/common-utilities";
+import { recordDigestPost } from "../../../core/clientCore/utils/digest-stats";
 
-export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
+export async function onPostSubmit(event: PostSubmit,  ) {
     if (!event.subreddit || !event.author || !event.post) {
         logger.warn("❌ Missing required event data", { event });
         return;
@@ -121,7 +121,7 @@ export async function onPostSubmit(event: PostSubmit, context: TriggerContext) {
     // Moderator exemption
     // ─────────────────────────────────────────────────────────
     const modsExempt = (settingModeratorsExempt as boolean) ?? true;
-    const isMod = await isModerator(context, subredditName, authorName);
+    const isMod = await isModerator( subredditName, authorName);
 
     if (isMod && modsExempt) {
         logger.info(

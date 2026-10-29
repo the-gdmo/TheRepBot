@@ -15,6 +15,8 @@ import {
     handleValidateLeaderboardSize,
     handleValidateLeaderboardName,
 } from "./routes/validators";
+import { onCommentCreate } from "./core/triggers/onCommentCreate";
+import { onCommentUpdate } from "./core/triggers/onCommentUpdate";
 
 const app = new Hono();
 const internal = new Hono();
@@ -22,6 +24,8 @@ internal.route("/menu", menu);
 internal.route("/form", forms);
 internal.route("/triggers", triggers);
 internal.route("/scheduler", jobs);
+app.post("/internal/triggers/on-comment-create", onCommentCreate);
+app.post("/internal/triggers/on-comment-update", onCommentUpdate);
 app.post("/internal/validators/select-field-has-option-chosen", handleSelectFieldHasOptionChosen);
 app.post("/internal/validators/number-field-has-valid-option", handleNumberFieldHasValidOption);
 app.post("/internal/validators/string-or-paragraph-field-contains-text", handleStringOrParagraphFieldContainsText);

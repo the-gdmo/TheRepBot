@@ -1,7 +1,7 @@
-import type { Context, FormOnSubmitEvent, JSONObject, MenuItemOnPressEvent, User } from "./compat";
-import { SafeWikiClient } from "./utility";
-import { logger } from "./logger";
-import { reddit, redis } from "@devvit/web/server";
+import { SafeWikiClient } from "../core/clientCore/utils/utility";
+import { logger } from "../core/clientCore/utils/logger";
+import { Context, reddit, redis } from "@devvit/web/server";
+import { MenuItemRequest } from "@devvit/web/shared";
 
 export const manualSetPointsForm = { name: "manualSetPointsForm", title: "Set user score manually" };
 export const manualSetUserWikiTotalsForm = { name: "manualSetUserWikiTotalsForm", title: "Set user given/received totals" };
@@ -14,7 +14,7 @@ export const transferWikiForm = { name: "transferWikiForm", title: "Transfer wik
 ] };
 
 export async function handleCommentPin(
-    event: MenuItemOnPressEvent,
+    event: MenuItemRequest,
     context: Context
 ): Promise<void> {
     if (event.location !== "comment" || !event.targetId) {
@@ -99,7 +99,7 @@ export async function handleFlairToggle(
 
         let currentValue = "";
 
-        const username = await getAuthorFromTarget(context, event.targetId);
+        const username = await getAuthorFromTarget( event.targetId);
         const key = `flairToggle:${username}`;
         const exists = await redis.exists(key);
 
@@ -149,7 +149,7 @@ export async function checkFlairToggle(
         return;
     }
 
-    const username = await getAuthorFromTarget(context, event.targetId);
+    const username = await getAuthorFromTarget( event.targetId);
 
     if (!username) {
         context.ui.showToast("Could not resolve user");
@@ -171,7 +171,6 @@ export async function checkFlairToggle(
 }
 
 export async function getAuthorFromTarget(
-    _: Context,
     targetId: string
 ): Promise<string | null> {
     if (!targetId) return null;
@@ -234,7 +233,7 @@ export async function manualSetFlairManagementFormHandler(
         return;
     }
 
-    const username = await getAuthorFromTarget(context, targetId);
+    const username = await getAuthorFromTarget( targetId);
     const key = `flairToggle:${username}`;
 
     if (!username) {

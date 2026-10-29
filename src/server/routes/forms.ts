@@ -8,7 +8,7 @@ import {
     manualSetPointsFormHandler,
     manualSetUserWikiTotalsFormHandler,
     manualPostRestrictionRemovalHandler,
-} from "../repbot/triggers/utils/mod-utilities";
+} from "../core/clientCore/utils/mod-utilities";
 import {
     manualSetFlairManagementFormHandler,
     manualSetFlairManagementForUserFormHandler,
@@ -16,7 +16,7 @@ import {
 } from "../repbot/moderation";
 import type { UiResponse } from "@devvit/web/shared";
 import { reddit, redis, settings } from "@devvit/web/server";
-import { POINTS_STORE_KEY } from "../repbot/triggers/utils/redisKeys";
+import { POINTS_STORE_KEY } from "../core/clientCore/utils/redisKeys";
 
 type CreatePostFormValues = {
     postTitle?: string;
@@ -173,7 +173,7 @@ function formatMessage(
     return result;
 }
 
-const formHandlers: Record<string, (event: any, context: any) => Promise<any>> =
+const formHandlers: Record<string, (event: any : any) => Promise<any>> =
     {
         "/manualSetPointsForm": manualSetPointsFormHandler,
         "/manualSetUserWikiTotalsForm": manualSetUserWikiTotalsFormHandler,

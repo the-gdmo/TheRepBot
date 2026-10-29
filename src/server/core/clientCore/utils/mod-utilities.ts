@@ -1,13 +1,5 @@
-import { reddit, redis, scheduler, settings } from "@devvit/web/server";
-import type {
-    Context,
-    FormOnSubmitEvent,
-    JSONObject,
-    MenuItemOnPressEvent,
-    TriggerContext,
-    User,
-} from "../../compat";
-import { logger } from "../../logger";
+import { Context, reddit, redis, scheduler, settings } from "@devvit/web/server";
+import { logger } from "./logger";
 import {
     getAwardsRequiredKey,
     requiredKeyExists,
@@ -17,18 +9,19 @@ import {
     manualPostRestrictionRemovalForm,
     manualSetPointsForm,
     manualSetUserWikiTotalsForm,
-} from "../../moderation";
+} from "../../../repbot/moderation";
 import { getCurrentScore } from "./user-utilities";
-import { setUserScore } from "../comment/on-comment-trigger";
+import { setUserScore } from "../../../repbot/triggers/comment/on-comment-trigger";
 import { ScoreResult } from "./common-utilities";
 import {
     getUserWikiLifetimeTotalsForUser,
     setUserWikiLifetimeTotalsForUser,
-} from "../../leaderboard";
-import { UPDATE_LEADERBOARD_JOB } from "../../constants";
+} from "../../../repbot/leaderboard";
+import { UPDATE_LEADERBOARD_JOB } from "../../../repbot/constants";
+import { MenuItemRequest } from "@devvit/web/shared";
 
 export async function handleUserRestrictionCheck(
-    event: MenuItemOnPressEvent,
+    event: MenuItemRequest,
     context: Context
 ) {
     let contentType: "post" | "comment" | undefined;
@@ -269,7 +262,7 @@ export async function handleManualUserWikiTotalsSetting(
     context: Context
 ) {
     try {
-        const targetAuthor = await resolveMenuTargetUsername(event, context);
+        const targetAuthor = await resolveMenuTargetUsername(event );
         if (!targetAuthor || targetAuthor === "[deleted]") {
             context.ui.showToast("Unable to determine the target user");
             return;
@@ -411,7 +404,7 @@ export async function handleManualPointSetting(
     event: MenuItemOnPressEvent,
     context: Context
 ) {
-    const targetAuthor = await resolveMenuTargetUsername(event, context);
+    const targetAuthor = await resolveMenuTargetUsername();
 
     if (!targetAuthor || targetAuthor === "[deleted]") {
         context.ui.showToast("Unable to determine the target user");
@@ -430,7 +423,7 @@ export async function handleManualPointSetting(
         return;
     }
 
-    const currentScore = await getCurrentScore(user, context);
+    const currentScore = await getCurrentScore(user );
 
     if (!currentScore) {
         context.ui.showToast("Unable to retrieve current score for user");
@@ -524,7 +517,7 @@ export async function manualSetPointsFormHandler(
         flairShouldBeManaged: recipientFlairShouldBeManaged,
     };
 
-    setUserScore(context, awardee.username, awarder.username, newScore);
+    setUserScore( awardee.username, awarder.username, newScore);
 
     // Trigger leaderboard update
     await scheduler.runJob({
@@ -637,8 +630,8 @@ export async function manualPostRestrictionRemovalHandler(
 
     // ──────────────── Check Restriction State ────────────────
     const authorName = user.username;
-    const restrictedFlagExists = await restrictedKeyExists(context, authorName);
-    const requiredFlagExists = await requiredKeyExists(context, authorName);
+    const restrictedFlagExists = await restrictedKeyExists( authorName);
+    const requiredFlagExists = await requiredKeyExists( authorName);
 
     const isRestricted = restrictedFlagExists || requiredFlagExists;
     if (!isRestricted) {
@@ -652,10 +645,10 @@ export async function manualPostRestrictionRemovalHandler(
     }
 
     if (restrictedFlagExists > 0) {
-        await updateAuthorRedisManualRestrictionRemoval(context, authorName);
+        await updateAuthorRedisManualRestrictionRemoval( authorName);
     }
     if (requiredFlagExists) {
-        await updateAuthorRedisManualRequirementRemoval(context, authorName);
+        await updateAuthorRedisManualRequirementRemoval( authorName);
     }
     // ──────────────── Remove All Restriction Data ────────────────
     await Promise.all([
@@ -685,7 +678,6 @@ export async function manualPostRestrictionRemovalHandler(
 }
 
 export async function updateAuthorRedisManualRestrictionRemoval(
-    _: TriggerContext,
     username: string
 ) {
     const restrictedKey = `restrictedUser:${username}`;
@@ -711,7 +703,6 @@ export async function updateAuthorRedisManualRestrictionRemoval(
 }
 
 export async function updateAuthorRedisManualRequirementRemoval(
-    _: TriggerContext,
     username: string
 ) {
     const requiredKey = `awardsRequired:${username}`;

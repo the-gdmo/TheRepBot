@@ -1,5 +1,4 @@
 import { redis } from "@devvit/web/server";
-import type { TriggerContext } from "../../compat";
 
 /**
  * The hash contains ALL digest metrics for the current reporting window:
@@ -15,7 +14,6 @@ export const DIGEST_STATS_KEY = "repbot:modDigest:stats";
 export const DIGEST_PENDING_KEY = `${DIGEST_STATS_KEY}:pending`;
 
 export async function recordDigestPointAward(
-    _: TriggerContext,
     awarder: string,
     awarderIsModerator: boolean
 ): Promise<void> {
@@ -26,6 +24,6 @@ export async function recordDigestPointAward(
     await redis.hIncrBy(DIGEST_STATS_KEY, field, 1);
 }
 
-export async function recordDigestPost(_: TriggerContext): Promise<void> {
+export async function recordDigestPost(): Promise<void> {
     await redis.hIncrBy(DIGEST_STATS_KEY, "posts", 1);
 }

@@ -2,7 +2,7 @@ import { populateCleanupLogAndScheduleCleanup } from "./cleanupTasks";
 import type { Context } from "hono";
 import type { TriggerResponse } from "@devvit/web/shared";
 import { redis, scheduler } from "@devvit/web/server";
-import { logger } from "./logger";
+import { logger } from "../core/clientCore/utils/logger";
 // import { createCompatContext } from "./compat";
 
 function jsonResponse(
@@ -78,7 +78,7 @@ export const onAppUpgrade = async (_c: Context): Promise<Response> => {
             });
         }
 
-        // IMPORTANT: supply the compatibility context, which includes redis.
+        // IMPORTANT: supply the compatibility  which includes redis.
         // const compatContext = createCompatContext();
         await populateCleanupLogAndScheduleCleanup();
 

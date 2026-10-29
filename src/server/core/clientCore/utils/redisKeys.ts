@@ -1,7 +1,6 @@
 import type { CommentCreate, CommentUpdate } from "@devvit/protos";
-import type { Comment, TriggerContext, User } from "../../compat";
 import { getTriggers } from "./common-utilities";
-import { reddit, redis } from "@devvit/web/server";
+import { reddit, redis, User } from "@devvit/web/server";
 export { POINTS_STORE_KEY } from "../../../../shared/constants";
 
 //------------------------
@@ -15,14 +14,12 @@ export async function getLastValidPostTitleKey(
 }
 export async function deleteLastValidPostTitle(
     userObj: User | undefined,
-    _: TriggerContext
 ) {
     const lastValidPostTitle = await getLastValidPostTitleKey(userObj);
     await redis.del(lastValidPostTitle);
 }
 export async function setLastValidPostTitle(
     userObj: User | undefined,
-    _: TriggerContext,
     value: string
 ) {
     const lastValidPostTitle = await getLastValidPostTitleKey(userObj);
@@ -33,7 +30,6 @@ export async function setLastValidPostTitle(
 // Restricted User
 //------------------------
 export async function restrictedKeyExists(
-    _: TriggerContext,
     userToCheck: string
 ): Promise<number> {
     const restrictedKey = `restrictedUser:${userToCheck}`;
@@ -50,14 +46,12 @@ export async function getRestrictedKey(
 }
 export async function deleteRestrictedKey(
     userObj: User | undefined,
-    _: TriggerContext
 ) {
     const restrictedKey = await getRestrictedKey(userObj);
     await redis.del(restrictedKey);
 }
 export async function setRestrictedKey(
     userObj: User | undefined,
-    _: TriggerContext,
     value: string
 ) {
     const restrictedKey = await getRestrictedKey(userObj);
@@ -68,7 +62,6 @@ export async function setRestrictedKey(
 // Awards Required
 //------------------------
 export async function requiredKeyExists(
-    _: TriggerContext,
     userToCheck: string
 ): Promise<number> {
     const requiredKey = `awardsRequired:${userToCheck}`;
@@ -83,7 +76,6 @@ export async function getAwardsRequiredKey(
 }
 export async function deleteAwardsRequiredKey(
     userObj: User | undefined,
-    _: TriggerContext
 ) {
     const lastValidPostTitle = await getAwardsRequiredKey(userObj);
     await redis.del(lastValidPostTitle);
@@ -91,7 +83,6 @@ export async function deleteAwardsRequiredKey(
 
 export async function setAwardsRequiredKey(
     userObj: User | undefined,
-    _: TriggerContext,
     value: string
 ) {
     const awardsRequired = await getAwardsRequiredKey(userObj);
@@ -109,14 +100,12 @@ export async function getLastValidPostKey(
 }
 export async function deleteLastValidPost(
     userObj: User | undefined,
-    _: TriggerContext
 ) {
     const lastValidPost = await getLastValidPostKey(userObj);
     await redis.del(lastValidPost);
 }
 export async function setLastValidPost(
     userObj: User | undefined,
-    _: TriggerContext,
     value: string
 ) {
     const lastValidPost = await getLastValidPostKey(userObj);
@@ -127,7 +116,6 @@ export async function setLastValidPost(
 // Flair Setting Toggle
 //------------------------
 export async function flairToggleKeyExists(
-    _: TriggerContext,
     userObj: User | undefined
 ): Promise<number | undefined> {
     if (!userObj) return;
@@ -142,14 +130,12 @@ export async function getFlairToggleKey(
 }
 export async function deleteFlairToggleKey(
     userObj: User | undefined,
-    _: TriggerContext
 ) {
     const flairToggleKey = await getFlairToggleKey(userObj);
     await redis.del(flairToggleKey);
 }
 export async function setFlairToggleKey(
     userObj: User | undefined,
-    _: TriggerContext,
     value: string
 ) {
     const flairToggleKey = await getFlairToggleKey(userObj);
@@ -161,26 +147,26 @@ export async function setFlairToggleKey(
 //------------------------
 export async function setAltDupKey(
     event: CommentCreate | CommentUpdate,
-    context: TriggerContext,
+     
     value: string
 ): Promise<string> {
-    const altDupKey = await getAltDupKey(event, context);
+    const altDupKey = await getAltDupKey(event );
 
     return await redis.set(altDupKey, value);
 }
 
 export async function deleteAltDupKey(
     event: CommentCreate | CommentUpdate,
-    context: TriggerContext
+     
 ) {
-    const altDupKey = await getAltDupKey(event, context);
+    const altDupKey = await getAltDupKey(event );
 
     return await redis.del(altDupKey);
 }
 
 export async function getAltDupKey(
     event: CommentCreate | CommentUpdate,
-    context: TriggerContext
+     
 ): Promise<string> {
     if (!event.post || !event.comment || !event.subreddit) return "";
     const commentBodyRaw = event.comment.body ?? "";
@@ -204,35 +190,31 @@ export async function getAltDupKey(
 //------------------------
 export async function modDupKeyExists(
     event: CommentCreate | CommentUpdate,
-    context: TriggerContext
 ): Promise<number> {
-    const modDupKey = await getModDupKey(event, context);
+    const modDupKey = await getModDupKey(event);
 
     return await redis.exists(modDupKey);
 }
 
 export async function deleteModDupKey(
     event: CommentCreate | CommentUpdate,
-    context: TriggerContext
 ) {
-    const modDupKey = await getModDupKey(event, context);
+    const modDupKey = await getModDupKey(event);
 
     return await redis.del(modDupKey);
 }
 
 export async function setModDupKey(
     event: CommentCreate | CommentUpdate,
-    context: TriggerContext,
     value: string
 ): Promise<string> {
-    const modDupKey = await getModDupKey(event, context);
+    const modDupKey = await getModDupKey(event);
 
     return await redis.set(modDupKey, value);
 }
 
 export async function getModDupKey(
     event: CommentCreate | CommentUpdate,
-    _: TriggerContext
 ): Promise<string> {
     if (!event.comment || !event.post || !event.subreddit) return "";
     let parentComment: Comment | undefined;

@@ -1,10 +1,8 @@
-import { reddit, settings } from "@devvit/web/server";
-import type { Post, TriggerContext } from "./compat";
-import { logger } from "./logger";
+import { Post, reddit, settings } from "@devvit/web/server";
+import { logger } from "../core/clientCore/utils/logger";
 
 export async function addPostOfTheMonthFlair(
     _: unknown,
-    _context: TriggerContext
 ): Promise<void> {
     const settingEnablePostOfTheMonth = await settings.get("enablePostOfTheMonth");
     const settingPostOfTheMonthFlairText = await settings.get("postOfTheMonthFlairText");

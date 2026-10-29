@@ -1,13 +1,11 @@
-import { reddit, redis, settings } from "@devvit/web/server";
-import type { TriggerContext, User } from "../../compat";
+import { context, reddit, redis, settings, User } from "@devvit/web/server";
 import { formatMessage, ScoreResult } from "./common-utilities";
-import { getParentComment } from "../comment/comment-trigger-context";
-import { CommentSubmit, CommentUpdate } from "@devvit/protos";
-import { logger } from "../../logger";
+import { getParentComment } from "../../../repbot/triggers/comment/comment-trigger-context";
+import { logger } from "./logger";
 import { POINTS_STORE_KEY } from "./redisKeys";
+import { OnCommentCreateRequest, OnCommentUpdateRequest } from "@devvit/web/shared";
 
 export const isModerator = async (
-    _: TriggerContext,
     subName: string,
     awarder: string
 ) => {
@@ -18,7 +16,6 @@ export const isModerator = async (
 };
 
 export async function getUserCanAward(
-    _context: TriggerContext,
     awarder: string
 ) {
     // UsersWhoCannotAwardPoints
@@ -40,7 +37,7 @@ export async function getUserCanAward(
 }
 
 export async function getUserIsSuperuser(
-    context: TriggerContext,
+     
     awarder: string
 ) {
     const settingSuperUsers = await settings.get<string>("superUsers");
@@ -70,7 +67,7 @@ export async function getUserIsSuperuser(
         if (!user) {
             return false;
         }
-        const currentScore = await getCurrentScore(user, context);
+        const currentScore = await getCurrentScore(user );
         if (!currentScore) {
             return false;
         }
@@ -81,12 +78,12 @@ export async function getUserIsSuperuser(
 }
 
 export async function handleAutoSuperuserPromotion(
-    event: CommentSubmit | CommentUpdate,
-    context: TriggerContext,
+    event: OnCommentCreateRequest | OnCommentUpdateRequest,
+     
     newScore: number,
     _commandUsed: string
 ) {
-    const parentComment = await getParentComment(event, context);
+    const parentComment = await getParentComment(event );
     if (!event.author || !parentComment || !event.subreddit) return;
     const settingAutoSuperuserThreshold = await settings.get<number>(
         "autoSuperuserThreshold"
@@ -163,7 +160,7 @@ export async function handleAutoSuperuserPromotion(
 
 export async function getCurrentScore(
     user: User,
-    context: TriggerContext
+     
 ): Promise<ScoreResult | undefined> {
     if (!context.subredditName) {
         logger.error("❌ Subreddit name is not available in context.");

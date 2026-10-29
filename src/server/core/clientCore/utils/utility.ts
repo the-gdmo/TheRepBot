@@ -1,15 +1,8 @@
 import type { CommentUpdate } from "@devvit/protos";
-import type {
-    CreateWikiPageOptions,
-    RedditAPIClient,
-    TriggerContext,
-    WikiPage,
-} from "./compat";
 import { logger } from "./logger";
-import { reddit, redis } from "@devvit/web/server";
+import { context, CreateWikiPageOptions, reddit, RedditClient, redis, WikiPage } from "@devvit/web/server";
 
 export async function isModerator(
-    _: TriggerContext,
     subredditName: string,
     username: string
 ): Promise<boolean> {
@@ -20,7 +13,7 @@ export async function isModerator(
 }
 
 export async function getSubredditName(
-    context: TriggerContext
+     
 ): Promise<string> {
     if (context.subredditName) {
         return context.subredditName;
@@ -37,7 +30,7 @@ export async function getSubredditName(
 }
 
 export class SafeWikiClient {
-  constructor(protected reddit: RedditAPIClient) {}
+  constructor(protected reddit: RedditClient) {}
 
   /**
    * Safely gets a wiki page.

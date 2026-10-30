@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import {  reddit, redis, settings } from '@devvit/web/server';
+import { context, reddit, redis, settings } from '@devvit/web/server';
 import type { LeaderboardData, ApiResponse, LeaderboardEntry } from '../../shared/api';
 import { POINTS_STORE_KEY } from '../../shared/constants';
 

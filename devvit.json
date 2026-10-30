@@ -25,8 +25,8 @@
     "redis": true
   },
   "triggers": {
-    "onPostSubmit": "/internal/triggers/on-post-submit",
-    "onCommentSubmit": "/internal/triggers/on-comment-submit",
+    "onPostCreate": "/internal/triggers/on-post-create",
+    "onCommentCreate": "/internal/triggers/on-comment-create",
     "onCommentUpdate": "/internal/triggers/on-comment-update",
     "onAppInstall": "/internal/triggers/on-app-install",
     "onAppUpgrade": "/internal/triggers/on-app-upgrade"

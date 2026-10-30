@@ -3,16 +3,11 @@ import {
     reddit,
     redis,
     WikiPage,
-    ScheduledJobEvent,
 } from "@devvit/web/server";
-import {
-    getSubredditName,
-    SafeWikiClient,
-} from "../core/clientCore/utils/utility";
 import pluralize from "pluralize";
-import { logger } from "../core/clientCore/utils/logger";
-import { POINTS_STORE_KEY } from "../core/clientCore/utils/redisKeys";
-import { JsonObject } from "@devvit/shared-types/json.js";
+import { logger } from "../utils/logger";
+import { POINTS_STORE_KEY } from "../utils/redisKeys";
+import { getSubredditName, SafeWikiClient } from "../utils/utility";
 
 export function capitalize(word: string): string {
     return word.charAt(0).toUpperCase() + word.slice(1);
@@ -1865,7 +1860,6 @@ export async function getCanonicalLeaderboardScores(
 
 export async function updateLeaderboard(
     _: unknown,
-    event: ScheduledJobEvent<JsonObject | undefined>
 ) {
     const settingPointName = await settings.get<string>("pointName");
     // const leaderboardMode = await settings.get<string>("leaderboardMode");
@@ -1967,7 +1961,7 @@ export async function updateLeaderboard(
         subredditName,
         page: wikiPageName,
         content: wikiContents,
-        reason: event.data?.reason as string | undefined,
+        reason: "Updated leaderboard",
     };
 
     if (currentWikiPage) {

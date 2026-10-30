@@ -1,5 +1,4 @@
 import { redis } from "@devvit/web/server";
-
 /**
  * The hash contains ALL digest metrics for the current reporting window:
  *   mod:<lowercase-username>  -> number of points awarded by this moderator

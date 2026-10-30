@@ -1,14 +1,21 @@
-import { populateCleanupLogAndScheduleCleanup } from "./cleanupTasks";
 import type { Context } from "hono";
 import type { TriggerResponse } from "@devvit/web/shared";
-import { redis, scheduler } from "@devvit/web/server";
-import { logger } from "../core/clientCore/utils/logger";
+import { context, redis, scheduler } from "@devvit/web/server";
+import { logger } from "./utils/logger";
+import { populateCleanupLogAndScheduleCleanup } from "./utils/cleanupTasks";
+import {
+    MOD_DIGEST_CRON,
+    MOD_DIGEST_JOB,
+    MODINFO_CRON,
+    POST_OF_THE_MONTH_CRON,
+    POST_OF_THE_MONTH_JOB,
+    UPDATE_MODINFO_JOB,
+    UPGRADE_NOTIFIER_CRON,
+    UPGRADE_NOTIFIER_JOB,
+} from "./clientCore/constants";
 // import { createCompatContext } from "./compat";
 
-function jsonResponse(
-    body: TriggerResponse,
-    status = 200
-): Response {
+function jsonResponse(body: TriggerResponse, status = 200): Response {
     return new Response(JSON.stringify(body), {
         status,
         headers: {
@@ -43,6 +50,13 @@ export const onAppUpgrade = async (_c: Context): Promise<Response> => {
     let failedJobs = 0;
 
     try {
+        const existing = await redis.get("InstallDate");
+
+        if (!existing) {
+            await redis.set("InstallDate", Date.now().toString());
+            logger.info("Install date saved");
+        }
+
         const allJobs = await scheduler.listJobs();
         totalJobs = allJobs.length;
 
@@ -83,11 +97,29 @@ export const onAppUpgrade = async (_c: Context): Promise<Response> => {
         await populateCleanupLogAndScheduleCleanup();
 
         logger.info("App-upgrade cleanup scheduling completed");
+        try {
+            scheduler.runJob({
+                name: POST_OF_THE_MONTH_JOB,
+                cron: POST_OF_THE_MONTH_CRON,
+            });
+            scheduler.runJob({ name: UPDATE_MODINFO_JOB, cron: MODINFO_CRON });
+            scheduler.runJob({
+                name: UPGRADE_NOTIFIER_JOB,
+                cron: UPGRADE_NOTIFIER_CRON,
+            });
+            scheduler.runJob({ name: MOD_DIGEST_JOB, cron: MOD_DIGEST_CRON });
 
-        return jsonResponse(
-            { message: "app upgraded" },
-            200
-        );
+            logger.info("Jobs added to subreddit", {
+                subreddit: context.subredditName,
+            });
+        } catch (err) {
+            logger.error(`An error occurred adding jobs to subreddit`, {
+                subreddit: context.subredditName,
+                error: err instanceof Error ? err.stack : err,
+            });
+        }
+
+        return jsonResponse({ message: "app upgraded" }, 200);
     } catch (error) {
         logger.error("App upgrade failed", {
             error:
@@ -99,9 +131,6 @@ export const onAppUpgrade = async (_c: Context): Promise<Response> => {
             failedJobs,
         });
 
-        return jsonResponse(
-            { message: "app upgrade failed" },
-            500
-        );
+        return jsonResponse({ message: "app upgrade failed" }, 500);
     }
 };

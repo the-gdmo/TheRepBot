@@ -1,10 +1,10 @@
 import { redis } from "@devvit/web/server";
-import { OnCommentCreateRequest, TriggerResponse } from "@devvit/web/shared";
+import { OnCommentUpdateRequest, TriggerResponse } from "@devvit/web/shared";
 import { Context } from "hono";
-import { handleClientCommentCreate } from "../clientCore/handlePostOrComment";
+import { handleClientCommentUpdate } from "./handlePostOrComment";
 
-export const onCommentCreate = async (c: Context): Promise<Response> => {
-    const event = await c.req.json<OnCommentCreateRequest>();
+export const onCommentUpdate = async (c: Context): Promise<Response> => {
+    const event = await c.req.json<OnCommentUpdateRequest>();
 
     if (!event.comment?.id) {
         return c.json<TriggerResponse>(
@@ -23,10 +23,10 @@ export const onCommentCreate = async (c: Context): Promise<Response> => {
 
     await redis.set(commentEventKey, "1");
 
-    await handleClientCommentCreate(event);
+    await handleClientCommentUpdate(event);
 
     return c.json<TriggerResponse>(
-        { message: "CommentCreate event handled successfully" },
+        { message: "CommentUpdate event handled successfully" },
         200
     );
 };

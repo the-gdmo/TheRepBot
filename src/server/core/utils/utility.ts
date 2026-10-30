@@ -2,18 +2,7 @@ import type { CommentUpdate } from "@devvit/protos";
 import { logger } from "./logger";
 import { context, CreateWikiPageOptions, reddit, RedditClient, redis, WikiPage } from "@devvit/web/server";
 
-export async function isModerator(
-    subredditName: string,
-    username: string
-): Promise<boolean> {
-    const filteredModeratorList = await reddit
-        .getModerators({ subredditName, username })
-        .all();
-    return filteredModeratorList.length > 0;
-}
-
 export async function getSubredditName(
-     
 ): Promise<string> {
     if (context.subredditName) {
         return context.subredditName;

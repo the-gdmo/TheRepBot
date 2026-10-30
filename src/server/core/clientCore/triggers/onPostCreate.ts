@@ -1,7 +1,7 @@
 import { redis } from "@devvit/web/server";
 import { OnPostCreateRequest, TriggerResponse } from "@devvit/web/shared";
 import { Context } from "hono";
-import { handleClientPostCreate } from "../clientCore/handlePostOrComment";
+import { handleClientPostCreate } from "./handlePostOrComment";
 
 export const onPostCreate = async (c: Context): Promise<Response> => {
     const event = await c.req.json<OnPostCreateRequest>();

@@ -1,12 +1,12 @@
 import { reddit, redis, scheduler, settings } from "@devvit/web/server";
 import { addDays, addMinutes, subMinutes } from "date-fns";
 import { CronExpressionParser } from "cron-parser";
+import { POINTS_STORE_KEY } from "./redisKeys";
 import {
     ADHOC_CLEANUP_JOB,
     CLEANUP_JOB_CRON,
     UPDATE_LEADERBOARD_JOB,
-} from "./constants";
-import { POINTS_STORE_KEY } from "../core/clientCore/utils/redisKeys";
+} from "../clientCore/constants";
 
 const CLEANUP_LOG_KEY = "cleanupStore";
 const DAYS_BETWEEN_CHECKS = 28;
@@ -44,9 +44,7 @@ interface UserActive {
     isActive: boolean;
 }
 
-export async function cleanupDeletedAccounts(
-    _: unknown,
-): Promise<void> {
+export async function cleanupDeletedAccounts(_: unknown): Promise<void> {
     const now = Date.now();
     const items: CleanupEntry[] = await redis.zRange(CLEANUP_LOG_KEY, 0, now, {
         by: "score",

@@ -1,9 +1,9 @@
 import { reddit, redis, settings } from "@devvit/web/server";
 import { logger } from "./logger";
-import { OnCommentCreateRequest, OnCommentUpdateRequest } from "@devvit/web/shared";
+import { CommentSubmit, CommentUpdate, PostSubmit } from "@devvit/protos";
 
 export function formatMessage(
-    event: OnCommentCreateRequest | OnCommentUpdateRequest,
+    event: CommentSubmit | CommentUpdate | PostSubmit,
     template: string,
     placeholders: Record<string, string>
 ): string {
@@ -148,7 +148,7 @@ export function getIgnoredContextType(
 }
 
 export async function checkIgnoredContext(
-    event: OnCommentCreateRequest | OnCommentUpdateRequest,
+    event: CommentSubmit | CommentUpdate,
     comment: string
 ) {
     // Check ignored contexts for each trigger in comment

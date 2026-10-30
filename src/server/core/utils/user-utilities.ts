@@ -1,23 +1,20 @@
-import { context, reddit, redis, settings, User } from "@devvit/web/server";
+import { reddit, redis, settings, User } from "@devvit/web/server";
 import { formatMessage, ScoreResult } from "./common-utilities";
-import { getParentComment } from "../../../repbot/triggers/comment/comment-trigger-context";
 import { logger } from "./logger";
-import { POINTS_STORE_KEY } from "./redisKeys";
-import { OnCommentCreateRequest, OnCommentUpdateRequest } from "@devvit/web/shared";
+import { getParentComment, POINTS_STORE_KEY } from "./redisKeys";
+import {
+    OnCommentCreateRequest,
+    OnCommentUpdateRequest,
+} from "@devvit/web/shared";
 
-export const isModerator = async (
-    subName: string,
-    awarder: string
-) => {
+export const isModerator = async (subName: string, awarder: string) => {
     const filteredModeratorList = await reddit
         .getModerators({ subredditName: subName, username: awarder })
         .all();
     return filteredModeratorList.length > 0;
 };
 
-export async function getUserCanAward(
-    awarder: string
-) {
+export async function getUserCanAward(awarder: string) {
     // UsersWhoCannotAwardPoints
     const settingUsersWhoCannotAwardPoints = await settings.get<string>(
         "usersWhoCantAwardPoints"
@@ -36,10 +33,7 @@ export async function getUserCanAward(
     return true;
 }
 
-export async function getUserIsSuperuser(
-     
-    awarder: string
-) {
+export async function getUserIsSuperuser(awarder: string) {
     const settingSuperUsers = await settings.get<string>("superUsers");
     const settingAutoSuperuserThreshold = await settings.get<number>(
         "autoSuperuserThreshold"
@@ -67,7 +61,7 @@ export async function getUserIsSuperuser(
         if (!user) {
             return false;
         }
-        const currentScore = await getCurrentScore(user );
+        const currentScore = await getCurrentScore(user);
         if (!currentScore) {
             return false;
         }
@@ -79,11 +73,10 @@ export async function getUserIsSuperuser(
 
 export async function handleAutoSuperuserPromotion(
     event: OnCommentCreateRequest | OnCommentUpdateRequest,
-     
     newScore: number,
     _commandUsed: string
 ) {
-    const parentComment = await getParentComment(event );
+    const parentComment = await getParentComment(event);
     if (!event.author || !parentComment || !event.subreddit) return;
     const settingAutoSuperuserThreshold = await settings.get<number>(
         "autoSuperuserThreshold"
@@ -159,20 +152,15 @@ export async function handleAutoSuperuserPromotion(
 }
 
 export async function getCurrentScore(
-    user: User,
-     
+    user: User
 ): Promise<ScoreResult | undefined> {
-    if (!context.subredditName) {
-        logger.error("❌ Subreddit name is not available in context.");
-        return;
-    }
-
     const username = user.username;
 
+    const currentSub = await reddit.getCurrentSubreddit();
     /**
      * Get the user's existing Reddit flair.
      */
-    const userFlair = await user.getUserFlairBySubreddit(context.subredditName);
+    const userFlair = await user.getUserFlairBySubreddit(currentSub.name);
 
     /**
      * POINTS_STORE_KEY is the canonical score store.

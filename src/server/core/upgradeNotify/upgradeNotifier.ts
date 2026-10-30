@@ -1,7 +1,14 @@
-import { context, Context, reddit, redis, settings, WikiPage } from "@devvit/web/server";
+import {
+    context,
+    Context,
+    reddit,
+    redis,
+    settings,
+    WikiPage,
+} from "@devvit/web/server";
 import { lt } from "semver";
 import json2md from "json2md";
-import { logger } from "../../core/clientCore/utils/logger";
+import { logger } from "../utils/logger";
 
 interface AppUpdate {
     appname: string;

@@ -1,5 +1,5 @@
 import { Post, reddit, settings } from "@devvit/web/server";
-import { logger } from "../core/clientCore/utils/logger";
+import { logger } from "../utils/logger";
 
 export async function addPostOfTheMonthFlair(
     _: unknown,

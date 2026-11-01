@@ -98,16 +98,24 @@ export const onAppUpgrade = async (_c: Context): Promise<Response> => {
 
         logger.info("App-upgrade cleanup scheduling completed");
         try {
-            scheduler.runJob({
-                name: POST_OF_THE_MONTH_JOB,
-                cron: POST_OF_THE_MONTH_CRON,
-            });
-            scheduler.runJob({ name: UPDATE_MODINFO_JOB, cron: MODINFO_CRON });
-            scheduler.runJob({
-                name: UPGRADE_NOTIFIER_JOB,
-                cron: UPGRADE_NOTIFIER_CRON,
-            });
-            scheduler.runJob({ name: MOD_DIGEST_JOB, cron: MOD_DIGEST_CRON });
+            await Promise.all([
+                scheduler.runJob({
+                    name: POST_OF_THE_MONTH_JOB,
+                    cron: POST_OF_THE_MONTH_CRON,
+                }),
+                scheduler.runJob({
+                    name: UPDATE_MODINFO_JOB,
+                    cron: MODINFO_CRON,
+                }),
+                scheduler.runJob({
+                    name: UPGRADE_NOTIFIER_JOB,
+                    cron: UPGRADE_NOTIFIER_CRON,
+                }),
+                scheduler.runJob({
+                    name: MOD_DIGEST_JOB,
+                    cron: MOD_DIGEST_CRON,
+                }),
+            ]);
 
             logger.info("Jobs added to subreddit", {
                 subreddit: context.subredditName,

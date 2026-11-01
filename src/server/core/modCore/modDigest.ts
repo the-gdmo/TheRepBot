@@ -101,7 +101,7 @@ function formatTopTen(entries: DigestEntry[]): string {
  * Register using:
  *
  * application.post(
- *     "/internal/scheduler/tasks/mod-digest",
+ *     "/internal/scheduler/mod-digest",
  *     modDigestJob
  * );
  *

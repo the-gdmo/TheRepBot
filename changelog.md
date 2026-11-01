@@ -1,4 +1,7 @@
 # Changelog for RepBot
+## 31.7.9
+* Bring back the ability to see bot responses
+* Make all events work properly
 ## 31.7.8
 * Fix custom leaderboard post to be viewable on (hopefully) all devices without scrolling (checked an iphone 12 and s26 ultra and it works fine there)
 * Fix flair formatting `symbol` placeholder (previous called the point name by accident)

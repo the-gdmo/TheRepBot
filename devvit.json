@@ -34,30 +34,30 @@
     "scheduler": {
         "tasks": {
             "upgradeNotifier": {
-                "endpoint": "/internal/scheduler/tasks/upgrade-notifier",
+                "endpoint": "/internal/scheduler/upgrade-notifier",
                 "cron": "* * * * *"
             },
             "modDigest": {
-                "endpoint": "/internal/scheduler/tasks/mod-digest",
+                "endpoint": "/internal/scheduler/mod-digest",
                 "cron": "* * * * *"
             },
             "updateModInfo": {
-                "endpoint": "/internal/scheduler/tasks/update-modinfo",
+                "endpoint": "/internal/scheduler/update-modinfo",
                 "cron": "0 * * * *"
             },
             "updateLeaderboard": {
-                "endpoint": "/internal/scheduler/tasks/update-leaderboard",
+                "endpoint": "/internal/scheduler/update-leaderboard",
                 "cron": "* * * * *"
             },
             "cleanupDeletedAccounts": {
-                "endpoint": "/internal/scheduler/tasks/cleanup",
+                "endpoint": "/internal/scheduler/cleanup",
                 "cron": "0 23 * * *"
             },
             "cleanupDeletedAccountsAdhoc": {
-                "endpoint": "/internal/scheduler/tasks/cleanup-adhoc"
+                "endpoint": "/internal/scheduler/cleanup-adhoc"
             },
             "updatePostOfTheMonthAdhoc": {
-                "endpoint": "/internal/scheduler/tasks/post-of-the-month-adhoc",
+                "endpoint": "/internal/scheduler/post-of-the-month-adhoc",
                 "cron": "0 0 1 * *"
             }
         }

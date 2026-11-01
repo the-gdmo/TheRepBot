@@ -12,8 +12,17 @@ import { forms } from "./routes/forms";
 import { getRequestListener } from "@hono/node-server";
 import { api } from "./routes/api";
 import { createServer, getServerPort } from "@devvit/web/server";
-import { handleNumberFieldHasValidOption, handleSelectFieldHasOptionChosen, handleStringOrParagraphFieldContainsText, handleValidateFlairTemplateId, handleValidateLeaderboardName, handleValidateLeaderboardSize, handleValidateModTriggerCommand, handleValidateTriggerWords } from "./routes/validators";
-import { handleUpdateCheckJob } from "./core/clientCore/triggers/handleUpdateCheck";
+import {
+    handleNumberFieldHasValidOption,
+    handleSelectFieldHasOptionChosen,
+    handleStringOrParagraphFieldContainsText,
+    handleValidateFlairTemplateId,
+    handleValidateLeaderboardName,
+    handleValidateLeaderboardSize,
+    handleValidateModTriggerCommand,
+    handleValidateTriggerWords,
+} from "./routes/validators";
+import { runUpdateCheckJob } from "./core/clientCore/triggers/handleUpdateCheck";
 
 const application = new Hono();
 
@@ -31,22 +40,50 @@ application.post("/internal/triggers/on-comment-update", onCommentUpdate);
 application.post("/internal/triggers/on-post-create", onPostCreate);
 
 // Jobs
-application.post("/internal/scheduler/tasks/upgrade-notifier", handleUpdateCheckJob);
-application.post("/internal/scheduler/tasks/mod-digest", modDigestJob);
-application.post("/internal/scheduler/tasks/update-modinfo", modInfoJob);
-application.post("/internal/scheduler/tasks/update-leaderboard", updateLeaderboard);
-application.post("/internal/scheduler/tasks/cleanup", cleanupDeletedAccounts);
-application.post("/internal/scheduler/tasks/cleanup-adhoc", cleanupDeletedAccounts);
-application.post("/internal/scheduler/tasks/post-of-the-month", addPostOfTheMonthFlair);
+application.post("/internal/scheduler/upgrade-notifier", runUpdateCheckJob);
+application.post("/internal/scheduler/mod-digest", modDigestJob);
+application.post("/internal/scheduler/update-modinfo", modInfoJob);
 
-application.post("/internal/validators/select-field-has-option-chosen", handleSelectFieldHasOptionChosen);
-application.post("/internal/validators/number-field-has-valid-option", handleNumberFieldHasValidOption);
-application.post("/internal/validators/string-or-paragraph-field-contains-text", handleStringOrParagraphFieldContainsText);
-application.post("/internal/validators/validate-trigger-words", handleValidateTriggerWords);
-application.post("/internal/validators/validate-mod-trigger-command", handleValidateModTriggerCommand);
-application.post("/internal/validators/validate-flair-template-id", handleValidateFlairTemplateId);
-application.post("/internal/validators/validate-leaderboard-size", handleValidateLeaderboardSize);
-application.post("/internal/validators/validate-leaderboard-name", handleValidateLeaderboardName);
+application.post("/internal/scheduler/update-leaderboard", updateLeaderboard);
+application.post("/internal/scheduler/cleanup", cleanupDeletedAccounts);
+application.post("/internal/scheduler/cleanup-adhoc", cleanupDeletedAccounts);
+application.post(
+    "/internal/scheduler/post-of-the-month",
+    addPostOfTheMonthFlair
+);
+
+application.post(
+    "/internal/validators/select-field-has-option-chosen",
+    handleSelectFieldHasOptionChosen
+);
+application.post(
+    "/internal/validators/number-field-has-valid-option",
+    handleNumberFieldHasValidOption
+);
+application.post(
+    "/internal/validators/string-or-paragraph-field-contains-text",
+    handleStringOrParagraphFieldContainsText
+);
+application.post(
+    "/internal/validators/validate-trigger-words",
+    handleValidateTriggerWords
+);
+application.post(
+    "/internal/validators/validate-mod-trigger-command",
+    handleValidateModTriggerCommand
+);
+application.post(
+    "/internal/validators/validate-flair-template-id",
+    handleValidateFlairTemplateId
+);
+application.post(
+    "/internal/validators/validate-leaderboard-size",
+    handleValidateLeaderboardSize
+);
+application.post(
+    "/internal/validators/validate-leaderboard-name",
+    handleValidateLeaderboardName
+);
 
 const server = createServer(getRequestListener(application.fetch));
 server.on("error", (err) => {

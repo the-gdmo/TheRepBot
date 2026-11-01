@@ -1,3 +1,4 @@
+
 import {
     context,
     ModMailService,
@@ -5,40 +6,158 @@ import {
     redis,
     settings,
 } from "@devvit/web/server";
+
+import type { Context } from "hono";
+
 import { logger } from "../utils/logger";
-import { DIGEST_PENDING_KEY, DIGEST_STATS_KEY } from "../utils/digest-stats";
-/**
- * The only digest values are the current reporting window's award and post
- * counters. Reputation balances, flair, wiki history and leaderboard stay put.
- */
-export async function modDigestJob(_: unknown) {
-    const subredditName = context.subredditName;
-    if (!subredditName) {
-        logger.warn("Mod digest: no subredditName; aborting");
-        return;
+
+import {
+    DIGEST_PENDING_KEY,
+    DIGEST_STATS_KEY,
+} from "../utils/digest-stats";
+
+const DIGEST_PREFIX = "repbot:modDigest";
+
+const DIGEST_LOCK_KEY = `${DIGEST_PREFIX}:lock`;
+const DIGEST_LOCK_SECONDS = 600;
+
+const LAST_SENT_KEY = `${DIGEST_PREFIX}:lastSentAt`;
+const CONVERSATION_KEY = `${DIGEST_PREFIX}:conversationId`;
+const CONVERSATION_TYPE_KEY = `${DIGEST_PREFIX}:conversationType`;
+
+const DESIRED_CONVERSATION_TYPE = "notification";
+
+type DigestEntry = {
+    username: string;
+    count: number;
+};
+
+function getSettingValue(value: unknown): unknown {
+    return Array.isArray(value) ? value[0] : value;
+}
+
+function getSettingString(value: unknown): string | undefined {
+    const normalized = getSettingValue(value);
+
+    if (typeof normalized !== "string") {
+        return undefined;
     }
 
-    const prefix = "repbot:modDigest"; // preserve existing delivery settings/state
-    const lastSentKey = `${prefix}:lastSentAt`;
-    const conversationKey = `${prefix}:conversationId`;
-    const conversationTypeKey = `${prefix}:conversationType`;
-    const lockKey = "repbot:modDigest:lock";
+    return normalized.trim();
+}
+
+function getSettingBoolean(value: unknown): boolean {
+    const normalized = getSettingValue(value);
+
+    if (
+        normalized === true ||
+        normalized === 1
+    ) {
+        return true;
+    }
+
+    if (typeof normalized === "string") {
+        return ["true", "1", "yes", "on"].includes(
+            normalized.trim().toLowerCase()
+        );
+    }
+
+    return false;
+}
+
+function formatNumber(value: number): string {
+    return value.toLocaleString("en-US");
+}
+
+function sortDigestEntries(
+    a: DigestEntry,
+    b: DigestEntry
+): number {
+    return (
+        b.count - a.count ||
+        a.username.localeCompare(b.username)
+    );
+}
+
+function formatTopTen(entries: DigestEntry[]): string {
+    if (entries.length === 0) {
+        return "_None this period._";
+    }
+
+    return entries
+        .slice(0, 10)
+        .map(
+            (entry, index) =>
+                `${index + 1}. u/${entry.username} — ${formatNumber(
+                    entry.count
+                )} points`
+        )
+        .join("\n");
+}
+
+/**
+ * Moderator digest scheduled endpoint.
+ *
+ * Register using:
+ *
+ * application.post(
+ *     "/internal/scheduler/tasks/mod-digest",
+ *     modDigestJob
+ * );
+ *
+ * Only the current reporting window's award and post counters
+ * are rotated. Reputation balances, flair, wiki history,
+ * and leaderboard data remain untouched.
+ */
+export async function modDigestJob(
+    c: Context
+): Promise<Response> {
+    const subredditName = context.subredditName;
+    const subredditId = context.subredditId;
+
+    if (!subredditName || !subredditId) {
+        logger.warn(
+            "Mod digest: missing subreddit context",
+            {
+                subredditName,
+                subredditId,
+            }
+        );
+
+        return c.json(
+            {
+                success: false,
+                message: "Missing subreddit context.",
+            },
+            500
+        );
+    }
+
     const now = Date.now();
+
     let ownsLock = false;
+    let lockToken: string | undefined;
 
     try {
-        const settingDigestFrequency = await settings.get("digestFrequency");
-        const settingDigestNewMessageEachDay = await settings.get(
-            "digestNewMessageEachDay"
+        // ---------------------------------------------------------
+        // 1. Read settings
+        // ---------------------------------------------------------
+
+        const [
+            settingDigestFrequency,
+            settingDigestNewMessageEachDay,
+        ] = await Promise.all([
+            settings.get("digestFrequency"),
+            settings.get("digestNewMessageEachDay"),
+        ]);
+
+        const frequency = getSettingString(
+            settingDigestFrequency
         );
-        const configuredFrequency = settingDigestFrequency as
-            | string[]
-            | string
-            | undefined;
-        const rawFrequency = Array.isArray(configuredFrequency)
-            ? configuredFrequency[0]
-            : configuredFrequency;
-        const frequency = rawFrequency;
+
+        const newConversation = getSettingBoolean(
+            settingDigestNewMessageEachDay
+        );
 
         const intervalMs: Record<string, number> = {
             Testing: 5 * 60 * 1000,
@@ -47,227 +166,490 @@ export async function modDigestJob(_: unknown) {
             Monthly: 30 * 24 * 60 * 60 * 1000,
         };
 
-        if (frequency === "Never") return;
+        if (frequency === "Never") {
+            logger.info(
+                "Mod digest: disabled in settings",
+                { subreddit: subredditName }
+            );
+
+            return c.json({
+                success: true,
+                skipped: true,
+                reason: "Digest frequency is Never.",
+            });
+        }
 
         if (
             !frequency ||
-            !(frequency in intervalMs) ||
-            !intervalMs[frequency]
+            !Object.prototype.hasOwnProperty.call(
+                intervalMs,
+                frequency
+            )
         ) {
-            logger.warn("Mod digest: invalid frequency", { frequency });
-            return;
+            logger.warn(
+                "Mod digest: invalid frequency setting",
+                {
+                    subreddit: subredditName,
+                    rawSetting: settingDigestFrequency,
+                    frequency,
+                }
+            );
+
+            return c.json(
+                {
+                    success: false,
+                    message: "Invalid digest frequency setting.",
+                    frequency,
+                },
+                400
+            );
         }
 
-        const lastSentRaw = await redis.get(lastSentKey);
-        const parsed = lastSentRaw === null ? NaN : Number(lastSentRaw);
-        const lastSentAt = Number.isFinite(parsed) ? parsed : undefined;
+        const interval = intervalMs[frequency];
+
+        if (!interval) return c.json(
+                {
+                    success: false,
+                    message: "Interval doesn't exist.",
+                    frequency,
+                },
+                400
+            );
+
+        // ---------------------------------------------------------
+        // 2. Check whether the digest is due
+        // ---------------------------------------------------------
+
+        const lastSentRaw = await redis.get(LAST_SENT_KEY);
+
+        const parsedLastSent =
+            lastSentRaw === null
+                ? NaN
+                : Number(lastSentRaw);
+
+        const lastSentAt = Number.isFinite(parsedLastSent)
+            ? parsedLastSent
+            : undefined;
 
         if (
             lastSentAt !== undefined &&
-            now - lastSentAt < intervalMs[frequency]
+            now - lastSentAt < interval
         ) {
+            const remainingMs =
+                interval - (now - lastSentAt);
+
             logger.info(
-                "Mod digest: not enough time has passed since last send",
+                "Mod digest: not due yet",
                 {
+                    subreddit: subredditName,
                     frequency,
-                    lastSentAt: lastSentAt.toLocaleString("en-US"),
-                    nextSendAt: (
-                        lastSentAt + intervalMs[frequency]
+                    lastSentAt: new Date(
+                        lastSentAt
                     ).toLocaleString("en-US"),
-                    timeUntilNextSendSeconds:
-                        (
-                            (intervalMs[frequency] - (now - lastSentAt)) /
-                            1_000
-                        ).toLocaleString("en-US") + " seconds",
-                    timeUntilNextSendHours:
-                        (
-                            (intervalMs[frequency] - (now - lastSentAt)) /
-                            3_600_000
-                        ).toLocaleString("en-US") + " hours",
-                    timeUntilNextSendDays:
-                        (
-                            (intervalMs[frequency] - (now - lastSentAt)) /
-                            86_400_000
-                        ).toLocaleString("en-US") + " days",
+                    nextSendAt: new Date(
+                        lastSentAt + interval
+                    ).toLocaleString("en-US"),
+                    timeUntilNextSendSeconds: Math.ceil(
+                        remainingMs / 1000
+                    ),
                 }
             );
-            return;
+
+            return c.json({
+                success: true,
+                skipped: true,
+                reason: "Digest is not due yet.",
+                nextSendAt: lastSentAt + interval,
+            });
         }
 
-        // Ensure only one scheduled invocation rotates/sends these counters.
-        // The lease expires if a job crashes. Devvit SET NX returns "OK" on success.
-        const lockResult = await redis.set(lockKey, `${now}`, {
-            nx: true,
-        });
+        // ---------------------------------------------------------
+        // 3. Acquire a temporary Redis lock
+        // ---------------------------------------------------------
+
+        lockToken = `${now}:${Math.random()
+            .toString(36)
+            .slice(2)}`;
+
+        const lockResult = await redis.set(
+            DIGEST_LOCK_KEY,
+            lockToken,
+            { nx: true }
+        );
 
         if (lockResult !== "OK") {
-            logger.info("Mod digest: another send is already in progress");
-            return;
+            logger.info(
+                "Mod digest: another invocation owns the lock",
+                { subreddit: subredditName }
+            );
+
+            return c.json({
+                success: true,
+                skipped: true,
+                reason: "Another digest invocation is running.",
+            });
         }
 
         ownsLock = true;
 
-        // Recheck after getting the lease, since another job may have sent.
-        const lastSentAfterLock = await redis.get(lastSentKey);
-        const lastSentNum =
-            lastSentAfterLock === null ? NaN : Number(lastSentAfterLock);
+        // Expire the lock if this invocation crashes.
+        await redis.expire(
+            DIGEST_LOCK_KEY,
+            DIGEST_LOCK_SECONDS
+        );
+
+        logger.info(
+            "Mod digest: acquired delivery lock",
+            { subreddit: subredditName }
+        );
+
+        // ---------------------------------------------------------
+        // 4. Recheck schedule after acquiring lock
+        // ---------------------------------------------------------
+
+        const lastSentAfterLock =
+            await redis.get(LAST_SENT_KEY);
+
+        const lastSentAfterLockNumber =
+            lastSentAfterLock === null
+                ? NaN
+                : Number(lastSentAfterLock);
 
         if (
-            Number.isFinite(lastSentNum) &&
-            now - lastSentNum < intervalMs[frequency]
+            Number.isFinite(lastSentAfterLockNumber) &&
+            now - lastSentAfterLockNumber < interval
         ) {
-            return;
+            logger.info(
+                "Mod digest: another invocation already sent the digest",
+                { subreddit: subredditName }
+            );
+
+            return c.json({
+                success: true,
+                skipped: true,
+                reason: "Digest was already sent by another invocation.",
+            });
         }
 
-        const rawNewConversation = settingDigestNewMessageEachDay;
-        const newConversation =
-            rawNewConversation === true ||
-            rawNewConversation === 1 ||
-            (typeof rawNewConversation === "string" &&
-                rawNewConversation.trim().toLowerCase() === "true");
+        // ---------------------------------------------------------
+        // 5. Freeze the reporting batch
+        // ---------------------------------------------------------
 
-        // A failed send leaves :pending for the next attempt. Never overwrite it.
-        // RENAME is atomic: subsequent awards/posts start a fresh active hash.
-        const hasPending = await redis.exists(DIGEST_PENDING_KEY);
+        const hasPending = await redis.exists(
+            DIGEST_PENDING_KEY
+        );
 
-        if (!hasPending && (await redis.exists(DIGEST_STATS_KEY))) {
-            await redis.rename(DIGEST_STATS_KEY, DIGEST_PENDING_KEY);
+        // Never overwrite an existing pending batch.
+        // If a previous send failed, retry that batch first.
+        if (
+            !hasPending &&
+            (await redis.exists(DIGEST_STATS_KEY))
+        ) {
+            await redis.rename(
+                DIGEST_STATS_KEY,
+                DIGEST_PENDING_KEY
+            );
+
+            logger.info(
+                "Mod digest: active statistics moved to pending batch",
+                { subreddit: subredditName }
+            );
         }
 
-        const values = await redis.hGetAll(DIGEST_PENDING_KEY);
-        const moderators: Array<{ username: string; count: number }> = [];
-        const users: Array<{ username: string; count: number }> = [];
+        const values =
+            (await redis.hGetAll(DIGEST_PENDING_KEY)) ?? {};
+
+        // ---------------------------------------------------------
+        // 6. Build digest statistics
+        // ---------------------------------------------------------
+
+        const moderators: DigestEntry[] = [];
+        const users: DigestEntry[] = [];
+
         let postsCreated = 0;
 
         for (const [field, rawValue] of Object.entries(values)) {
             const count = Number(rawValue);
 
-            if (!Number.isFinite(count) || count <= 0) continue;
+            if (!Number.isFinite(count) || count <= 0) {
+                continue;
+            }
 
             if (field === "posts") {
-                postsCreated = count;
+                postsCreated += count;
             } else if (field.startsWith("mod:")) {
-                moderators.push({ username: field.slice(4), count });
+                const username = field.slice(4);
+
+                if (username) {
+                    moderators.push({
+                        username,
+                        count,
+                    });
+                }
             } else if (field.startsWith("user:")) {
-                users.push({ username: field.slice(5), count });
+                const username = field.slice(5);
+
+                if (username) {
+                    users.push({
+                        username,
+                        count,
+                    });
+                }
             }
         }
 
-        const sortByPoints = (
-            a: { username: string; count: number },
-            b: { username: string; count: number }
-        ) => b.count - a.count || a.username.localeCompare(b.username);
+        moderators.sort(sortDigestEntries);
+        users.sort(sortDigestEntries);
 
-        moderators.sort(sortByPoints);
-        users.sort(sortByPoints);
-
-        const totalPoints = [...moderators, ...users].reduce(
+        const totalPoints = [
+            ...moderators,
+            ...users,
+        ].reduce(
             (sum, entry) => sum + entry.count,
             0
         );
 
-        const fmt = (value: number) => value.toLocaleString("en-US");
+        logger.info(
+            "Mod digest: reporting batch prepared",
+            {
+                subreddit: subredditName,
+                frequency,
+                pendingFields: Object.keys(values).length,
+                totalPoints,
+                moderators: moderators.length,
+                users: users.length,
+                postsCreated,
+            }
+        );
 
-        const topTen = (entries: Array<{ username: string; count: number }>) =>
-            entries.length
-                ? entries
-                      .slice(0, 10)
-                      .map(
-                          (entry, index) =>
-                              `${index + 1}. u/${entry.username} — ${fmt(
-                                  entry.count
-                              )} points`
-                      )
-                      .join("\n")
-                : "_None this period._";
+        // ---------------------------------------------------------
+        // 7. Build message
+        // ---------------------------------------------------------
 
-        // The body intentionally contains ONLY the six requested statistics.
-        const subject = `RepBot ${frequency} Digest — r/${subredditName}`;
+        const reportingPeriodStart =
+            lastSentAt ?? now - interval;
+
+        const subject =
+            `RepBot ${frequency} Digest — r/${subredditName}`;
 
         const body = [
             `**Reporting Period:** ${new Date(
-                lastSentAt ?? 0
+                reportingPeriodStart
             ).toUTCString()} → ${new Date(now).toUTCString()}`,
-            `**Total points awarded:** ${fmt(totalPoints)}`,
-            `**Moderators who awarded points:** ${fmt(moderators.length)}`,
-            `**Users who awarded points:** ${fmt(users.length)}`,
-            `**Posts created:** ${fmt(postsCreated)}`,
-            `## Users who awarded the most points\n${topTen(users)}`,
-            `## Moderators who awarded the most points\n${topTen(moderators)}`,
+
+            `**Total points awarded:** ${formatNumber(
+                totalPoints
+            )}`,
+
+            `**Moderators who awarded points:** ${formatNumber(
+                moderators.length
+            )}`,
+
+            `**Users who awarded points:** ${formatNumber(
+                users.length
+            )}`,
+
+            `**Posts created:** ${formatNumber(
+                postsCreated
+            )}`,
+
+            `## Users who awarded the most points\n${formatTopTen(
+                users
+            )}`,
+
+            `## Moderators who awarded the most points\n${formatTopTen(
+                moderators
+            )}`,
         ].join("\n\n");
 
-        const desiredConversationType = "notification";
+        // ---------------------------------------------------------
+        // 8. Send or update Mod Mail conversation
+        // ---------------------------------------------------------
 
-        const [previousConversationId, previousConversationType] =
-            await Promise.all([
-                redis.get(conversationKey),
-                redis.get(conversationTypeKey),
-            ]);
+        const [
+            previousConversationId,
+            previousConversationType,
+        ] = await Promise.all([
+            redis.get(CONVERSATION_KEY),
+            redis.get(CONVERSATION_TYPE_KEY),
+        ]);
 
         const modMail = reddit.modMail as ModMailService;
+
         let conversationId: string | undefined;
 
         if (
             !newConversation &&
             previousConversationId &&
-            previousConversationType === desiredConversationType
+            previousConversationType ===
+                DESIRED_CONVERSATION_TYPE
         ) {
             try {
+                logger.info(
+                    "Mod digest: replying to existing conversation",
+                    {
+                        subreddit: subredditName,
+                        conversationId: previousConversationId,
+                    }
+                );
+
                 await modMail.reply({
                     conversationId: previousConversationId,
                     body,
                 });
 
                 conversationId = previousConversationId;
-            } catch (error) {
-                logger.warn("Mod digest reply failed; creating discussion", {
-                    error,
-                    previousConversationId,
-                });
+
+                logger.info(
+                    "Mod digest: existing conversation reply succeeded",
+                    {
+                        subreddit: subredditName,
+                        conversationId,
+                    }
+                );
+            } catch (replyError) {
+                logger.warn(
+                    "Mod digest: reply failed; creating a new notification",
+                    {
+                        subreddit: subredditName,
+                        conversationId: previousConversationId,
+                        error:
+                            replyError instanceof Error
+                                ? replyError.message
+                                : String(replyError),
+                    }
+                );
             }
         }
 
         if (!conversationId) {
-            conversationId = await modMail.createModNotification({
-                subredditId: context.subredditId as `t5_${string}`,
-                subject,
-                bodyMarkdown: body,
-            });
+            logger.info(
+                "Mod digest: creating new Mod Mail notification",
+                { subreddit: subredditName }
+            );
+
+            conversationId =
+                await modMail.createModNotification({
+                    subredditId:
+                        subredditId as `t5_${string}`,
+                    subject,
+                    bodyMarkdown: body,
+                });
         }
 
-        // The message has succeeded. Keep active (new) counters untouched and
-        // remove ONLY the frozen batch that was just reported.
-        await redis.set(lastSentKey, now.toString());
-
-        if (conversationId) {
-            await Promise.all([
-                redis.set(conversationKey, conversationId),
-                redis.set(conversationTypeKey, desiredConversationType),
-            ]);
+        if (
+            typeof conversationId !== "string" ||
+            conversationId.trim().length === 0
+        ) {
+            throw new Error(
+                "Mod Mail did not return a valid conversation ID."
+            );
         }
 
+        // ---------------------------------------------------------
+        // 9. Mark successful delivery
+        // ---------------------------------------------------------
+
+        const sentAt = Date.now();
+
+        await Promise.all([
+            redis.set(
+                LAST_SENT_KEY,
+                sentAt.toString()
+            ),
+            redis.set(
+                CONVERSATION_KEY,
+                conversationId
+            ),
+            redis.set(
+                CONVERSATION_TYPE_KEY,
+                DESIRED_CONVERSATION_TYPE
+            ),
+        ]);
+
+        // Clear only the successfully reported pending batch.
+        // Leave the active statistics untouched.
         await redis.del(DIGEST_PENDING_KEY);
 
-        logger.info("Reputation Bot mod digest sent; reported stats reset", {
+        logger.info(
+            "RepBot moderator digest successfully sent",
+            {
+                subreddit: subredditName,
+                frequency,
+                conversationId,
+                sentAt: new Date(sentAt).toISOString(),
+                totalPoints,
+                moderators: moderators.length,
+                users: users.length,
+                postsCreated,
+            }
+        );
+
+        return c.json({
+            success: true,
+            sent: true,
             subreddit: subredditName,
             frequency,
+            conversationId,
             totalPoints,
             moderators: moderators.length,
             users: users.length,
             postsCreated,
         });
     } catch (error) {
-        await logger.error(
-            "RepBot mod digest failed; unsent counters retained",
+        const errorMessage =
+            error instanceof Error
+                ? error.message
+                : String(error);
+
+        logger.error(
+            "RepBot mod digest failed; pending statistics retained",
             {
                 subreddit: subredditName,
-                error: error instanceof Error ? error.message : String(error),
+                error: errorMessage,
+                stack:
+                    error instanceof Error
+                        ? error.stack
+                        : undefined,
             },
             context
         );
+
+        return c.json(
+            {
+                success: false,
+                sent: false,
+                message: "Mod digest delivery failed.",
+                error: errorMessage,
+            },
+            500
+        );
     } finally {
-        if (ownsLock) {
-            await redis.del(lockKey);
+        // ---------------------------------------------------------
+        // 10. Release lock
+        // ---------------------------------------------------------
+
+        if (ownsLock && lockToken) {
+            try {
+                const currentLock = await redis.get(
+                    DIGEST_LOCK_KEY
+                );
+
+                if (currentLock === lockToken) {
+                    await redis.del(DIGEST_LOCK_KEY);
+                }
+            } catch (lockError) {
+                logger.warn(
+                    "Mod digest: lock release failed; lock will expire automatically",
+                    {
+                        subreddit: subredditName,
+                        error:
+                            lockError instanceof Error
+                                ? lockError.message
+                                : String(lockError),
+                    }
+                );
+            }
         }
     }
 }

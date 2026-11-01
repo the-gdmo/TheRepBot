@@ -1,32 +1,31 @@
-import { redis } from "@devvit/web/server";
 import { OnCommentUpdateRequest, TriggerResponse } from "@devvit/web/shared";
 import { Context } from "hono";
 import { handleClientCommentUpdate } from "./handlePostOrComment";
+import { logger } from "../../utils/logger";
 
 export const onCommentUpdate = async (c: Context): Promise<Response> => {
-    const event = await c.req.json<OnCommentUpdateRequest>();
+    try {
+        const event = await c.req.json<OnCommentUpdateRequest>();
 
-    if (!event.comment?.id) {
-        return c.json<TriggerResponse>(
-            { message: "CommentCreateOrUpdate event missing comment ID" },
-            400
-        );
-    }
-    const commentEventKey = `CommentEvent:${event.comment.id}`;
+        if (!event.comment?.id) {
+            return c.json<TriggerResponse>(
+                { message: "CommentUpdate event missing comment ID" },
+                400
+            );
+        }
 
-    if (await redis.exists(commentEventKey)) {
+        await handleClientCommentUpdate(event);
+
         return c.json<TriggerResponse>(
-            { message: "CommentCreate event already handled" },
+            { message: "CommentUpdate event handled successfully" },
             200
         );
+    } catch (error) {
+        logger.error("CommentUpdate event failed", { error });
+
+        return c.json<TriggerResponse>(
+            { message: "CommentUpdate event failed" },
+            500
+        );
     }
-
-    await redis.set(commentEventKey, "1");
-
-    await handleClientCommentUpdate(event);
-
-    return c.json<TriggerResponse>(
-        { message: "CommentUpdate event handled successfully" },
-        200
-    );
 };

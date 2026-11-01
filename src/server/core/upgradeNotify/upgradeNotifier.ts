@@ -1,3 +1,4 @@
+
 import {
     context,
     Context,
@@ -19,15 +20,19 @@ interface AppUpdate {
 const UPDATE_SUBREDDIT = "TheRepBot";
 const UPDATE_WIKI_PAGE = "upgrade-notifier";
 
-//todo: Figure out how to run this to test if it works correctly
 export async function getNewVersionInfo(
     context: Context
 ): Promise<AppUpdate | undefined> {
     let wikiPage: WikiPage;
+
     try {
-        wikiPage = await reddit.getWikiPage(UPDATE_SUBREDDIT, UPDATE_WIKI_PAGE);
+        wikiPage = await reddit.getWikiPage(
+            UPDATE_SUBREDDIT,
+            UPDATE_WIKI_PAGE
+        );
+
         if (!wikiPage) {
-            const wikiPageOptions = {
+            await reddit.createWikiPage({
                 subredditName: UPDATE_SUBREDDIT,
                 page: UPDATE_WIKI_PAGE,
                 content: JSON.stringify([
@@ -38,8 +43,12 @@ export async function getNewVersionInfo(
                     },
                 ]),
                 reason: "Create update notifier wiki page",
-            };
-            await reddit.createWikiPage(wikiPageOptions);
+            });
+
+            wikiPage = await reddit.getWikiPage(
+                UPDATE_SUBREDDIT,
+                UPDATE_WIKI_PAGE
+            );
         }
     } catch (err) {
         logger.error("Update Checker: Error getting wiki page", {
@@ -92,7 +101,7 @@ export async function getNewVersionInfo(
     return update;
 }
 
-export async function checkForUpdates(_: unknown) {
+export async function checkForUpdates(): Promise<void> {
     try {
         const notificationsEnabled = await settings.get("upgradeNotifier");
 
@@ -101,12 +110,11 @@ export async function checkForUpdates(_: unknown) {
             return;
         }
 
-        const subredditName = (await reddit.getCurrentSubreddit()).name;
-
+        const subredditName = context.subredditName;
         const update = await getNewVersionInfo(context);
 
         if (!update) {
-            logger.info("Update Checker: Update doesn't exist");
+            logger.info("Update Checker: No update available");
             return;
         }
 
@@ -116,19 +124,17 @@ export async function checkForUpdates(_: unknown) {
             });
             return;
         }
+
         if (!update.whatsNewBullets) {
             logger.error(
-                "Update Checker: Update has no whats new bullets option",
-                {
-                    update,
-                }
+                "Update Checker: Update has no whatsNewBullets option",
+                { update }
             );
             return;
         }
 
-        const redisKey = "update-notification-sent";
-
-        const notificationSent = await redis.get(redisKey);
+        const notificationKey = "update-notification-sent";
+        const notificationSent = await redis.get(notificationKey);
 
         if (notificationSent === update.version) {
             logger.info("Update Checker: Notification already sent", {
@@ -137,8 +143,8 @@ export async function checkForUpdates(_: unknown) {
             return;
         }
 
-        const message: any[] = [
-            { p: `A new version of RepBot is available to install.` },
+        const message: json2md.DataObject[] = [
+            { p: "A new version of RepBot is available to install." },
         ];
 
         if (update.whatsNewBullets.length > 0) {
@@ -156,20 +162,30 @@ export async function checkForUpdates(_: unknown) {
             bodyMarkdown: json2md(message),
         });
 
-        await redis.set(redisKey, update.version);
+        await redis.set(notificationKey, update.version);
+
+        logger.info("Update Checker: Notification sent", {
+            version: update.version,
+            subreddit: subredditName,
+        });
     } catch (error) {
         if (
             error instanceof TypeError &&
             error.message.includes("Invalid Version")
         ) {
             logger.info(
-                "Invalid Version TypeError occurred while checking for updates, returning"
+                "Update Checker: Invalid version encountered while checking for updates"
             );
             return;
         }
+
+        logger.error("Update Checker: Error checking for updates", {
+            error: String(error),
+        });
+
         await reddit.modMail.createModNotification({
             subredditId: context.subredditId as `t5_${string}`,
-            subject: `RepBot Update Error`,
+            subject: "RepBot Update Checker Error",
             bodyMarkdown: `An error occurred while checking for RepBot updates: ${error}`,
         });
     }

@@ -1,8 +1,16 @@
 import { formatMessage, getTriggers } from "./common-utilities";
 import { Comment, reddit, redis, settings, User } from "@devvit/web/server";
 import { logger } from "./logger";
-import { OnCommentCreateRequest, OnCommentUpdateRequest, T1 } from "@devvit/web/shared";
-import { getUserCanAward, getUserIsSuperuser, isModerator } from "./user-utilities";
+import {
+    OnCommentCreateRequest,
+    OnCommentUpdateRequest,
+    T1,
+} from "@devvit/web/shared";
+import {
+    getUserCanAward,
+    getUserIsSuperuser,
+    isModerator,
+} from "./user-utilities";
 export { POINTS_STORE_KEY } from "../../../shared/constants";
 
 const AUTO_SUPERUSER_TEMPLATE_DEFAULT =
@@ -35,17 +43,12 @@ export class CommentTriggerContext {
         return this._isSuperUser;
     }
 
-    public async init(
-        event: OnCommentCreateRequest | OnCommentUpdateRequest,
-    ) {
+    public async init(event: OnCommentCreateRequest | OnCommentUpdateRequest) {
         if (!event.author || !event.subreddit) return;
 
         this._awarder = event.author.name;
         this._subredditName = event.subreddit.name;
-        this._isMod = await isModerator(
-            this._subredditName,
-            this._awarder
-        );
+        this._isMod = await isModerator(this._subredditName, this._awarder);
         this._isSuperUser = await getUserIsSuperuser(this._awarder);
         this._userCanAward = await getUserCanAward(this._awarder);
     }
@@ -53,7 +56,7 @@ export class CommentTriggerContext {
 
 export async function userBecomesSuperUser(
     event: OnCommentCreateRequest | OnCommentUpdateRequest,
-    userScore: number,
+    userScore: number
 ) {
     if (!event.comment || !event.author) return;
 
@@ -185,13 +188,15 @@ export async function _replyToUser(
 }
 
 export async function getParentComment(
-    event: OnCommentCreateRequest | OnCommentUpdateRequest,
+    event: OnCommentCreateRequest | OnCommentUpdateRequest
 ): Promise<Comment | undefined> {
     if (!event.comment) return undefined;
 
     let parentComment: Comment | undefined;
     try {
-        parentComment = await reddit.getCommentById(event.comment.parentId as T1);
+        parentComment = await reddit.getCommentById(
+            event.comment.parentId as T1
+        );
     } catch (err) {
         logger.debug("Could not retrieve parent comment", {
             commentId: event.comment.id,
@@ -199,10 +204,9 @@ export async function getParentComment(
             err,
         });
         parentComment = undefined;
-        return parentComment;
     }
+    return parentComment;
 }
-
 
 //------------------------
 // LastValidPostTitle
@@ -213,9 +217,7 @@ export async function getLastValidPostTitleKey(
     if (!userObj) return "";
     return `lastValidPostTitle:${userObj.username}`;
 }
-export async function deleteLastValidPostTitle(
-    userObj: User | undefined,
-) {
+export async function deleteLastValidPostTitle(userObj: User | undefined) {
     const lastValidPostTitle = await getLastValidPostTitleKey(userObj);
     await redis.del(lastValidPostTitle);
 }
@@ -245,9 +247,7 @@ export async function getRestrictedKey(
     if (!userObj) return "";
     return `restrictedUser:${userObj.username}`;
 }
-export async function deleteRestrictedKey(
-    userObj: User | undefined,
-) {
+export async function deleteRestrictedKey(userObj: User | undefined) {
     const restrictedKey = await getRestrictedKey(userObj);
     await redis.del(restrictedKey);
 }
@@ -262,9 +262,7 @@ export async function setRestrictedKey(
 //------------------------
 // Awards Required
 //------------------------
-export async function requiredKeyExists(
-    userToCheck: string
-): Promise<number> {
+export async function requiredKeyExists(userToCheck: string): Promise<number> {
     const requiredKey = `awardsRequired:${userToCheck}`;
     return await redis.exists(requiredKey);
 }
@@ -275,9 +273,7 @@ export async function getAwardsRequiredKey(
     if (!userObj) return "";
     return `awardsRequired:${userObj.username}`;
 }
-export async function deleteAwardsRequiredKey(
-    userObj: User | undefined,
-) {
+export async function deleteAwardsRequiredKey(userObj: User | undefined) {
     const lastValidPostTitle = await getAwardsRequiredKey(userObj);
     await redis.del(lastValidPostTitle);
 }
@@ -299,9 +295,7 @@ export async function getLastValidPostKey(
     if (!userObj) return "";
     return `lastValidPost:${userObj.username}`;
 }
-export async function deleteLastValidPost(
-    userObj: User | undefined,
-) {
+export async function deleteLastValidPost(userObj: User | undefined) {
     const lastValidPost = await getLastValidPostKey(userObj);
     await redis.del(lastValidPost);
 }
@@ -329,9 +323,7 @@ export async function getFlairToggleKey(
     if (!userObj) return "";
     return `flairToggle:${userObj.username}`;
 }
-export async function deleteFlairToggleKey(
-    userObj: User | undefined,
-) {
+export async function deleteFlairToggleKey(userObj: User | undefined) {
     const flairToggleKey = await getFlairToggleKey(userObj);
     await redis.del(flairToggleKey);
 }
@@ -356,7 +348,7 @@ export async function setAltDupKey(
 }
 
 export async function deleteAltDupKey(
-    event: OnCommentCreateRequest | OnCommentUpdateRequest,
+    event: OnCommentCreateRequest | OnCommentUpdateRequest
 ) {
     const altDupKey = await getAltDupKey(event);
 
@@ -364,7 +356,7 @@ export async function deleteAltDupKey(
 }
 
 export async function getAltDupKey(
-    event: OnCommentCreateRequest | OnCommentUpdateRequest,
+    event: OnCommentCreateRequest | OnCommentUpdateRequest
 ): Promise<string> {
     if (!event.post || !event.comment || !event.subreddit) return "";
     const commentBodyRaw = event.comment.body ?? "";
@@ -387,7 +379,7 @@ export async function getAltDupKey(
 // Mod Duplicate
 //------------------------
 export async function modDupKeyExists(
-    event: OnCommentCreateRequest | OnCommentUpdateRequest,
+    event: OnCommentCreateRequest | OnCommentUpdateRequest
 ): Promise<number> {
     const modDupKey = await getModDupKey(event);
 
@@ -395,7 +387,7 @@ export async function modDupKeyExists(
 }
 
 export async function deleteModDupKey(
-    event: OnCommentCreateRequest | OnCommentUpdateRequest,
+    event: OnCommentCreateRequest | OnCommentUpdateRequest
 ) {
     const modDupKey = await getModDupKey(event);
 
@@ -412,7 +404,7 @@ export async function setModDupKey(
 }
 
 export async function getModDupKey(
-    event: OnCommentCreateRequest | OnCommentUpdateRequest,
+    event: OnCommentCreateRequest | OnCommentUpdateRequest
 ): Promise<string> {
     if (!event.comment || !event.post || !event.subreddit) return "";
 

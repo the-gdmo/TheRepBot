@@ -55,6 +55,28 @@ import {
 } from "../leaderboard";
 import { setCleanupForUsers } from "../../utils/cleanupTasks";
 
+/**
+ * Devvit select settings can be returned as a string or an array depending on
+ * the setting definition. Normalize both shapes and accept the legacy
+ * "replyascomment" spelling as an alias for "replybycomment".
+ *
+ * Public replies are only made when the configured mode explicitly requests
+ * them. "none" (including an unset setting) never creates a comment or PM.
+ */
+type NotificationMode = "none" | "replybypm" | "replybycomment";
+
+async function getNotificationMode(settingName: string): Promise<NotificationMode> {
+    const raw = await settings.get<string | string[]>(settingName);
+    const selected = (Array.isArray(raw) ? raw[0] : raw) ?? "none";
+    const normalized = selected.trim().toLowerCase();
+
+    if (normalized === "replybypm") return "replybypm";
+    if (normalized === "replybycomment" || normalized === "replyascomment") {
+        return "replybycomment";
+    }
+    return "none";
+}
+
 export async function handleClientPostCreate(event: OnPostCreateRequest) {
     if (!event.post || !event.author?.name) {
         console.error(
@@ -93,6 +115,8 @@ export async function handleClientCommentCreate(event: OnCommentCreateRequest) {
         return;
     }
 
+    await confirmIgnoredContextIfRequested(event);
+
     // ─────────────────────────────────────────────
     // Initialize context
     // ─────────────────────────────────────────────
@@ -108,7 +132,7 @@ export async function handleClientCommentCreate(event: OnCommentCreateRequest) {
     }
 
     const settingPointName = await settings.get<string>("pointName");
-    const settingNotifyOnPostAuthorAward = await settings.get<string>(
+    const settingNotifyOnPostAuthorAward = await getNotificationMode(
         "notifyOnPostAuthorAward"
     );
     const settingPostAuthorAwardMessage =
@@ -116,34 +140,30 @@ export async function handleClientCommentCreate(event: OnCommentCreateRequest) {
     const settingModAwardCommandFail =
         (await settings.get<string>("modAwardCommandFail")) ?? "";
     const awarder = event.author.name;
-    const commentBody = event.comment.body.toLowerCase();
+    const commentBody = (event.comment.body ?? "").toLowerCase();
     const triggers = await getTriggers();
-    const triggerUsed = triggers.find((t) => commentBody.includes(t));
+    const triggerUsed = triggers.find((t) => commentBody.includes(t.toLowerCase()));
     const pointName = (settingPointName as string) ?? "point";
     if (!triggerUsed) {
         logger.debug("❌ No valid award command found.");
         return;
     }
 
-    const ignoredType = getIgnoredContextType(event.comment.body, triggerUsed);
+    const ignoredType = getIgnoredContextType(event.comment.body ?? "", triggerUsed);
 
-    const IgnoredContextNeedsHandling = await ignoredContextNeedsHandling(
+    const ignoredContextConfirmed = await ignoredContextNeedsHandling(
         event,
         triggerUsed
     );
-    if (ignoredType) {
-        logger.info(`ignoredType exists in comment`, { ignoredType });
-        if (IgnoredContextNeedsHandling) {
-            logger.info(`Running handleIgnoredContext()`, {
-                IgnoredContextNeedsHandling,
-            });
-            await handleIgnoredContext(event, triggerUsed);
-            return;
-        } else {
-            logger.info(`Ignored context doesn't need handling`);
-            return;
-        }
+    if (ignoredType && !ignoredContextConfirmed) {
+        logger.info("Command inside ignored context; warning and blocking award", {
+            ignoredType,
+        });
+        await handleIgnoredContext(event, triggerUsed);
+        return;
     }
+    // A previously confirmed context is allowed to proceed to normal command
+    // processing; the original code accidentally blocked it as well.
 
     const awardee = parentComment.authorName;
     if (!awardee) {
@@ -220,286 +240,13 @@ export async function handleClientCommentCreate(event: OnCommentCreateRequest) {
         containsUser,
     });
 
-    await unflairedPostLogic(event, awarder);
-
-    await flairTextNotAllowedLogic(event, awarder, commentBody, triggerUsed);
-
-    await selfAwardAttemptLogic(event, awarder, awardee);
-
-    await recipientIsBot(event, awarder, awardee);
-
-    // ─────────────────────────────────────────────
-    // Normal user command logic
-    // ─────────────────────────────────────────────
-
-    if (containsUser && !containsMod) {
-        if (!userCanAward) {
-            logger.debug("❌ User blocked from awarding points", { awarder });
-            return;
-        }
-        const handled = await executeUserCommand(event);
-        // Trigger leaderboard update
-        if (handled) {
-            logger.info("✅ User command executed successfully");
-            return;
-        } else {
-            logger.debug("❌ User command detected but not handled");
-        }
-        return;
-    }
-
-    // ─────────────────────────────────────────────
-    // Mod command logic
-    // ─────────────────────────────────────────────
-    if (containsMod && !containsUser) {
-        if (isMod || isSuperUser) {
-            //recipient is OP
-            let originalPoster: User | undefined;
-            try {
-                originalPoster = await reddit.getUserById(
-                    event.post.authorId as T2
-                );
-            } catch (err) {
-                logger.error(
-                    `Original poster could not be found in executeUserCommand(), returning`
-                );
-                return;
-            }
-
-            if (!originalPoster) return;
-
-            if (recipient.username === originalPoster.username) {
-                const notifyMode = settingNotifyOnPostAuthorAward;
-                const formattedPostAuthorAwardMessage = formatMessage(
-                    event,
-                    settingPostAuthorAwardMessage,
-                    { name: pointName }
-                );
-
-                if (notifyMode === "replybycomment") {
-                    const postAuthorAwardComment = await reddit.submitComment({
-                        id: event.comment.id as T1,
-                        text: formattedPostAuthorAwardMessage,
-                    });
-                    postAuthorAwardComment.distinguish();
-                } else if (notifyMode === "replybypm") {
-                    await reddit.sendPrivateMessage({
-                        to: awarder,
-                        subject: `You do not have permission to award ${pointName}s to Post Authors`,
-                        text: formattedPostAuthorAwardMessage,
-                    });
-                }
-                return;
-            }
-
-            const handled = await executeModCommand(event);
-            // Trigger leaderboard update
-            if (handled) {
-                await scheduler.runJob({
-                    name: UPDATE_LEADERBOARD_JOB,
-                    runAt: new Date(),
-                    data: {
-                        reason: `Updated score for ${user.username}. Triggered by mod command.`,
-                    },
-                });
-                logger.info("✅ Mod command executed successfully");
-                return;
-            }
-        } else {
-            const command = await modCommandValue();
-            //send message saying no perms
-            // ModAwardCommandFailMessage
-            const modAwardFailMsg = formatMessage(
-                event,
-                settingModAwardCommandFail,
-                {
-                    awarder,
-                    awardee,
-                    command,
-                }
-            );
-
-            const settingNotifyOnModAwardFail = await settings.get<string>(
-                "notifyOnModAwardFail"
-            );
-            const notify = (settingNotifyOnModAwardFail ?? ["none"])[0];
-
-            if (notify === "replybypm") {
-                await reddit.sendPrivateMessage({
-                    to: awarder,
-                    text: modAwardFailMsg,
-                    subject: "Unsuccessful Award",
-                });
-            } else if (notify === "replybycomment") {
-                const modAwardFailComment = await reddit.submitComment({
-                    id: event.comment.id as T1,
-                    text: modAwardFailMsg,
-                });
-
-                await modAwardFailComment.distinguish();
-            }
-        }
-    }
-
-    // ─────────────────────────────────────────────
-    // Fallback unexpected flow
-    // ─────────────────────────────────────────────
-    logger.error("Unexpected command flow detected", {
-        containsMod,
-        containsUser,
-        awarder,
-        commentId: event.comment.id,
-    });
-}
-
-export async function handleClientCommentUpdate(event: OnCommentUpdateRequest) {
-    if (!event.post || !event.author || !event.comment) {
-        logger.warn("❌ Missing required event data", { event });
-        return;
-    }
-
-    if (
-        event.author.name === "AutoModerator" ||
-        event.author.name === `${context.subredditName}-ModTeam` ||
-        event.author.name === context.appSlug
-    ) {
-        return;
-    }
-
-    // ─────────────────────────────────────────────
-    // Initialize context
-    // ─────────────────────────────────────────────
-    const commentTriggerContext = new CommentTriggerContext();
-    await commentTriggerContext.init(event);
-
-    const parentComment: Comment | undefined = await getParentComment(event);
-    if (!parentComment) {
-        logger.warn("❌ Parent comment not found", {
-            commentId: event.comment.id,
-        });
-        return;
-    }
-
-    const settingPointName = await settings.get<string>("pointName");
-    const settingNotifyOnPostAuthorAward = await settings.get<string>(
-        "notifyOnPostAuthorAward"
-    );
-    const settingPostAuthorAwardMessage =
-        (await settings.get<string>("postAuthorAwardMessage")) ?? "";
-    const settingModAwardCommandFail =
-        (await settings.get<string>("modAwardCommandFail")) ?? "";
-    const awarder = event.author.name;
-    const commentBody = event.comment.body.toLowerCase();
-    const triggers = await getTriggers();
-    const triggerUsed = triggers.find((t) => commentBody.includes(t));
-    const pointName = (settingPointName as string) ?? "point";
-    if (!triggerUsed) {
-        logger.debug("❌ No valid award command found.");
-        return;
-    }
-
-    const ignoredType = getIgnoredContextType(event.comment.body, triggerUsed);
-
-    const IgnoredContextNeedsHandling = await ignoredContextNeedsHandling(
-        event,
-        triggerUsed
-    );
-    if (ignoredType) {
-        logger.info(`ignoredType exists in comment`, { ignoredType });
-        if (IgnoredContextNeedsHandling) {
-            logger.info(`Running handleIgnoredContext()`, {
-                IgnoredContextNeedsHandling,
-            });
-            await handleIgnoredContext(event, triggerUsed);
-            return;
-        } else {
-            logger.info(`Ignored context doesn't need handling`);
-            return;
-        }
-    }
-
-    const awardee = parentComment.authorName;
-    if (!awardee) {
-        logger.warn("❌ No recipient found", { parentComment });
-        return;
-    }
-
-    let recipient: User | undefined;
-
-    try {
-        recipient = await reddit.getUserByUsername(awardee);
-    } catch {
-        recipient = undefined;
-    }
-    if (!recipient) {
-        logger.warn("❌ Could not fetch user object for recipient", {
-            recipient: awardee,
-        });
-        return;
-    }
-
-    const existingScore = await getCurrentScore(recipient);
-    if (!existingScore) {
-        logger.warn("❌ Could not fetch existing score for recipient", {
-            recipient: awardee,
-        });
-        return;
-    }
-
-    const isMod = commentTriggerContext.isMod;
-    const isSuperUser = commentTriggerContext.isSuperUser;
-    const userCanAward = commentTriggerContext.userCanAward;
-
-    // ─────────────────────────────────────────────
-    // Access control enforcement
-    // ─────────────────────────────────────────────
-    let user: User | undefined;
-
-    try {
-        user = await reddit.getUserByUsername(awarder);
-    } catch {
-        user = undefined;
-    }
-    if (!user) {
-        logger.warn("❌ Could not fetch user object for awarder", { awarder });
-        return;
-    }
-
-    const hasPermission = await userHasPermission(
-        event,
-        user.id,
-        commentTriggerContext
-    );
-
-    if (!hasPermission) {
-        logger.debug("❌ User does not have permission", {
-            awarder,
-            commentId: event.comment.id,
-        });
-
-        return;
-    }
-
-    // ─────────────────────────────────────────────
-    // Detect which command type exists
-    // ─────────────────────────────────────────────
-
-    const containsMod = await commentContainsModCommand(event);
-    const containsUser = await commentContainsUserCommand(event);
-
-    logger.debug("Checking values", {
-        trigger: triggerUsed,
-        containsMod,
-        containsUser,
-    });
-
-    await unflairedPostLogic(event, awarder);
-
-    await flairTextNotAllowedLogic(event, awarder, commentBody, triggerUsed);
-
-    await selfAwardAttemptLogic(event, awarder, awardee);
-
-    await recipientIsBot(event, awarder, awardee);
+    // Each guard returns true when it blocks the award. Stop immediately so a
+    // restricted post, disallowed flair, self-award, or bot recipient cannot
+    // fall through into the point-awarding functions.
+    if (await unflairedPostLogic(event, awarder)) return;
+    if (await flairTextNotAllowedLogic(event, awarder, commentBody, triggerUsed)) return;
+    if (await selfAwardAttemptLogic(event, awarder, awardee)) return;
+    if (await recipientIsBot(event, awarder, awardee)) return;
 
     // ─────────────────────────────────────────────
     // Normal user command logic
@@ -556,13 +303,13 @@ export async function handleClientCommentUpdate(event: OnCommentUpdateRequest) {
                     { name: pointName }
                 );
 
-                if (notifyMode === "replybycomment") {
+                if (notifyMode === "replybycomment" && formattedPostAuthorAwardMessage.trim()) {
                     const postAuthorAwardComment = await reddit.submitComment({
                         id: event.comment.id as T1,
                         text: formattedPostAuthorAwardMessage,
                     });
-                    postAuthorAwardComment.distinguish();
-                } else if (notifyMode === "replybypm") {
+                    await postAuthorAwardComment.distinguish();
+                } else if (notifyMode === "replybypm" && formattedPostAuthorAwardMessage.trim()) {
                     await reddit.sendPrivateMessage({
                         to: awarder,
                         subject: `You do not have permission to award ${pointName}s to Post Authors`,
@@ -599,18 +346,296 @@ export async function handleClientCommentUpdate(event: OnCommentUpdateRequest) {
                 }
             );
 
-            const settingNotifyOnModAwardFail = await settings.get<string>(
+            const settingNotifyOnModAwardFail = await getNotificationMode(
                 "notifyOnModAwardFail"
             );
-            const notify = (settingNotifyOnModAwardFail ?? ["none"])[0];
+            const notify = settingNotifyOnModAwardFail;
 
-            if (notify === "replybypm") {
+            if (notify === "replybypm" && modAwardFailMsg.trim()) {
                 await reddit.sendPrivateMessage({
                     to: awarder,
                     text: modAwardFailMsg,
                     subject: "Unsuccessful Award",
                 });
-            } else if (notify === "replybycomment") {
+            } else if (notify === "replybycomment" && modAwardFailMsg.trim()) {
+                const modAwardFailComment = await reddit.submitComment({
+                    id: event.comment.id as T1,
+                    text: modAwardFailMsg,
+                });
+
+                await modAwardFailComment.distinguish();
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────
+    // Fallback unexpected flow
+    // ─────────────────────────────────────────────
+    logger.error("Unexpected command flow detected", {
+        containsMod,
+        containsUser,
+        awarder,
+        commentId: event.comment.id,
+    });
+}
+
+export async function handleClientCommentUpdate(event: OnCommentUpdateRequest) {
+    if (!event.post || !event.author || !event.comment) {
+        logger.warn("❌ Missing required event data", { event });
+        return;
+    }
+
+    if (
+        event.author.name === "AutoModerator" ||
+        event.author.name === `${context.subredditName}-ModTeam` ||
+        event.author.name === context.appSlug
+    ) {
+        return;
+    }
+
+    await confirmIgnoredContextIfRequested(event);
+
+    // ─────────────────────────────────────────────
+    // Initialize context
+    // ─────────────────────────────────────────────
+    const commentTriggerContext = new CommentTriggerContext();
+    await commentTriggerContext.init(event);
+
+    const parentComment: Comment | undefined = await getParentComment(event);
+    if (!parentComment) {
+        logger.warn("❌ Parent comment not found", {
+            commentId: event.comment.id,
+        });
+        return;
+    }
+
+    const settingPointName = await settings.get<string>("pointName");
+    const settingNotifyOnPostAuthorAward = await getNotificationMode(
+        "notifyOnPostAuthorAward"
+    );
+    const settingPostAuthorAwardMessage =
+        (await settings.get<string>("postAuthorAwardMessage")) ?? "";
+    const settingModAwardCommandFail =
+        (await settings.get<string>("modAwardCommandFail")) ?? "";
+    const awarder = event.author.name;
+    const commentBody = (event.comment.body ?? "").toLowerCase();
+    const triggers = await getTriggers();
+    const triggerUsed = triggers.find((t) => commentBody.includes(t.toLowerCase()));
+    const pointName = (settingPointName as string) ?? "point";
+    if (!triggerUsed) {
+        logger.debug("❌ No valid award command found.");
+        return;
+    }
+
+    const ignoredType = getIgnoredContextType(event.comment.body ?? "", triggerUsed);
+
+    const ignoredContextConfirmed = await ignoredContextNeedsHandling(
+        event,
+        triggerUsed
+    );
+    if (ignoredType && !ignoredContextConfirmed) {
+        logger.info("Command inside ignored context; warning and blocking award", {
+            ignoredType,
+        });
+        await handleIgnoredContext(event, triggerUsed);
+        return;
+    }
+    // A previously confirmed context is allowed to proceed to normal command
+    // processing; the original code accidentally blocked it as well.
+
+    const awardee = parentComment.authorName;
+    if (!awardee) {
+        logger.warn("❌ No recipient found", { parentComment });
+        return;
+    }
+
+    let recipient: User | undefined;
+
+    try {
+        recipient = await reddit.getUserByUsername(awardee);
+    } catch {
+        recipient = undefined;
+    }
+    if (!recipient) {
+        logger.warn("❌ Could not fetch user object for recipient", {
+            recipient: awardee,
+        });
+        return;
+    }
+
+    const existingScore = await getCurrentScore(recipient);
+    if (!existingScore) {
+        logger.warn("❌ Could not fetch existing score for recipient", {
+            recipient: awardee,
+        });
+        return;
+    }
+
+    const isMod = commentTriggerContext.isMod;
+    const isSuperUser = commentTriggerContext.isSuperUser;
+    const userCanAward = commentTriggerContext.userCanAward;
+
+    // ─────────────────────────────────────────────
+    // Access control enforcement
+    // ─────────────────────────────────────────────
+    let user: User | undefined;
+
+    try {
+        user = await reddit.getUserByUsername(awarder);
+    } catch {
+        user = undefined;
+    }
+    if (!user) {
+        logger.warn("❌ Could not fetch user object for awarder", { awarder });
+        return;
+    }
+
+    const hasPermission = await userHasPermission(
+        event,
+        user.id,
+        commentTriggerContext
+    );
+
+    if (!hasPermission) {
+        logger.debug("❌ User does not have permission", {
+            awarder,
+            commentId: event.comment.id,
+        });
+
+        return;
+    }
+
+    // ─────────────────────────────────────────────
+    // Detect which command type exists
+    // ─────────────────────────────────────────────
+
+    const containsMod = await commentContainsModCommand(event);
+    const containsUser = await commentContainsUserCommand(event);
+
+    logger.debug("Checking values", {
+        trigger: triggerUsed,
+        containsMod,
+        containsUser,
+    });
+
+    // Each guard returns true when it blocks the award. Stop immediately so a
+    // restricted post, disallowed flair, self-award, or bot recipient cannot
+    // fall through into the point-awarding functions.
+    if (await unflairedPostLogic(event, awarder)) return;
+    if (await flairTextNotAllowedLogic(event, awarder, commentBody, triggerUsed)) return;
+    if (await selfAwardAttemptLogic(event, awarder, awardee)) return;
+    if (await recipientIsBot(event, awarder, awardee)) return;
+
+    // ─────────────────────────────────────────────
+    // Normal user command logic
+    // ─────────────────────────────────────────────
+
+    if (containsUser && !containsMod) {
+        if (!userCanAward) {
+            logger.debug("❌ User blocked from awarding points", { awarder });
+            return;
+        }
+        const handled = await executeUserCommand(event);
+        // Trigger leaderboard update
+        if (handled) {
+            await scheduler.runJob({
+                name: UPDATE_LEADERBOARD_JOB,
+                runAt: new Date(),
+                data: {
+                    reason: `Updated score for ${user.username}. Triggered by user command.`,
+                },
+            });
+            logger.info("✅ User command executed successfully");
+            return;
+        } else {
+            logger.debug("❌ User command detected but not handled");
+        }
+        return;
+    }
+
+    // ─────────────────────────────────────────────
+    // Mod command logic
+    // ─────────────────────────────────────────────
+    if (containsMod && !containsUser) {
+        if (isMod || isSuperUser) {
+            //recipient is OP
+            let originalPoster: User | undefined;
+            try {
+                originalPoster = await reddit.getUserById(
+                    event.post.authorId as T2
+                );
+            } catch (err) {
+                logger.error(
+                    `Original poster could not be found in executeUserCommand(), returning`
+                );
+                return;
+            }
+
+            if (!originalPoster) return;
+
+            if (recipient.username === originalPoster.username) {
+                const notifyMode = settingNotifyOnPostAuthorAward;
+                const formattedPostAuthorAwardMessage = formatMessage(
+                    event,
+                    settingPostAuthorAwardMessage,
+                    { name: pointName }
+                );
+
+                if (notifyMode === "replybycomment" && formattedPostAuthorAwardMessage.trim()) {
+                    const postAuthorAwardComment = await reddit.submitComment({
+                        id: event.comment.id as T1,
+                        text: formattedPostAuthorAwardMessage,
+                    });
+                    await postAuthorAwardComment.distinguish();
+                } else if (notifyMode === "replybypm" && formattedPostAuthorAwardMessage.trim()) {
+                    await reddit.sendPrivateMessage({
+                        to: awarder,
+                        subject: `You do not have permission to award ${pointName}s to Post Authors`,
+                        text: formattedPostAuthorAwardMessage,
+                    });
+                }
+                return;
+            }
+
+            const handled = await executeModCommand(event);
+            // Trigger leaderboard update
+            if (handled) {
+                await scheduler.runJob({
+                    name: UPDATE_LEADERBOARD_JOB,
+                    runAt: new Date(),
+                    data: {
+                        reason: `Updated score for ${user.username}. Triggered by mod command.`,
+                    },
+                });
+                logger.info("✅ Mod command executed successfully");
+                return;
+            }
+        } else {
+            const command = await modCommandValue();
+            //send message saying no perms
+            // ModAwardCommandFailMessage
+            const modAwardFailMsg = formatMessage(
+                event,
+                settingModAwardCommandFail,
+                {
+                    awarder,
+                    awardee,
+                    command,
+                }
+            );
+
+            const settingNotifyOnModAwardFail = await getNotificationMode(
+                "notifyOnModAwardFail"
+            );
+            const notify = settingNotifyOnModAwardFail;
+
+            if (notify === "replybypm" && modAwardFailMsg.trim()) {
+                await reddit.sendPrivateMessage({
+                    to: awarder,
+                    text: modAwardFailMsg,
+                    subject: "Unsuccessful Award",
+                });
+            } else if (notify === "replybycomment" && modAwardFailMsg.trim()) {
                 const modAwardFailComment = await reddit.submitComment({
                     id: event.comment.id as T1,
                     text: modAwardFailMsg,
@@ -644,7 +669,7 @@ export async function commentContainsUserCommand(
     const body = (event.comment.body ?? "").toLowerCase();
 
     return userCommands.some((command) =>
-        new RegExp(`${command}`, "i").test(body)
+        body.includes(command.toLowerCase())
     );
 }
 
@@ -655,24 +680,26 @@ export async function awardPointToUserNormalCommand(
     event: OnCommentCreateRequest | OnCommentUpdateRequest,
     awarder: string,
     recipient: User | undefined
-) {
+): Promise<boolean> {
     const parentComment = await getParentComment(event);
     if (!parentComment || !event.subreddit || !event.comment || !event.post)
-        return;
+        return false;
 
     const awardee = parentComment.authorName;
-    const awardKey = `userCommand:${recipient?.username}-${event.comment.id}`;
+    if (!awardee) {
+        logger.warn("Normal award parent comment has no author name", {
+            commentId: event.comment.id,
+        });
+        return false;
+    }
 
     if (!recipient) {
         logger.warn("❌ Recipient user not found", {
             awardee,
             awarder,
         });
-        return;
+        return false;
     }
-
-    // Mark only after the recipient has been resolved.
-    await redis.set(awardKey, "1");
 
     const existingScore = await getCurrentScore(recipient);
 
@@ -681,7 +708,7 @@ export async function awardPointToUserNormalCommand(
             awardee,
             awarder,
         });
-        return;
+        return false;
     }
 
     let flairShouldBeManaged: boolean;
@@ -697,14 +724,21 @@ export async function awardPointToUserNormalCommand(
 
     const username = recipient.username;
 
-    const scoreFromRedis = await redis.zScore(POINTS_STORE_KEY, username);
-
-    if (scoreFromRedis === undefined || scoreFromRedis === null) return;
+    // A user with no sorted-set entry yet starts at the score returned by
+    // getCurrentScore (normally zero), rather than having their first award
+    // silently discarded.
+    const scoreFromRedis =
+        (await redis.zScore(POINTS_STORE_KEY, username)) ?? existingScore.score;
 
     await redis.zAdd(POINTS_STORE_KEY, {
         member: username,
         score: scoreFromRedis + 1,
     });
+
+    // Record the award immediately after the score write. Later optional
+    // notifications/wiki/flair work must never cause a retry to add another point.
+    const awardKey = `userAwardGiven:${parentComment.id}:${event.post.id}:${event.subreddit.name}`;
+    await redis.set(awardKey, "1");
 
     // Record only applied awards. Mods using the normal command still count as mods.
     try {
@@ -729,8 +763,7 @@ export async function awardPointToUserNormalCommand(
 
     const pointName = (await settings.get<string>("pointName")) ?? "point";
     const pointSymbol = (await settings.get<string>("pointSymbol")) ?? "";
-    const notifySuccess =
-        (await settings.get<string>("notifyOnSuccess")) ?? "none";
+    const notifySuccess = await getNotificationMode("notifyOnSuccess");
 
     const leaderboard = `https://old.reddit.com/r/${
         event.subreddit.name
@@ -745,7 +778,7 @@ export async function awardPointToUserNormalCommand(
         logger.warn("❌ Could not retrieve existing score for user", {
             awardee,
         });
-        return;
+        return true;
     }
 
     const successMessage = formatMessage(
@@ -763,7 +796,7 @@ export async function awardPointToUserNormalCommand(
         }
     );
 
-    if (notifySuccess === "replybypm") {
+    if (notifySuccess === "replybypm" && successMessage.trim()) {
         await Promise.all([
             reddit.sendPrivateMessage({
                 to: awarder,
@@ -776,7 +809,7 @@ export async function awardPointToUserNormalCommand(
                 text: successMessage,
             }),
         ]);
-    } else if (notifySuccess === "replyascomment") {
+    } else if (notifySuccess === "replybycomment" && successMessage.trim()) {
         const commandSuccessMessage = await reddit.submitComment({
             id: event.comment.id as T1,
             text: successMessage,
@@ -791,7 +824,7 @@ export async function awardPointToUserNormalCommand(
     } catch {
         user = undefined;
     }
-    if (!user) return;
+    if (!user) return true;
 
     if (await restrictedKeyExists(awarder)) {
         await updateAuthorRedis(event, user);
@@ -829,10 +862,11 @@ export async function awardPointToUserNormalCommand(
         logger.info(
             "Flair handling is disabled for this user; wiki was updated and flair update was skipped"
         );
-        return;
+        return true;
     }
 
     await setUserScore(awardee, awarder, newScore);
+    return true;
 }
 
 /**
@@ -883,11 +917,6 @@ export async function updateAuthorRedis(
             return;
         }
 
-        logger.debug("Marking notification as sent in Redis", {
-            notificationKey,
-        });
-        await redis.set(notificationKey, "1");
-
         const subredditName = event.subreddit?.name ?? "";
 
         logger.debug("Preparing lifted restriction message", {
@@ -902,18 +931,17 @@ export async function updateAuthorRedis(
         );
 
         try {
-            logger.info(`Sending restriction lifted PM to u/${user.username}`, {
-                preview: liftedMsg.slice(0, 1_000),
-            });
-
-            await reddit.sendPrivateMessage({
-                to: user.username,
-                subject: `Restriction lifted in r/${subredditName}`,
-                text: liftedMsg,
-            });
-            logger.info(
-                `✅ Successfully sent restriction lifted PM to u/${user.username}`
-            );
+            if (liftedMsg.trim()) {
+                await reddit.sendPrivateMessage({
+                    to: user.username,
+                    subject: `Restriction lifted in r/${subredditName}`,
+                    text: liftedMsg,
+                });
+                logger.info(
+                    `✅ Successfully sent restriction lifted PM to u/${user.username}`
+                );
+            }
+            await redis.set(notificationKey, "1");
         } catch (err) {
             logger.error("❌ Failed to send restriction lifted PM", {
                 username: user.username,
@@ -929,17 +957,19 @@ export async function updateAuthorRedis(
 
     const currentCount = Number(raw) || 0;
 
-    if (currentCount < awardsRequired) {
-        await redis.set(restrictionKey, (currentCount + 1).toString());
+    const nextCount = currentCount + 1;
+
+    if (nextCount < awardsRequired) {
+        await redis.set(restrictionKey, nextCount.toString());
 
         logger.info(
-            `⏳ User ${author.username} still restricted: ${currentCount}/${awardsRequired}`
+            `⏳ User ${author.username} still restricted: ${nextCount}/${awardsRequired}`
         );
         return;
     }
 
     logger.info(
-        `✅ User ${author.username} satisfied award requirement: ${currentCount}/${awardsRequired}`
+        `✅ User ${author.username} satisfied award requirement: ${nextCount}/${awardsRequired}`
     );
 
     await deleteRestrictedKey(author);
@@ -958,11 +988,6 @@ export async function updateAuthorRedis(
         return;
     }
 
-    logger.debug("Marking notification as sent in Redis", {
-        notificationKey,
-    });
-    await redis.set(notificationKey, "1");
-
     const subredditName = event.subreddit?.name ?? "unknown-subreddit";
 
     logger.debug("Preparing lifted restriction message", {
@@ -977,20 +1002,17 @@ export async function updateAuthorRedis(
     );
 
     try {
-        logger.info(`Sending restriction lifted PM to u/${user.username}`, {
-            subject: `Restriction lifted in r/${subredditName}`,
-            preview: liftedMsg.slice(0, 100),
-        });
-
-        await reddit.sendPrivateMessage({
-            to: user.username,
-            subject: `Restriction lifted in r/${subredditName}`,
-            text: liftedMsg,
-        });
-
-        logger.info(
-            `✅ Successfully sent restriction lifted PM to u/${user.username}`
-        );
+        if (liftedMsg.trim()) {
+            await reddit.sendPrivateMessage({
+                to: user.username,
+                subject: `Restriction lifted in r/${subredditName}`,
+                text: liftedMsg,
+            });
+            logger.info(
+                `✅ Successfully sent restriction lifted PM to u/${user.username}`
+            );
+        }
+        await redis.set(notificationKey, "1");
     } catch (err) {
         logger.error("❌ Failed to send restriction lifted PM", {
             username: user.username,
@@ -1019,7 +1041,7 @@ export async function executeUserCommand(
         return false;
     }
 
-    const commentBody = event.comment.body;
+    const commentBody = (event.comment.body ?? "").toLowerCase();
     const awarder = event.author.name;
     const recipient = parentComment.authorName;
     const pointName = (await settings.get<string>("pointName")) ?? "point";
@@ -1037,7 +1059,7 @@ export async function executeUserCommand(
     const allTriggers = await getTriggers();
 
     const triggerUsed = allTriggers.find((t) =>
-        new RegExp(`^${t}`, "i").test(commentBody)
+        commentBody.startsWith(t.toLowerCase())
     );
 
     if (!triggerUsed) return false;
@@ -1055,7 +1077,7 @@ export async function executeUserCommand(
             (await settings.get<string>("usersWhoCannotAwardPointsMessage")) ??
             "";
 
-        const notifyBlockedUserMode = await settings.get<string>(
+        const notifyBlockedUserMode = await getNotificationMode(
             "notifyOnBlockedUser"
         );
 
@@ -1065,7 +1087,7 @@ export async function executeUserCommand(
             subreddit: event.subreddit.name,
         });
 
-        if (notifyBlockedUserMode === "replyascomment") {
+        if (notifyBlockedUserMode === "replybycomment" && blockedMessage.trim()) {
             const userIsBlockedFromAwardingPointsMessage =
                 await reddit.submitComment({
                     id: event.comment.id as `t1_${string}`,
@@ -1073,7 +1095,7 @@ export async function executeUserCommand(
                 });
 
             await userIsBlockedFromAwardingPointsMessage.distinguish();
-        } else if (notifyBlockedUserMode === "replybypm") {
+        } else if (notifyBlockedUserMode === "replybypm" && blockedMessage.trim()) {
             await reddit.sendPrivateMessage({
                 to: awarder,
                 text: blockedMessage,
@@ -1097,18 +1119,18 @@ export async function executeUserCommand(
             }
         );
 
-        const notifyNormalSelfAwardMode = await settings.get<string>(
+        const notifyNormalSelfAwardMode = await getNotificationMode(
             "notifyOnSelfAward"
         );
 
-        if (notifyNormalSelfAwardMode === "replyascomment") {
+        if (notifyNormalSelfAwardMode === "replybycomment" && selfAwardTemplate.trim()) {
             const selfAwardComment = await reddit.submitComment({
                 id: event.comment.id as `t1_${string}`,
                 text: selfAwardTemplate,
             });
 
             await selfAwardComment.distinguish();
-        } else if (notifyNormalSelfAwardMode === "replybypm") {
+        } else if (notifyNormalSelfAwardMode === "replybypm" && selfAwardTemplate.trim()) {
             await reddit.sendPrivateMessage({
                 to: awarder,
                 text: selfAwardTemplate,
@@ -1132,7 +1154,7 @@ export async function executeUserCommand(
     if (!originalPoster) return false;
 
     if (recipient === originalPoster.username) {
-        const notifyMode = await settings.get<string>(
+        const notifyMode = await getNotificationMode(
             "notifyOnPostAuthorAward"
         );
         const formattedPostAuthorAwardMessage = formatMessage(
@@ -1141,13 +1163,13 @@ export async function executeUserCommand(
             { name: pointName }
         );
 
-        if (notifyMode === "replyascomment") {
+        if (notifyMode === "replybycomment" && formattedPostAuthorAwardMessage.trim()) {
             const postAuthorAwardComment = await reddit.submitComment({
                 id: event.comment.id as `t1_${string}`,
                 text: formattedPostAuthorAwardMessage,
             });
-            postAuthorAwardComment.distinguish();
-        } else if (notifyMode === "replybypm") {
+            await postAuthorAwardComment.distinguish();
+        } else if (notifyMode === "replybypm" && formattedPostAuthorAwardMessage.trim()) {
             await reddit.sendPrivateMessage({
                 to: awarder,
                 subject: `You do not have permission to award ${pointName}s to Post Authors`,
@@ -1174,18 +1196,18 @@ export async function executeUserCommand(
             }
         );
 
-        const notifyMode = await settings.get<string>(
+        const notifyMode = await getNotificationMode(
             "notifyOnPointAlreadyAwardedToUser"
         );
 
-        if (notifyMode === "replyascomment") {
+        if (notifyMode === "replybycomment" && alreadyAwardedTemplate.trim()) {
             const alreadyAwardedMessage = await reddit.submitComment({
                 id: event.comment.id as `t1_${string}`,
                 text: alreadyAwardedTemplate,
             });
 
             await alreadyAwardedMessage.distinguish();
-        } else if (notifyMode === "replybypm") {
+        } else if (notifyMode === "replybypm" && alreadyAwardedTemplate.trim()) {
             await reddit.sendPrivateMessage({
                 to: awarder,
                 subject:
@@ -1215,11 +1237,17 @@ export async function executeUserCommand(
 
     if (!awardee) return false;
 
-    // Mark the award as processed only after the recipient is resolved.
-    await redis.set(key, "1");
+    // Apply the score first. Only persist the duplicate guard after the
+    // score write succeeds, so transient lookup/Redis failures can be retried.
+    const awardApplied = await awardPointToUserNormalCommand(
+        event,
+        awarder,
+        awardee
+    );
+    if (!awardApplied) return false;
 
-    // 🏆 Award point + side effects
-    await awardPointToUserNormalCommand(event, awarder, awardee);
+    // awardPointToUserNormalCommand persists the duplicate guard immediately
+    // after the score write, before any optional side effects.
 
     // Auto Superuser logic
     const commandUsed =
@@ -1237,25 +1265,10 @@ export async function commentContainsModCommand(
 ): Promise<boolean> {
     if (!event.comment) return false;
 
-    const allTriggers = await getTriggers();
-    const commentBody = event.comment.body ?? "";
-    const modCommand = await modCommandValue();
+    const modCommand = (await modCommandValue()).trim().toLowerCase();
+    if (!modCommand) return false;
 
-    const triggerUsed = allTriggers.find((t) =>
-        new RegExp(`${t}`, "i").test(commentBody)
-    );
-    if (!triggerUsed) return false;
-    const usedCommand = triggerUsed;
-
-    const isModCommand = usedCommand === modCommand;
-
-    logger.info("🛡️ Mod command probe", {
-        usedCommand,
-        modCommand,
-        isModCommand,
-    });
-
-    return isModCommand;
+    return (event.comment.body ?? "").toLowerCase().includes(modCommand);
 }
 
 export async function isSelfAwardModCommand(
@@ -1281,23 +1294,24 @@ export async function handleSelfAwardModCommand(
     const pointName = (settingPointName as string) ?? "point";
 
     const selfMsgTemplate = (settingSelfAwardMessage as string) ?? "none";
-    const settingNotifyOnSelfAward = await settings.get<string>(
+    const settingNotifyOnSelfAward = await getNotificationMode(
         "notifyOnSelfAward"
     );
     const awarder = event.author.name;
     const recipient = parentComment.authorName;
-    if (awarder === recipient) {
+    if (awarder.toLowerCase() === recipient.toLowerCase()) {
         const selfText = formatMessage(event, selfMsgTemplate, {
             awarder,
             name: pointName,
         });
-        if (settingNotifyOnSelfAward === "none") {
+        // Reply publicly only when the setting explicitly selects a comment.
+        if (settingNotifyOnSelfAward === "replybycomment" && selfText.trim()) {
             const selfAwardMessage = await reddit.submitComment({
                 id: event.comment.id as `t1_${string}`,
                 text: selfText,
             });
             await selfAwardMessage.distinguish();
-        } else if (settingNotifyOnSelfAward === "replybypm") {
+        } else if (settingNotifyOnSelfAward === "replybypm" && selfText.trim()) {
             await reddit.sendPrivateMessage({
                 to: awarder,
                 subject: `You tried to award yourself a ${pointName}`,
@@ -1328,7 +1342,7 @@ export async function handleDuplicateModAward(
     const settingModAwardAlreadyGiven = await settings.get<string>(
         "modAwardAlreadyGiven"
     );
-    const settingNotifyOnModAwardFail = await settings.get<string>(
+    const settingNotifyOnModAwardFail = await getNotificationMode(
         "notifyOnModAwardFail"
     );
     const pointName = (settingPointName as string) ?? "point";
@@ -1342,15 +1356,15 @@ export async function handleDuplicateModAward(
     );
 
     const notify =
-        (settingNotifyOnModAwardFail as string | undefined) ?? "none";
+        settingNotifyOnModAwardFail;
 
-    if (notify === "replyascomment") {
+    if (notify === "replybycomment" && modAwardAlreadyGivenMessage.trim()) {
         const modAwardDupeMessage = await reddit.submitComment({
             id: event.comment!.id as `t1_${string}`,
             text: modAwardAlreadyGivenMessage,
         });
         await modAwardDupeMessage.distinguish();
-    } else if (notify === "replybypm") {
+    } else if (notify === "replybypm" && modAwardAlreadyGivenMessage.trim()) {
         await reddit.sendPrivateMessage({
             to: awarder,
             subject: "Mod award already given",
@@ -1372,7 +1386,7 @@ export async function handleUnauthorizedModCommand(
     if (ctx.isMod || ctx.isSuperUser) return true;
 
     const settingPointName = await settings.get<string>("pointName");
-    const settingNotifyOnModAwardFail = await settings.get<string>(
+    const settingNotifyOnModAwardFail = await getNotificationMode(
         "notifyOnModAwardFail"
     );
     const settingModAwardCommandFail = await settings.get<string>(
@@ -1392,15 +1406,15 @@ export async function handleUnauthorizedModCommand(
     );
 
     const notify =
-        (settingNotifyOnModAwardFail as string | undefined) ?? "none";
+        settingNotifyOnModAwardFail;
 
-    if (notify === "replyascomment") {
+    if (notify === "replybycomment" && failMsg.trim()) {
         const modAwardFailMessage = await reddit.submitComment({
             id: event.comment!.id as `t1_${string}`,
             text: failMsg,
         });
         await modAwardFailMessage.distinguish();
-    } else if (notify === "replybypm") {
+    } else if (notify === "replybypm" && failMsg.trim()) {
         await reddit.sendPrivateMessage({
             to: awarder,
             subject: "Mod Award Command Not Allowed",
@@ -1414,19 +1428,19 @@ export async function handleUnauthorizedModCommand(
 
 export async function awardPointToUserModCommand(
     event: OnCommentCreateRequest | OnCommentUpdateRequest
-) {
+): Promise<boolean> {
     if (!event.comment || !event.subreddit || !event.author || !event.post) {
         logger.warn("❌ Missing required event data", { event });
-        return;
+        return false;
     }
     const settingPointName = await settings.get<string>("pointName");
     const settingModAwardCommand = await settings.get<string>(
         "modAwardCommand"
     );
-    const settingNotifyOnModAwardSuccess = await settings.get<string>(
+    const settingNotifyOnModAwardSuccess = await getNotificationMode(
         "notifyOnModAwardSuccess"
     );
-    const settingNotifyOnTrustedUserAwardSuccess = await settings.get<string>(
+    const settingNotifyOnTrustedUserAwardSuccess = await getNotificationMode(
         "notifyOnTrustedUserAwardSuccess"
     );
     const settingLeaderboardName = await settings.get<string>(
@@ -1444,11 +1458,17 @@ export async function awardPointToUserModCommand(
     const parentComment = await getParentComment(event);
     if (!parentComment || !parentComment.authorId) {
         logger.warn("❌ Parent comment missing for mod award");
-        return;
+        return false;
     }
 
     const awarder = event.author.name;
     const awardee = parentComment.authorName;
+    if (!awardee) {
+        logger.warn("Mod award parent comment has no author name", {
+            commentId: event.comment.id,
+        });
+        return false;
+    }
 
     // Classify by actual moderator status, not by which command was used.
     const awarderIsModerator = await isModerator(event.subreddit.name, awarder);
@@ -1461,7 +1481,7 @@ export async function awardPointToUserModCommand(
         user = undefined;
     }
 
-    if (!user) return;
+    if (!user) return false;
 
     let recipient: User | undefined;
 
@@ -1471,7 +1491,7 @@ export async function awardPointToUserModCommand(
         recipient = undefined;
     }
 
-    if (!recipient) return;
+    if (!recipient) return false;
 
     const existingScore = await getCurrentScore(recipient);
 
@@ -1479,7 +1499,7 @@ export async function awardPointToUserModCommand(
         logger.warn("❌ Could not retrieve existing score for user", {
             awardee,
         });
-        return;
+        return false;
     }
 
     let flairShouldBeManaged: boolean;
@@ -1495,14 +1515,19 @@ export async function awardPointToUserModCommand(
 
     const username = awardee;
 
-    const scoreFromRedis = await redis.zScore(POINTS_STORE_KEY, username);
-
-    if (scoreFromRedis === undefined || scoreFromRedis === null) return;
+    // New recipients may not have a sorted-set entry yet; use the
+    // initialized score from getCurrentScore instead of dropping the award.
+    const scoreFromRedis =
+        (await redis.zScore(POINTS_STORE_KEY, username)) ?? existingScore.score;
 
     await redis.zAdd(POINTS_STORE_KEY, {
         member: username,
         score: scoreFromRedis + 1,
     });
+
+    // Persist the duplicate guard immediately after the score write, before
+    // optional digest, promotion, notification, wiki, or flair side effects.
+    await setModDupKey(event, "1");
 
     // Record the successful point independently of optional replies/flair/wiki.
     try {
@@ -1521,19 +1546,14 @@ export async function awardPointToUserModCommand(
         flairShouldBeManaged,
     };
 
-    // 🔒 Prevent duplicates
-    await setModDupKey(event, "1");
-
     // ⭐ Auto-superuser logic
     const modCommand = (settingModAwardCommand as string) ?? "";
     await handleAutoSuperuserPromotion(event, newScore.score, modCommand);
 
     // 📣 Notify on success
-    const modNotifyMode =
-        (settingNotifyOnModAwardSuccess as string | undefined) ?? "none";
+    const modNotifyMode = settingNotifyOnModAwardSuccess;
     const trustedUserNotifyMode =
-        (settingNotifyOnTrustedUserAwardSuccess as string | undefined) ??
-        "none";
+        settingNotifyOnTrustedUserAwardSuccess;
 
     const leaderboard = `https://old.reddit.com/r/${
         event.subreddit.name
@@ -1550,7 +1570,7 @@ export async function awardPointToUserModCommand(
         logger.warn("❌ Could not retrieve existing score for user", {
             awardee,
         });
-        return;
+        return true;
     }
 
     const awardeePage = `https://old.reddit.com/r/${event.subreddit.name}/wiki/user/${awardee}/1`;
@@ -1582,13 +1602,13 @@ export async function awardPointToUserModCommand(
     );
 
     if (modNotifyMode !== "none" && awarderIsModerator) {
-        if (modNotifyMode === "replyascomment") {
+        if (modNotifyMode === "replybycomment" && modSuccessMessage.trim()) {
             const modAwardSuccessMessage = await reddit.submitComment({
                 id: event.comment.id as `t1_${string}`,
                 text: modSuccessMessage,
             });
             await modAwardSuccessMessage.distinguish();
-        } else if (modNotifyMode === "replybypm") {
+        } else if (modNotifyMode === "replybypm" && modSuccessMessage.trim()) {
             await reddit.sendPrivateMessage({
                 to: awarder,
                 subject: "Mod Award Successful",
@@ -1601,13 +1621,13 @@ export async function awardPointToUserModCommand(
             newScore,
         });
     } else if (trustedUserNotifyMode !== "none" && awarderIsSuperUser) {
-        if (trustedUserNotifyMode === "replyascomment") {
+        if (trustedUserNotifyMode === "replybycomment" && trustedUserMessage.trim()) {
             const trustedUserSuccessComment = await reddit.submitComment({
                 id: event.comment.id as `t1_${string}`,
                 text: trustedUserMessage,
             });
             await trustedUserSuccessComment.distinguish();
-        } else if (trustedUserNotifyMode === "replybypm") {
+        } else if (trustedUserNotifyMode === "replybypm" && trustedUserMessage.trim()) {
             await reddit.sendPrivateMessage({
                 to: awarder,
                 subject: "Superuser Award Successful",
@@ -1644,10 +1664,11 @@ export async function awardPointToUserModCommand(
         logger.info(
             "Flair handling is disabled for this user; wiki was updated and flair update was skipped"
         );
-        return;
+        return true;
     }
 
     await setUserScore(awardee, awarder, newScore);
+    return true;
 }
 
 export async function executeModCommand(
@@ -1672,39 +1693,25 @@ export async function executeModCommand(
     }
 
     const body = (event.comment.body ?? "").toLowerCase();
+    const trigger = (await modCommandValue()).trim();
 
-    const triggers = await getTriggers();
+    // Only the configured moderator command enters the moderator-award flow.
+    if (!trigger || !body.includes(trigger.toLowerCase())) return false;
 
-    for (const trigger of triggers) {
-        if (!new RegExp(trigger, "i").test(body)) {
-            continue;
-        }
+    const isAuthorized = await handleUnauthorizedModCommand(event, trigger);
+    if (!isAuthorized) return false;
 
-        // if (await handleModIgnoredContextIfNeeded(event , trigger)) {
-        //     return false;
-        // }
-
-        const isAuthorized = await handleUnauthorizedModCommand(event, trigger);
-        if (!isAuthorized) return false;
-
-        if (await isSelfAwardModCommand(event)) {
-            await handleSelfAwardModCommand(event);
-
-            return false;
-        }
-
-        if (await isDuplicateModAward(event)) {
-            await handleDuplicateModAward(event);
-
-            return false;
-        }
-
-        await awardPointToUserModCommand(event);
-
-        return true;
+    if (await isSelfAwardModCommand(event)) {
+        await handleSelfAwardModCommand(event);
+        return false;
     }
 
-    return false;
+    if (await isDuplicateModAward(event)) {
+        await handleDuplicateModAward(event);
+        return false;
+    }
+
+    return await awardPointToUserModCommand(event);
 }
 
 export function getAwardsGivenFromWiki(
@@ -2070,9 +2077,8 @@ export async function setUserScore(
 
 export async function unflairedPostLogic(
     event: OnCommentCreateRequest | OnCommentUpdateRequest,
-
     awarder: string
-) {
+): Promise<boolean> {
     const settingAllowUnflairedPosts = await settings.get<boolean>(
         "allowUnflairedPosts"
     );
@@ -2081,34 +2087,25 @@ export async function unflairedPostLogic(
     );
 
     if (!event.post || !event.comment || !event.author || !event.subreddit)
-        return;
+        return false;
 
     const allowUnflairedPosts = settingAllowUnflairedPosts ?? true;
 
     const unflairedMessage = settingUnflairedPostMessage ?? "";
 
-    const settingNotifyOnUnflairedPost = await settings.get<string>(
-        "notifyOnUnflairedPost"
-    );
-    const notifyUnflaired = (settingNotifyOnUnflairedPost ?? ["none"])[0];
+    const notifyUnflaired = await getNotificationMode("notifyOnUnflairedPost");
 
-    if (!event.post.linkFlair) {
-        logger.error(`linkFlair doesn't exist`, {
-            linkFlair: event.post.linkFlair,
-        });
-        return;
-    }
+    // A missing linkFlair object means the post has no flair.
+    const postFlairText = event.post.linkFlair?.text?.trim() ?? "";
 
-    const postFlairText = event.post.linkFlair?.text?.trim();
-
-    // 🚫 Unflaired posts not allowed
-    if (!allowUnflairedPosts && postFlairText === "") {
+    // 🚫 Unflaired posts are blocked only when the setting disables them.
+    if (!allowUnflairedPosts && !postFlairText) {
         // 🚫 Ignore bot’s own comments to prevent loops
         if (event.author.name === context.appSlug) {
             logger.debug(
                 "🤖 Bot-authored comment detected; skipping unflaired-post response"
             );
-            return;
+            return false;
         }
 
         // 🔑 One response per award attempt (per comment)
@@ -2118,7 +2115,7 @@ export async function unflairedPostLogic(
             logger.debug("ℹ️ Unflaired post response already sent — skipping", {
                 commentId: event.comment.id,
             });
-            return;
+            return true;
         }
 
         logger.info("🚫 Award blocked — post is unflaired", {
@@ -2128,19 +2125,26 @@ export async function unflairedPostLogic(
             notifyUnflaired,
         });
 
+        let notificationHandled = notifyUnflaired === "none";
         try {
-            if (notifyUnflaired === "replybypm") {
+            if (notifyUnflaired === "replybypm" && unflairedMessage.trim()) {
                 await reddit.sendPrivateMessage({
                     to: awarder,
-                    subject: `Awards disabled for unflaired posts`,
+                    subject: "Awards disabled for unflaired posts",
                     text: unflairedMessage,
                 });
-            } else if (notifyUnflaired === "replybycomment") {
+                notificationHandled = true;
+            } else if (notifyUnflaired === "replybycomment" && unflairedMessage.trim()) {
                 const unflairedPostMessage = await reddit.submitComment({
                     id: event.comment.id as `t1_${string}`,
                     text: unflairedMessage,
                 });
                 await unflairedPostMessage.distinguish();
+                notificationHandled = true;
+            } else if (notifyUnflaired !== "none") {
+                logger.warn("Unflaired-post notification selected but message is empty", {
+                    notifyUnflaired,
+                });
             }
         } catch (err) {
             logger.error(
@@ -2149,18 +2153,21 @@ export async function unflairedPostLogic(
             );
         }
 
-        await redis.set(responseKey, "1");
-        return; // ⛔ Stop award flow ONLY for unflaired posts
+        // "none" is still a handled restriction. On API failure, leave the
+        // marker unset so a later event can retry the configured notification.
+        if (notificationHandled) await redis.set(responseKey, "1");
+        return true;
     }
+
+    return false;
 }
 
 export async function flairTextNotAllowedLogic(
     event: OnCommentCreateRequest | OnCommentUpdateRequest,
-
     awarder: string,
     commentBody: string,
     triggerUsed: string
-) {
+): Promise<boolean> {
     const settingDisallowedFlairMessage = await settings.get<string>(
         "disallowedFlairMessage"
     );
@@ -2169,7 +2176,7 @@ export async function flairTextNotAllowedLogic(
     );
     const settingPointName = await settings.get<string>("pointName");
 
-    if (!event.post || !event.comment || !event.author) return;
+    if (!event.post || !event.comment || !event.author) return false;
     const pointName = settingPointName ?? "point";
     const flairTextDisallowedMessage = formatMessage(
         event,
@@ -2178,30 +2185,17 @@ export async function flairTextNotAllowedLogic(
     );
     const postFlairText = event.post.linkFlair?.text?.trim();
 
-    const settingNotifyOnDisallowedFlair = await settings.get<string>(
-        "notifyOnDisallowedFlair"
-    );
-    const notifyFlairIgnored = (settingNotifyOnDisallowedFlair ?? ["none"])[0];
+    const notifyFlairIgnored = await getNotificationMode("notifyOnDisallowedFlair");
 
     // ─────────────────────────────────────────────
-    // Disallowed flair guard (non-terminating)
+    // Disallowed flair guard (terminating)
     // ─────────────────────────────────────────────
 
-    if (!settingDisallowedFlairs) {
-        logger.error(`Disallowed flairs setting doesn't exist, returning`);
-        return;
-    }
-    if (settingDisallowedFlairs.includes(postFlairText ?? "")) {
-        logger.error(
-            `User attempted to award points on flair-disallowed post, but it's not allowed`,
-            { linkFlair: event.post.linkFlair }
-        );
-        return;
-    }
-
-    if (!postFlairText) return;
-
+    // An empty setting means there are no disallowed flair values.
     const rawDisallowedFlairs = settingDisallowedFlairs ?? "";
+    if (!rawDisallowedFlairs.trim()) return false;
+
+    if (!postFlairText) return false;
 
     const disallowedFlairs = rawDisallowedFlairs
         .split(/\r?\n/) // newline-only entries
@@ -2219,7 +2213,7 @@ export async function flairTextNotAllowedLogic(
 
         if (!triggerUsed || !commentBody.includes(triggerUsed)) {
             logger.info(`Comment in disallowed flair, but not a command`);
-            return;
+            return false;
         }
 
         if (event.author.name === context.appSlug) {
@@ -2227,7 +2221,7 @@ export async function flairTextNotAllowedLogic(
             logger.debug(
                 "🤖 Bot-authored comment detected; skipping disallowed flair response"
             );
-            return;
+            return false;
         }
 
         const responseKey = `disallowedFlairResponse:${event.comment.id}`;
@@ -2239,62 +2233,74 @@ export async function flairTextNotAllowedLogic(
                     commentId: event.comment.id,
                 }
             );
-            return;
+            return true;
         }
-
-        // Mark handled BEFORE replying
-        await redis.set(responseKey, "1");
 
         logger.info("🚫 Award blocked due to disallowed flair", {
             postFlair: postFlairText,
         });
 
-        if (notifyFlairIgnored === "replybypm") {
-            await reddit.sendPrivateMessage({
-                to: awarder,
-                subject: `${pointName}s cannot be awarded on ${event.post.title}`,
-                text: flairTextDisallowedMessage,
+        let notificationHandled = notifyFlairIgnored === "none";
+        try {
+            if (notifyFlairIgnored === "replybypm" && flairTextDisallowedMessage.trim()) {
+                await reddit.sendPrivateMessage({
+                    to: awarder,
+                    subject: `${pointName}s cannot be awarded on ${event.post.title}`,
+                    text: flairTextDisallowedMessage,
+                });
+                notificationHandled = true;
+            } else if (notifyFlairIgnored === "replybycomment" && flairTextDisallowedMessage.trim()) {
+                const disallowedFlairMessage = await reddit.submitComment({
+                    id: event.comment.id as `t1_${string}`,
+                    text: flairTextDisallowedMessage,
+                });
+                await disallowedFlairMessage.distinguish();
+                notificationHandled = true;
+            }
+        } catch (error) {
+            logger.error("Failed to notify about disallowed post flair", {
+                awarder,
+                commentId: event.comment.id,
+                error,
             });
-        } else if (notifyFlairIgnored === "replybycomment") {
-            const disallowedFlairMessage = await reddit.submitComment({
-                id: event.comment.id as `t1_${string}`,
-                text: flairTextDisallowedMessage,
-            });
-            await disallowedFlairMessage.distinguish();
         }
-        return; // ⛔ block award
+
+        if (notificationHandled) await redis.set(responseKey, "1");
+        return true;
     }
+
+    return false;
 }
 
 export async function selfAwardAttemptLogic(
     event: OnCommentCreateRequest | OnCommentUpdateRequest,
     awarder: string,
     recipient: string
-) {
+): Promise<boolean> {
     const settingPointName = await settings.get<string>("pointName");
     const settingSelfAwardMessage = await settings.get<string>(
         "selfAwardMessage"
     );
 
-    if (!event.comment || !event.author) return;
+    if (!event.comment || !event.author) return false;
     const pointName = settingPointName ?? "point";
     const selfMsgTemplate = settingSelfAwardMessage ?? "";
-    const settingNotifyOnSelfAward = await settings.get<string>(
+    const settingNotifyOnSelfAward = await getNotificationMode(
         "notifyOnSelfAward"
     );
-    const notifySelf = (settingNotifyOnSelfAward ?? ["none"])[0];
-    if (awarder === recipient) {
+    const notifySelf = settingNotifyOnSelfAward;
+    if (awarder.toLowerCase() === recipient.toLowerCase()) {
         const selfText = formatMessage(event, selfMsgTemplate, {
             awarder,
             name: pointName,
         });
-        if (notifySelf === "replybycomment") {
+        if (notifySelf === "replybycomment" && selfText.trim()) {
             const selfAwardMessage = await reddit.submitComment({
                 id: event.comment.id as `t1_${string}`,
                 text: selfText,
             });
             await selfAwardMessage.distinguish();
-        } else if (notifySelf === "replybypm") {
+        } else if (notifySelf === "replybypm" && selfText.trim()) {
             await reddit.sendPrivateMessage({
                 to: awarder,
                 subject: `You tried to award yourself a ${pointName}`,
@@ -2302,8 +2308,10 @@ export async function selfAwardAttemptLogic(
             });
         }
         logger.debug("❌ User tried to award themselves.");
-        return;
+        return true;
     }
+
+    return false;
 }
 export async function replyToUser(
     notifyMode: string,
@@ -2311,8 +2319,8 @@ export async function replyToUser(
     message: string,
     commentId: string
 ) {
-    if (!notifyMode || notifyMode === "none") {
-        logger.debug("ℹ️ replyToUser: notifyMode is none — skipping reply");
+    if (!notifyMode || notifyMode === "none" || !message.trim()) {
+        logger.debug("ℹ️ replyToUser: notifications disabled or message is empty");
         return;
     }
 
@@ -2336,7 +2344,7 @@ export async function replyToUser(
     }
 
     try {
-        if (notifyMode === "replybypm") {
+        if (notifyMode === "replybypm" && message.trim()) {
             await reddit.sendPrivateMessage({
                 to: recipient,
                 subject: "Award not allowed",
@@ -2347,7 +2355,7 @@ export async function replyToUser(
                 recipient,
                 commentId,
             });
-        } else if (notifyMode === "replybycomment") {
+        } else if (notifyMode === "replybycomment" && message.trim()) {
             const reply = await reddit.submitComment({
                 id: commentId as `t1_${string}`,
                 text: message,
@@ -2411,61 +2419,38 @@ export async function userHasPermission(
         hasPermission,
     });
 
-    logger.debug("Permission check", {
-        accessControl,
-        isMod,
-        isSuperUser,
-        isOP,
-        hasPermission,
-    });
-
     if (!hasPermission) {
         let denyMessageSetting: string | undefined;
-        let notifyMode: string | undefined;
+        let notifyMode: NotificationMode = "none";
 
-        // Read the exact setting names directly. Avoid computed appSettings keys,
-        // which hide the actual Devvit Web setting names from type checking.
-        switch (accessControl) {
-            case ["moderators-only"]:
-                denyMessageSetting = await settings.get<string>(
-                    "modOnlyDisallowedMessage"
-                );
-                notifyMode = await settings.get<string>(
-                    "notifyOnModOnlyDisallowed"
-                );
-                break;
-
-            case ["moderators-and-superusers"]:
-                denyMessageSetting = await settings.get<string>(
-                    "approvedOnlyDisallowedMessage"
-                );
-                notifyMode = await settings.get<string>(
-                    "notifyOnApprovedOnlyDisallowed"
-                );
-                break;
-
-            case ["moderators-superusers-and-op"]:
-                denyMessageSetting = await settings.get<string>(
-                    "opOnlyDisallowedMessage"
-                );
-                notifyMode = await settings.get<string>(
-                    "notifyOnOPOnlyDisallowed"
-                );
-                break;
-
-            case ["moderators-and-op"]:
-                denyMessageSetting = await settings.get<string>(
-                    "modsAndPostAuthorDisallowedMessage"
-                );
-                notifyMode = await settings.get<string>(
-                    "notifyOnModsAndPostAuthorDisallowed"
-                );
-                break;
-            default:
-                logger.warn("⚠️ Unknown accessControl value", {
-                    accessControl,
-                });
-                return false;
+        // accessControl is a multi-select setting. Comparing arrays in a
+        // switch statement never works because arrays are compared by identity.
+        // Select the first configured restriction that explains the denial.
+        if (accessControl.includes("moderators-only")) {
+            denyMessageSetting = await settings.get<string>(
+                "modOnlyDisallowedMessage"
+            );
+            notifyMode = await getNotificationMode("notifyOnModOnlyDisallowed");
+        } else if (accessControl.includes("moderators-and-superusers")) {
+            denyMessageSetting = await settings.get<string>(
+                "approvedOnlyDisallowedMessage"
+            );
+            notifyMode = await getNotificationMode("notifyOnApprovedOnlyDisallowed");
+        } else if (accessControl.includes("moderators-superusers-and-op")) {
+            denyMessageSetting = await settings.get<string>(
+                "opOnlyDisallowedMessage"
+            );
+            notifyMode = await getNotificationMode("notifyOnOPOnlyDisallowed");
+        } else if (accessControl.includes("moderators-and-op")) {
+            denyMessageSetting = await settings.get<string>(
+                "modsAndPostAuthorDisallowedMessage"
+            );
+            notifyMode = await getNotificationMode(
+                "notifyOnModsAndPostAuthorDisallowed"
+            );
+        } else {
+            logger.warn("Unknown accessControl configuration", { accessControl });
+            return false;
         }
 
         const denyMsg = formatMessage(event, denyMessageSetting ?? "", {
@@ -2490,13 +2475,13 @@ export async function recipientIsBot(
     event: OnCommentCreateRequest | OnCommentUpdateRequest,
     awarder: string,
     recipient: string
-) {
+): Promise<boolean> {
     const settingBotAwardMessage = await settings.get<string>(
         "botAwardMessage"
     );
     const settingPointName = await settings.get<string>("pointName");
 
-    if (!event.comment) return;
+    if (!event.comment) return false;
     const pointName = settingPointName ?? "point";
     if (
         ["automoderator", context.appSlug.toLowerCase()].includes(
@@ -2504,7 +2489,7 @@ export async function recipientIsBot(
         )
     ) {
         logger.debug("❌ System user attempted a command");
-        return;
+        return true;
     }
 
     if (
@@ -2519,13 +2504,67 @@ export async function recipientIsBot(
             { name: pointName, awardee: recipient }
         );
 
-        const awardGivenToBotMessage = await reddit.submitComment({
-            id: event.comment.id as T1,
-            text: botAwardMessage,
+        // There is no separate notification-mode setting for bot recipients.
+        // Only post a public explanation when the configured template is nonempty.
+        if (botAwardMessage.trim()) {
+            const awardGivenToBotMessage = await reddit.submitComment({
+                id: event.comment.id as T1,
+                text: botAwardMessage,
+            });
+            await awardGivenToBotMessage.distinguish();
+        }
+        logger.debug("❌ Bot cannot receive points");
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * If the user edits the warned comment and adds CONFIRM, remember that this
+ * context type is intentional. The command may then be processed normally.
+ * The confirmation is scoped to the same comment that triggered the warning.
+ */
+async function confirmIgnoredContextIfRequested(
+    event: OnCommentCreateRequest | OnCommentUpdateRequest
+): Promise<void> {
+    if (!event.author || !event.comment) return;
+
+    const body = (event.comment.body ?? "").toUpperCase();
+    if (!/\bCONFIRM\b/.test(body)) return;
+
+    const username = event.author.name.toLowerCase();
+    const pendingKey = `pendingConfirm:${username}`;
+    const pendingValue = await redis.get(pendingKey);
+    if (!pendingValue) return;
+
+    try {
+        const pending = JSON.parse(pendingValue) as {
+            ignoredType?: string;
+            commentId?: string;
+        };
+
+        if (!pending.ignoredType || pending.commentId !== event.comment.id) {
+            return;
+        }
+
+        await redis.set(
+            `normalCommandIgnoreDM:${username}:${pending.ignoredType}`,
+            "1"
+        );
+        // Empty value makes the pending confirmation inactive without
+        // depending on a Redis deletion API.
+        await redis.set(pendingKey, "");
+        logger.info("Ignored-context command confirmed by user", {
+            username,
+            ignoredType: pending.ignoredType,
+            commentId: event.comment.id,
         });
-        await awardGivenToBotMessage.distinguish();
-        logger.debug("❌ Bot cannot award itself points");
-        return;
+    } catch (error) {
+        logger.warn("Could not parse pending ignored-context confirmation", {
+            username,
+            error,
+        });
     }
 }
 
@@ -2539,10 +2578,12 @@ export async function handleIgnoredContext(
     const ignoredType = getIgnoredContextType(body, trigger);
     if (!ignoredType) return;
 
-    const ignoreKey = `normalCommandIgnoreDM:${event.author.name.toLowerCase()}:${ignoredType}`;
+    const username = event.author.name.toLowerCase();
+    const ignoreKey = `normalCommandIgnoreDM:${username}:${ignoredType}`;
     const alreadyConfirmed = await redis.exists(ignoreKey);
+    const pendingKey = `pendingConfirm:${username}`;
 
-    if (alreadyConfirmed) return;
+    if (alreadyConfirmed || (await redis.get(pendingKey))) return;
 
     const contextLabel =
         ignoredType === "quote"
@@ -2567,8 +2608,11 @@ export async function handleIgnoredContext(
     });
 
     await redis.set(
-        `pendingConfirm:${event.author.name.toLowerCase()}`,
-        ignoredType
+        pendingKey,
+        JSON.stringify({
+            ignoredType,
+            commentId: event.comment.id,
+        })
     );
 
     logger.info("⚠️ Normal command ignored due to context", {

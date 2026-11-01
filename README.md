@@ -61,6 +61,8 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 * NOTE: If you have a leaderboard post on your subreddit currently from v28.0.0, I cannot guaranteee that the v31.7.0+ leaderboard will carry over. There is a fair chance you will have to make a new post via `[RepBot] - Create Leaderboard` in the subreddit-level mod/burger menu
 
 # Latest Changes
+## 31.7.9
+* Bring back the ability to see bot responses
 ## 31.7.8
 * Fix custom leaderboard post to be viewable on (hopefully) all devices without scrolling (checked an iphone 12 and s26 ultra and it works fine there)
 * Fix flair formatting `symbol` placeholder (previous called the point name by accident)
@@ -71,13 +73,5 @@ NOTE: If you remove the app from your subreddit, it will delete all user specifi
 ## 31.7.3
 * Slightly alter wording of leaderboard custom post (this will automatically update any existing posts, so you don't need to make a new post for this to go into effect)
 * Add clarification on how leaderboard posts work in the "About" section of this README
-## 31.7.0
-* Update to latest devvit version
-* Refactor all code to work with Devvit Web (previous was blocks, which will eventually be fully deprecated)
-* Remove wiki leaderboard options for the time being. You won't be able to stop the leaderboard from updating at this point in time
-## 31.6.25
-* Move `"[RepBot] - Set Flair Management For Specified User"` to subreddit mod menu only as it can target any user and didn't make sense in post/comment contexts
-* Add `"Super Awarder Settings"` section to settings (a way to award users via flair for a specified amount of awards given to users)
-* User can only become a super awarder after they award the point that gets them above the "Super Awarder Threshold"
 
 For older versions, please see the [full changelog](https://github.com/the-gdmo/therepbot/blob/main/changelog.md).

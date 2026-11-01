@@ -1,9 +1,4 @@
-import {
-    settings,
-    reddit,
-    redis,
-    WikiPage,
-} from "@devvit/web/server";
+import { settings, reddit, redis, WikiPage } from "@devvit/web/server";
 import pluralize from "pluralize";
 import { logger } from "../utils/logger";
 import { POINTS_STORE_KEY } from "../utils/redisKeys";
@@ -1859,10 +1854,9 @@ export async function getCanonicalLeaderboardScores(
 }
 
 export async function updateLeaderboard(
-    _: unknown,
+    event: Parameters<typeof replaceLeaderboardRedisFromExistingWikiOnce>[0]
 ) {
     const settingPointName = await settings.get<string>("pointName");
-    // const leaderboardMode = await settings.get<string>("leaderboardMode");
     const settingLeaderboardName = await settings.get<string>(
         "leaderboardName"
     );
@@ -1872,111 +1866,31 @@ export async function updateLeaderboard(
     const settingPointSystemHelpPage = await settings.get<string>(
         "pointSystemHelpPage"
     );
+    // const settingLeaderboardMode = await settings.get<string | string[]>(
+    //     "leaderboardMode"
+    // );
 
-    // if (
-    //     !leaderboardMode ||
-    //     leaderboardMode.length === 0 ||
-    //     leaderboardMode === "off"
-    // ) {
-    //     logger.debug("🏁 Leaderboard mode off — skipping update.");
-    //     return;
-    // }
+    // const mode =
+    //     (Array.isArray(settingLeaderboardMode)
+    //         ? settingLeaderboardMode[0]
+    //         : settingLeaderboardMode
+    //     )
+    //         ?.trim()
+    //         .toLowerCase() || "modonly";
 
-    const wikiPageName =
-        (settingLeaderboardName as string | undefined) ?? "leaderboard";
-    const leaderboardSize =
-        (settingLeaderboardSize as number | undefined) ?? 50;
-
-    const subredditName = await getSubredditName();
-    const pointName = (settingPointName as string) ?? "point";
-    const helpPage = settingPointSystemHelpPage as string | undefined;
-
-    // ──────────────── Existing wiki -> Redis migration ────────────────
-    // If a leaderboard wiki page already exists, its table is authoritative on
-    // the first run of this migration and replaces the existing Redis sorted set.
-    // A per-page marker prevents future scheduled updates from rolling Redis back
-    // to an older wiki snapshot.
-    const safeWiki = new SafeWikiClient(reddit);
-    const wikiPage = await safeWiki.getWikiPage(subredditName, wikiPageName);
-    if (wikiPage) {
-        await replaceLeaderboardRedisFromExistingWikiOnce(
-            event,
-            subredditName,
-            wikiPageName,
-            wikiPage
-        );
-    }
-
-    // ──────────────── Fetch + normalize scores ────────────────
-    // Resolve stored members through Reddit so escaped/encoded/specially-cased
-    // usernames are repaired before the leaderboard is rendered.
-    const highScores = await getCanonicalLeaderboardScores(
-        event,
-        leaderboardSize
-    );
-
-    // ──────────────── Build markdown ────────────────
-    let wikiContents = `# ${capitalize(
-        pointName
-    )}board for ${subredditName}\n\n`;
-    if (helpPage) {
-        wikiContents += `[How to award ${pointName}s on /r/${subredditName}](https://reddit.com/r/${subredditName}/wiki/${helpPage})\n\n`;
-    }
-
-    wikiContents += `User | ${capitalize(pointName)}s Earned\n-|-\n`;
-
-    if (highScores.length > 0) {
-        wikiContents += highScores
-            .map((entry) => {
-                const displayUsername = markdownEscape(entry.member);
-                const urlUsername = encodeURIComponent(entry.member);
-
-                return `[${displayUsername}](https://old.reddit.com/r/${subredditName}/wiki/user/${urlUsername}/1)|${entry.score.toLocaleString(
-                    "en"
-                )}`;
-            })
-            .join("\n");
-    } else {
-        wikiContents += "No users have been awarded yet.";
-    }
-
-    wikiContents += `\n\nThe leaderboard shows the top ${leaderboardSize.toLocaleString(
-        "en"
-    )} ${pluralize("user", leaderboardSize)} who ${pluralize(
-        "has",
-        leaderboardSize
-    )} been awarded at least one ${pointName}`;
-
-    const installDateTimestamp = await redis.get("InstallDate");
-    if (installDateTimestamp) {
-        const installDate = new Date(parseInt(installDateTimestamp));
-        wikiContents += ` since ${installDate.toUTCString()}`;
-    }
-    wikiContents += ".";
-
-    // ──────────────── Safe wiki handling ────────────────
-    let currentWikiPage = wikiPage;
-
-    const wikiPageOptions = {
-        subredditName,
-        page: wikiPageName,
-        content: wikiContents,
-        reason: "Updated leaderboard",
-    };
-
-    if (currentWikiPage) {
-        if (getWikiMarkdown(currentWikiPage) !== wikiContents) {
-            await reddit.updateWikiPage(wikiPageOptions);
-            console.log("Leaderboard: Leaderboard updated.");
-        }
-    } else {
-        currentWikiPage = await reddit.createWikiPage(wikiPageOptions);
-        console.log("Leaderboard: Leaderboard created.");
-    }
-
-    // const mode = leaderboardMode[0];
+    // ──────────────── Leaderboard mode ────────────────
 
     // let correctPermissionLevel: number;
+
+    const subredditName = await getSubredditName();
+
+    const wikiPageName = settingLeaderboardName?.trim() || "leaderboard";
+
+    // const page = await reddit.getWikiPage(subredditName, wikiPageName, {
+    //     wikiVersion: "v1",
+    // });
+
+    // const wikiPageSettings = await page.getSettings();
 
     // switch (mode) {
     //     case "subredditpermissions":
@@ -1990,39 +1904,147 @@ export async function updateLeaderboard(
     //     case "modonly":
     //         correctPermissionLevel = 2;
     //         break;
+
+    //     case "off":
+    //         logger.debug("🏁 Leaderboard mode is off — skipping update.");
+    //         return;
     //     default:
-    //         logger.warn("⚠️ Unknown leaderboard mode, defaulting to mod only", {
-    //             mode,
-    //         });
+    //         logger.warn(
+    //             "⚠️ Unknown leaderboard mode; defaulting to moderators only.",
+    //             { mode }
+    //         );
     //         correctPermissionLevel = 2;
     //         break;
     // }
+
+    // ──────────────── Settings ────────────────
+
+    const rawLeaderboardSize = Number(settingLeaderboardSize ?? 50);
+    const leaderboardSize = Number.isFinite(rawLeaderboardSize)
+        ? Math.min(1000, Math.max(1, Math.floor(rawLeaderboardSize)))
+        : 50;
+
+    const pointName = settingPointName?.trim() || "point";
+    const helpPage = settingPointSystemHelpPage?.trim();
+
+    // ──────────────── Existing wiki -> Redis migration ────────────────
+    const safeWiki = new SafeWikiClient(reddit);
+    const wikiPage = await safeWiki.getWikiPage(subredditName, wikiPageName);
+
+    if (wikiPage) {
+        await replaceLeaderboardRedisFromExistingWikiOnce(
+            event,
+            subredditName,
+            wikiPageName,
+            wikiPage
+        );
+    }
+
+    // ──────────────── Fetch + normalize scores ────────────────
+    const highScores = await getCanonicalLeaderboardScores(
+        event,
+        leaderboardSize
+    );
+
+    // ──────────────── Build markdown ────────────────
+    let wikiContents = `# ${capitalize(
+        pointName
+    )}board for ${subredditName}\n\n`;
+
+    if (helpPage) {
+        wikiContents +=
+            `[How to award ${pointName}s on /r/${subredditName}]` +
+            `(https://reddit.com/r/${subredditName}/wiki/${helpPage})\n\n`;
+    }
+
+    wikiContents += `User | ${capitalize(pointName)}s Earned\n-|-\n`;
+
+    if (highScores.length > 0) {
+        wikiContents += highScores
+            .map((entry) => {
+                const displayUsername = markdownEscape(entry.member);
+                const urlUsername = encodeURIComponent(entry.member);
+
+                return (
+                    `[${displayUsername}]` +
+                    `(https://old.reddit.com/r/${subredditName}/wiki/user/${urlUsername}/1)|` +
+                    `${entry.score.toLocaleString("en")}`
+                );
+            })
+            .join("\n");
+    } else {
+        wikiContents += "No users have been awarded yet.";
+    }
+
+    wikiContents +=
+        `\n\nThe leaderboard shows the top ${leaderboardSize.toLocaleString(
+            "en"
+        )} ` +
+        `${pluralize("user", leaderboardSize)} who ${pluralize(
+            "has",
+            leaderboardSize
+        )} ` +
+        `been awarded at least one ${pointName}`;
+
+    const installDateTimestamp = await redis.get("InstallDate");
+
+    if (installDateTimestamp) {
+        const installDate = new Date(Number.parseInt(installDateTimestamp, 10));
+
+        if (!Number.isNaN(installDate.getTime())) {
+            wikiContents += ` since ${installDate.toUTCString()}`;
+        }
+    }
+
+    wikiContents += ".";
+
+    // ──────────────── Create or update wiki page ────────────────
+    let currentWikiPage = wikiPage;
+
+    const wikiPageOptions = {
+        subredditName,
+        page: wikiPageName,
+        content: wikiContents,
+        reason: "Updated leaderboard",
+    };
+
+    if (currentWikiPage) {
+        if (getWikiMarkdown(currentWikiPage) !== wikiContents) {
+            await reddit.updateWikiPage(wikiPageOptions);
+            logger.info("Leaderboard wiki page updated.");
+        }
+    } else {
+        currentWikiPage = await reddit.createWikiPage(wikiPageOptions);
+        logger.info("Leaderboard wiki page created.");
+    }
 
     if (!currentWikiPage) {
         throw new Error(
             `Failed to create or retrieve wiki page ${wikiPageName}`
         );
     }
-    // const wikiPageSettings = await currentWikiPage.getSettings();
+
+    // ──────────────── Restore wiki permissions ────────────────
+
     // if (wikiPageSettings.permLevel !== correctPermissionLevel) {
-    //     logger.info("🔐 Updating leaderboard wiki page permissions", {
+    //     logger.info("🔐 Updating leaderboard wiki page permissions.", {
     //         mode,
-    //         correctPermissionLevel,
-    //         currentPermLevel: wikiPageSettings.permLevel,
+    //         correctPermLevel: correctPermissionLevel,
+    //         currentPermiLevel: wikiPageSettings.permLevel,
     //     });
-    //     await reddit.updateWikiPageSettings({
-    //         subredditName,
-    //         page: wikiPageName,
+
+    //     await page.updateSettings({
     //         listed: true,
     //         permLevel: correctPermissionLevel,
     //     });
+
+    //     logger.info("🔐 Leaderboard wiki page permissions updated.");
     // } else {
-    //     logger.info(
-    //         "🔐 Leaderboard wiki page permissions set to current wiki settings, no changes made",
+    //     logger.debug(
+    //         "🔐 Leaderboard wiki page permissions already match the configured mode.",
     //         {
     //             mode,
-    //             correctPermissionLevel,
-    //             currentPermLevel: wikiPageSettings.permLevel,
+    //             permissionLevel: correctPermissionLevel,
     //         }
     //     );
     // }

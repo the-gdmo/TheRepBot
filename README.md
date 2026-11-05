@@ -52,15 +52,23 @@ If the application is removed from a subreddit, all data is deleted although the
 
 [Code edited from u/fsv's reputatorbot](https://github.com/fsvreddit/reputatorbot).
 
+Shoutout to [Beach-Brews](https://reddit.com/u/beach-brews) for helping me transition from Blocks to Web in v24.0.0
+
+Some assistance from [u/Find_The_Sniper](https://reddit.com/u/Find_The_Sniper) in forming v31.7.10
+
 ## About
 
-This app is open source and licensed under the BSD 3-Clause License. You can find the source code on GitHub [here](https://github.com/the-gdmo/TheRepBot).
+This app is open source and licensed under the BSD 3-Clause License. You can find the source code on GitHub [here](https://github.com/the-gdmo/TheRepBot) and the LICENSE [here](https://github.com/the-gdmo/TheRepBot/blob/main/LICENSE).
 
 NOTE: If you remove the app from your subreddit, it will delete all user specific data and you will have to manually restore it to users. The bot can use numeric flair to update the user's flair, but it cannot do so if there is any special characters between numbers (eg 12!3, 1@6, etc.)
 
 * NOTE: If you have a leaderboard post on your subreddit currently from v28.0.0, I cannot guaranteee that the v31.7.0+ leaderboard will carry over. There is a fair chance you will have to make a new post via `[RepBot] - Create Leaderboard` in the subreddit-level mod/burger menu
 
 # Latest Changes
+## 31.7.10
+* Change "Super Awarders" to be called "Legends"
+* Make custom leaderboard post fully interactable on all devices (previous was too large to fit)
+* Slightly modify colors on custom leaderboard post
 ## 31.7.9
 * Bring back the ability to see bot responses
 * Make all events work properly

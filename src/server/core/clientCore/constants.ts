@@ -8,9 +8,9 @@ export const UPGRADE_NOTIFIER_JOB = "upgradeNotifier";
 export const MOD_DIGEST_JOB = "modDigest";
 
 // Job Cron
-export const CLEANUP_JOB_CRON = "0 0 * * *";
+export const CLEANUP_JOB_CRON = "* * * * *";
 export const POST_OF_THE_MONTH_CRON = "0 0 1 * *";
-export const MODINFO_CRON = "0 * * * *";
+export const MODINFO_CRON = "* * * * *";
 export const UPGRADE_NOTIFIER_CRON = "* * * * *";
 export const MOD_DIGEST_CRON = "* * * * *";
 export const LEADERBOARD_CRON = "* * * * *";

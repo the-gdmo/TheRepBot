@@ -26,10 +26,8 @@ import { runUpdateCheckJob } from "./core/clientCore/triggers/handleUpdateCheck"
 
 const application = new Hono();
 
-application.route("/menu", menu);
-application.route("/form", forms);
-application.route("/triggers", application);
-application.route("/scheduler", application);
+application.route("/internal/menu", menu);
+application.route("/internal/form", forms);
 application.route("/api", api);
 
 // Triggers

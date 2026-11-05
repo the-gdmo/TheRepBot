@@ -75,7 +75,7 @@ export async function createRequestContext(
         username,
 
         appSlug: source?.appSlug ?? "therepbot",
-        appVersion: source?.appVersion ?? "31.7.7",
+        appVersion: source?.appVersion ?? undefined,
 
         reddit,
         redis,

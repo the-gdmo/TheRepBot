@@ -1,9 +1,36 @@
 import { reddit, redis, settings } from "@devvit/web/server";
 import { logger } from "./logger";
-import { CommentSubmit, CommentUpdate, PostSubmit } from "@devvit/protos";
+import { OnCommentCreateRequest, OnCommentUpdateRequest, OnPostSubmitRequest } from "@devvit/web/shared";
 
-export function formatMessage(
-    event: CommentSubmit | CommentUpdate | PostSubmit,
+export function formatMessageOnComment(
+    event: OnCommentCreateRequest | OnCommentUpdateRequest,
+    template: string,
+    placeholders: Record<string, string>
+): string {
+    if (!event.subreddit) return "";
+    let result = template;
+    for (const [key, value] of Object.entries(placeholders)) {
+        const singleRegex = new RegExp(`{${key}}`, "gi");
+        const doubleRegex = new RegExp(`{{${key}}}`, "gi");
+        if (doubleRegex.test(result)) {
+            logger.debug(`Replacing {{${key}}} with ${value}`);
+            result = result.replaceAll(doubleRegex, value);
+        } else if (singleRegex.test(result)) {
+            logger.debug(`Replacing {${key}} with ${value}`);
+            result = result.replaceAll(singleRegex, value);
+        }
+    }
+
+    const footer = `\n\n---\n\n^(I am a bot — [contact the mods of r/${event.subreddit.name}](https://reddit.com/message/compose?to=r/${event.subreddit.name}) with any questions or [r/TheRepBot](https://www.reddit.com/message/compose?to=r/TheRepBot) to talk directly with my developer)`;
+    if (!result.trim().endsWith(footer)) {
+        result = result.trim() + footer;
+    }
+
+    return result;
+}
+
+export function formatMessageOnPost(
+    event: OnPostSubmitRequest,
     template: string,
     placeholders: Record<string, string>
 ): string {
@@ -148,7 +175,7 @@ export function getIgnoredContextType(
 }
 
 export async function checkIgnoredContext(
-    event: CommentSubmit | CommentUpdate,
+    event: OnCommentCreateRequest | OnCommentUpdateRequest,
     comment: string
 ) {
     // Check ignored contexts for each trigger in comment
@@ -212,4 +239,82 @@ export async function checkIgnoredContext(
             }
         }
     }
+}
+
+/**
+ * Reads a select setting. Devvit can hand these back as a one-item list or as
+ * plain text, so every select setting should be read through here.
+ */
+export async function getSelectSetting(
+    name: string,
+    fallback: string
+): Promise<string> {
+    const value = await settings.get<string | string[]>(name);
+    const selected = Array.isArray(value) ? value[0] : value;
+    return selected || fallback;
+}
+
+export type NotifyMode = "none" | "replybypm" | "replybycomment";
+
+export async function getNotifyMode(name: string): Promise<NotifyMode> {
+    const mode = await getSelectSetting(name, "none");
+    return mode === "replybypm" || mode === "replybycomment" ? mode : "none";
+}
+
+/**
+ * Delivers a message using a moderator's chosen notify mode. A failed reply is
+ * logged rather than thrown so it can't stop an award from being completed.
+ */
+export async function notifyUser(options: {
+    mode: NotifyMode;
+    to: string;
+    subject: string;
+    text: string;
+    commentId: string;
+}): Promise<void> {
+    const { mode, to, subject, text, commentId } = options;
+
+    try {
+        if (mode === "replybypm") {
+            await reddit.sendPrivateMessage({
+                to,
+                subject: subject.slice(0, 100),
+                text,
+            });
+        } else if (mode === "replybycomment") {
+            const reply = await reddit.submitComment({
+                id: commentId as `t1_${string}`,
+                text,
+            });
+            await reply.distinguish();
+        }
+    } catch (error) {
+        logger.error("Could not send notification", {
+            mode,
+            to,
+            commentId,
+            error: String(error),
+        });
+    }
+}
+
+/**
+ * Finds the command used in a comment. A command must stand on its own, so
+ * "!modsnipe" isn't read as ".snipe", and a link like "site.snipe.com" or a
+ * word like "!sniped" isn't read as a command at all.
+ */
+export function findCommandInBody(
+    body: string,
+    commands: string[]
+): string | undefined {
+    return [...commands]
+        .sort((a, b) => b.length - a.length)
+        .find((command) =>
+            new RegExp(
+                `(?:^|[\\s>\`(*_~!])${escapeForRegex(
+                    command
+                )}(?=$|[\\s.,!?;:)*_~\`<])`,
+                "i"
+            ).test(body)
+        );
 }

@@ -1,44 +1,52 @@
 import { Hono } from "hono";
-import type { UiResponse } from "@devvit/web/shared";
+import type { UiResponse, MenuItemRequest } from "@devvit/web/shared";
+import type { Context } from "@devvit/web/server";
 import { redis } from "@devvit/web/server";
+
 import {
     createRequestContext,
     showForm,
     toUiResponse,
     type UiCapture,
 } from "../core/request-context";
+
 import {
     handleCommentPin,
-    handleFlairToggle,
     checkFlairToggle,
-    handleFlairToggleForUser,
     transferWikiForm,
+    handleFlairToggleForUser,
 } from "../core/moderation";
+
 import {
     handleManualPointSetting,
     handleManualUserWikiTotalsSetting,
     handleManualPostRestrictionRemoval,
     handlePostRestrictionCheck,
-    handleUserRestrictionCheck,
 } from "../core/utils/mod-utilities";
 
 export const menu = new Hono();
 
 const NUMBER_OF_USERS_KEY = "leaderboard:numberOfUsers";
 
-const menuHandlers: Record<string, (event: any, context: any) => Promise<any>> =
-    {
-        "/flair-toggle-for-user": handleFlairToggleForUser,
-        "/remove-post-restriction": handleManualPostRestrictionRemoval,
-        "/check-post-restriction": handlePostRestrictionCheck,
-        "/check-user-restriction": handleUserRestrictionCheck,
-        "/pin-comment": handleCommentPin,
-        "/check-flair-toggle": checkFlairToggle,
-        "/toggle-flair": handleFlairToggle,
-        "/set-points": handleManualPointSetting,
-        "/set-user-wiki-totals": handleManualUserWikiTotalsSetting,
-    };
+type MenuHandler = (event: MenuItemRequest, context: Context) => Promise<void>;
 
+/**
+ * Menu actions that execute immediately or open a form.
+ */
+
+const menuHandlers: Record<string, MenuHandler> = {
+    "/flair-toggle-for-user": handleFlairToggleForUser,
+    "/check-flair-toggle": checkFlairToggle,
+    "/remove-post-restriction": handleManualPostRestrictionRemoval,
+    "/check-post-restriction": handlePostRestrictionCheck,
+    "/pin-comment": handleCommentPin,
+    "/set-points": handleManualPointSetting,
+    "/set-user-wiki-totals": handleManualUserWikiTotalsSetting,
+};
+
+/**
+ * Register menu action routes.
+ */
 for (const [path, handler] of Object.entries(menuHandlers)) {
     menu.post(path, async (c) => {
         const data = await c.req.json().catch(() => ({}));
@@ -46,7 +54,8 @@ for (const [path, handler] of Object.entries(menuHandlers)) {
 
         try {
             const context = await createRequestContext(data, capture);
-            await handler(data, context);
+
+            await handler(data as MenuItemRequest, context);
 
             return c.json<UiResponse>(toUiResponse(capture), 200);
         } catch (error) {
@@ -65,15 +74,36 @@ for (const [path, handler] of Object.entries(menuHandlers)) {
     });
 }
 
+/**
+ * Transfer wiki form.
+ */
 menu.post("/transfer-wiki", async (c) => {
     const capture: UiCapture = {};
-    const context = await createRequestContext({}, capture);
 
-    showForm(context, transferWikiForm);
+    try {
+        const context = await createRequestContext({}, capture);
 
-    return c.json<UiResponse>(toUiResponse(capture), 200);
+        showForm(context, transferWikiForm);
+
+        return c.json<UiResponse>(toUiResponse(capture), 200);
+    } catch (error) {
+        console.error("Failed to open transfer wiki form:", error);
+
+        return c.json<UiResponse>(
+            {
+                showToast: {
+                    text: "Unable to open the transfer wiki form.",
+                    appearance: "neutral",
+                },
+            },
+            500
+        );
+    }
 });
 
+/**
+ * Create leaderboard post form.
+ */
 menu.post("/create-post", async (c) => {
     return c.json<UiResponse>(
         {
@@ -86,7 +116,7 @@ menu.post("/create-post", async (c) => {
                             label: "Post title",
                             name: "postTitle",
                             type: "string",
-                            defaultValue: "TheRepBot High Scores",
+                            defaultValue: "RepBot High Scores",
                         },
                         {
                             label: "Sticky post",
@@ -114,6 +144,9 @@ menu.post("/create-post", async (c) => {
     );
 });
 
+/**
+ * Get the configured leaderboard size.
+ */
 export const getLeaderboardSize = async (): Promise<number> => {
     const value = await redis.get(NUMBER_OF_USERS_KEY);
     const size = Number.parseInt(value ?? "20", 10);

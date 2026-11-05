@@ -1,4 +1,4 @@
-import { formatMessage, getTriggers } from "./common-utilities";
+import { formatMessageOnComment, getTriggers } from "./common-utilities";
 import { Comment, reddit, redis, settings, User } from "@devvit/web/server";
 import { logger } from "./logger";
 import {
@@ -107,7 +107,7 @@ export async function userBecomesSuperUser(
     }
     if (!recipientUser) return;
 
-    const autoSuperUserMessage = formatMessage(event, template, {
+    const autoSuperUserMessage = formatMessageOnComment(event, template, {
         awarder: event.author.name,
         awardee: recipient,
         threshold: autoSuperuserThreshold.toString(),
@@ -310,6 +310,19 @@ export async function setLastValidPost(
 //------------------------
 // Flair Setting Toggle
 //------------------------
+export async function isFlairManagementDisabled(
+    username: string
+): Promise<boolean> {
+    return (
+        (await redis.exists(flairToggleKey(username))) > 0 ||
+        (await redis.exists(`flairToggle:${username}`)) > 0
+    );
+}
+
+export function flairToggleKey(username: string): string {
+    return `flairToggle:${username.toLowerCase()}`;
+}
+
 export async function flairToggleKeyExists(
     userObj: User | undefined
 ): Promise<number | undefined> {

@@ -1,6 +1,6 @@
-import type { CommentUpdate } from "@devvit/protos";
 import { logger } from "./logger";
 import { context, CreateWikiPageOptions, reddit, RedditClient, redis, WikiPage } from "@devvit/web/server";
+import { OnCommentUpdateRequest } from "@devvit/web/shared";
 
 export async function getSubredditName(
 ): Promise<string> {
@@ -157,7 +157,7 @@ export class SafeWikiClient {
 }
 
 export async function handleConfirmReply(
-    event: CommentUpdate,
+    event: OnCommentUpdateRequest,
 ) {
     if (!event.comment || !event.author) return;
 

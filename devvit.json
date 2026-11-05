@@ -67,7 +67,7 @@
             {
                 "label": "[RepBot] - Set Flair Management For Specified User",
                 "forUserType": "moderator",
-                "location": "subreddit",
+                "location": ["post", "comment"],
                 "endpoint": "/internal/menu/flair-toggle-for-user"
             },
             {
@@ -90,12 +90,6 @@
                 "endpoint": "/internal/menu/check-post-restriction"
             },
             {
-                "label": "[RepBot] - Check User Restriction",
-                "forUserType": "moderator",
-                "location": ["post", "comment"],
-                "endpoint": "/internal/menu/check-user-restriction"
-            },
-            {
                 "label": "[RepBot] - Pin User Comment",
                 "forUserType": "moderator",
                 "location": "comment",
@@ -106,12 +100,6 @@
                 "forUserType": "moderator",
                 "location": ["post", "comment"],
                 "endpoint": "/internal/menu/check-flair-toggle"
-            },
-            {
-                "label": "[RepBot] - Toggle Flair Management For User",
-                "forUserType": "moderator",
-                "location": ["post", "comment"],
-                "endpoint": "/internal/menu/toggle-flair"
             },
             {
                 "label": "[RepBot] - Set User Score Manually",
@@ -136,12 +124,12 @@
     },
     "forms": {
         "post-create-form": "/internal/form/create-post",
-        "manualSetPointsForm": "/internal/form/manualSetPointsForm",
-        "manualSetUserWikiTotalsForm": "/internal/form/manualSetUserWikiTotalsForm",
-        "manualSetFlairManagementForm": "/internal/form/manualSetFlairManagementForm",
-        "manualSetFlairManagementForUserForm": "/internal/form/manualSetFlairManagementForUserForm",
-        "manualPostRestrictionRemovalForm": "/internal/form/manualPostRestrictionRemovalForm",
-        "transferWikiForm": "/internal/form/transferWikiForm"
+        "manualSetPointsForm": "/internal/form/set-points",
+        "manualSetUserWikiTotalsForm": "/internal/form/set-user-wiki-totals",
+        "manualSetFlairManagementForm": "/internal/form/check-flair-toggle",
+        "manualSetFlairManagementForUserForm": "/internal/form/check-flair-toggle-for-user",
+        "manualPostRestrictionRemovalForm": "/internal/form/remove-post-restriction",
+        "transferWikiForm": "/internal/form/transfer-wiki"
     },
     "settings": {
         "subreddit": {
@@ -269,7 +257,7 @@
                         "label": "Flair Formatting (All placeholders allow single or double curly braces)",
                         "helpText": "How the flair should be formatted. Placeholders Supported: place, total, symbol",
                         "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
-                        "defaultValue": "{total}{symbol} | #{place}"
+                        "defaultValue": "#{place} | {total}{symbol}"
                     },
                     "pointTriggerWords": {
                         "type": "paragraph",
@@ -321,6 +309,75 @@
                         "label": "Flair template ID to use for points flairs",
                         "helpText": "Optional. Please choose either a CSS class or flair template, not both",
                         "validationEndpoint": "/internal/validators/validate-flair-template-id"
+                    }
+                }
+            },
+            "group_legendSettings": {
+                "type": "group",
+                "label": "Legend Settings",
+                "fields": {
+                    "legendThreshold": {
+                        "type": "number",
+                        "label": "Legend Threshold",
+                        "helpText": "Number of points a user must receive to become a Legend. Set to 0 to disable",
+                        "defaultValue": 0
+                    },
+                    "legendFlairText": {
+                        "type": "string",
+                        "label": "Legend Flair Text",
+                        "helpText": "Placeholders Supported: total, symbol, place",
+                        "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
+                        "defaultValue": "Legend | #{place} | {total}{symbol}"
+                    },
+                    "legendCSSClass": {
+                        "type": "string",
+                        "label": "Legend CSS Class",
+                        "helpText": "Optional. Please choose either a CSS class or flair template, not both"
+                    },
+                    "legendFlairTemplate": {
+                        "type": "string",
+                        "label": "Legend Flair Template",
+                        "helpText": "Optional. Please choose either a CSS class or flair template, not both",
+                        "validationEndpoint": "/internal/validators/validate-flair-template-id"
+                    },
+                    "notifyOnLegend": {
+                        "type": "select",
+                        "label": "Notify users when they become a Legend",
+                        "defaultValue": "replybycomment",
+                        "options": [
+                            {
+                                "label": "No Notification",
+                                "value": "none"
+                            },
+                            {
+                                "label": "Send user a private message",
+                                "value": "replybypm"
+                            },
+                            {
+                                "label": "Reply as comment",
+                                "value": "replybycomment"
+                            }
+                        ],
+                        "validationEndpoint": "/internal/validators/select-field-has-option-chosen"
+                    },
+                    "legendMessage": {
+                        "type": "paragraph",
+                        "label": "New Legend Message (All placeholders allow single or double curly braces)",
+                        "helpText": "Message sent when a user becomes a Legend. Placeholders Supported: awardee, threshold, name, subreddit",
+                        "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
+                        "defaultValue": "Congratulations u/{awardee}! You've reached {threshold} {name}s and are now a Legend of r/{subreddit}!"
+                    },
+                    "legendApprovedUser": {
+                        "type": "boolean",
+                        "label": "Make Legends approved users",
+                        "helpText": "Adds each Legend as an approved user of the subreddit, which helps their posts and comments get past spam filters",
+                        "defaultValue": false
+                    },
+                    "notifyOpOnLegendReply": {
+                        "type": "boolean",
+                        "label": "Tell the OP when a Legend comments on their post",
+                        "helpText": "Replies to the first top-level comment a Legend makes on a post, mentioning the OP. This happens once per post",
+                        "defaultValue": true
                     }
                 }
             },
@@ -688,36 +745,6 @@
                         "helpText": "Placeholders Supported: awarder, awardee, name",
                         "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
                         "defaultValue": "{awardee} has already received a mod award for this comment."
-                    }
-                }
-            },
-            "group_superAwarderSettings": {
-                "type": "group",
-                "label": "Super Awarder Settings",
-                "fields": {
-                    "superAwarderFlairText": {
-                        "type": "string",
-                        "label": "Super Awarder Flair Text",
-                        "helpText": "Placeholders Supported: total, symbol, place",
-                        "validationEndpoint": "/internal/validators/string-or-paragraph-field-contains-text",
-                        "defaultValue": "Super Awarder | #{place} | {total}{symbol}"
-                    },
-                    "superAwarderThreshold": {
-                        "type": "number",
-                        "label": "Super Awarder Threshold",
-                        "helpText": "Number of points a user must award to be considered a super awarder. Set to 0 to disable",
-                        "defaultValue": 0
-                    },
-                    "superAwarderCSSClass": {
-                        "type": "string",
-                        "label": "Super Awarder CSS Class",
-                        "helpText": "Optional. Please choose either a CSS class or flair template, not both"
-                    },
-                    "superAwarderFlairTemplate": {
-                        "type": "string",
-                        "label": "Super Awarder Flair Template",
-                        "helpText": "Optional. Please choose either a CSS class or flair template, not both",
-                        "validationEndpoint": "/internal/validators/validate-flair-template-id"
                     }
                 }
             },

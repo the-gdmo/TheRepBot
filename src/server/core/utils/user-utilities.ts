@@ -1,5 +1,9 @@
 import { reddit, redis, settings, User } from "@devvit/web/server";
-import { formatMessage, ScoreResult } from "./common-utilities";
+import {
+    escapeForRegex,
+    formatMessageOnComment,
+    ScoreResult,
+} from "./common-utilities";
 import { logger } from "./logger";
 import { getParentComment, POINTS_STORE_KEY } from "./redisKeys";
 import {
@@ -112,7 +116,7 @@ export async function handleAutoSuperuserPromotion(
 
     if (notifyMode === "none") return;
 
-    const superUserNotification = formatMessage(
+    const superUserNotification = formatMessageOnComment(
         event,
         settingAutoSuperuserTemplate ?? "",
         {
@@ -336,4 +340,67 @@ export async function getCurrentScore(
         flairIsNumber,
         flairShouldBeManaged,
     };
+}
+
+/**
+ * Builds a pattern matching a flair this bot would have written. It captures
+ * the {total} value and treats the symbol as optional, because the "without
+ * symbol" flair option leaves it out. RepBot sometimes wrote the point name
+ * where the symbol goes, such as "538snipe | #18", so that counts too.
+ */
+function getFlairPattern(
+    template: string,
+    pointSymbol: string,
+    pointName: string
+): RegExp {
+    const symbolOptions = [pointSymbol, pointName, pointName && `${pointName}s`]
+        .filter((option) => option.length > 0)
+        .map(escapeForRegex);
+    const symbolPattern =
+        symbolOptions.length > 0 ? `(?:${symbolOptions.join("|")})?` : "";
+
+    const pattern = escapeForRegex(template)
+        .replaceAll(escapeForRegex("{{total}}"), "(\\d+)")
+        .replaceAll(escapeForRegex("{total}"), "(\\d+)")
+        .replaceAll(escapeForRegex("{{place}}"), "(?:\\d+|N/A)")
+        .replaceAll(escapeForRegex("{place}"), "(?:\\d+|N/A)")
+        .replaceAll(escapeForRegex("{{symbol}}"), symbolPattern)
+        .replaceAll(escapeForRegex("{symbol}"), symbolPattern);
+
+    return new RegExp(`^${pattern}$`, "i");
+}
+
+/** Matches a points, Super Awarder or Legend flair, capturing its {total}. */
+async function matchBotWrittenFlair(
+    flairText: string
+): Promise<RegExpExecArray | null> {
+    const pointSymbol = (await settings.get<string>("pointSymbol")) ?? "";
+    const pointName = (await settings.get<string>("pointName")) ?? "point";
+
+    for (const setting of [
+        "flairFormatting",
+        "superAwarderFlairText",
+        "legendFlairText",
+    ]) {
+        const template = (await settings.get<string>(setting)) ?? "";
+        if (!template) continue;
+
+        const matches = getFlairPattern(template, pointSymbol, pointName).exec(
+            flairText
+        );
+        if (matches) return matches;
+    }
+
+    return null;
+}
+
+/**
+ * Whether a flair is one this bot or RepBot wrote, so replacing it loses
+ * nothing the user or a moderator chose.
+ */
+export async function isBotWrittenFlair(flairText: string): Promise<boolean> {
+    return (
+        (await matchBotWrittenFlair(flairText)) !== null ||
+        /^\d+$/.test(flairText.trim())
+    );
 }

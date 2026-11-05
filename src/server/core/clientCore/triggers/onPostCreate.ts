@@ -1,10 +1,10 @@
 import { redis } from "@devvit/web/server";
-import { OnPostCreateRequest, TriggerResponse } from "@devvit/web/shared";
+import { OnPostSubmitRequest, TriggerResponse } from "@devvit/web/shared";
 import { Context } from "hono";
 import { handleClientPostCreate } from "./handlePostOrComment";
 
 export const onPostCreate = async (c: Context): Promise<Response> => {
-    const event = await c.req.json<OnPostCreateRequest>();
+    const event = await c.req.json<OnPostSubmitRequest>();
 
     if (!event.post?.id) {
         console.error(

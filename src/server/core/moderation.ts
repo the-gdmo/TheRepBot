@@ -7,7 +7,7 @@ import type { JsonObject, MenuItemRequest } from "@devvit/web/shared";
 
 type JSONObject = Record<string, any>;
 
-type FormOnSubmitEvent<T extends Record<string, any> = Record<string, any>> = {
+export type FormOnSubmitEvent<T extends Record<string, any> = Record<string, any>> = {
     values: T;
     data?: Record<string, unknown>;
 };
@@ -126,49 +126,6 @@ export async function handleCommentPin(
     }
 }
 
-export async function handleFlairToggle(
-    event: MenuItemRequest,
-    context: Context
-): Promise<void> {
-    try {
-        if (!event.targetId || !event.location) {
-            showToast(context, "Invalid target");
-            return;
-        }
-
-        const username = await getAuthorFromTarget(context, event.targetId);
-
-        if (!username) {
-            showToast(context, "Cannot toggle flair. User may be shadowbanned");
-            return;
-        }
-
-        const key = `flairToggle:${username}`;
-        const exists = await redis.exists(key);
-        const currentValue = exists ? "disabled" : "enabled";
-
-        const fields = [
-            {
-                name: "isEnabled",
-                type: "string",
-                label: `Flair management for u/${username}`,
-                defaultValue: currentValue,
-                helpText:
-                    "Case insensitive. 'enabled' = bot manages flair, 'disabled' = bot will not manage flair",
-                required: true,
-            },
-        ];
-
-        showForm(context, manualSetFlairManagementForm, { fields });
-    } catch (error) {
-        logger.error("Failed to toggle flair management", {
-            error: String(error),
-        });
-
-        showToast(context, "An error occurred while toggling flair management");
-    }
-}
-
 export async function checkFlairToggle(
     event: MenuItemRequest,
     context: Context
@@ -186,19 +143,14 @@ export async function checkFlairToggle(
     }
 
     const key = `flairToggle:${username}`;
-    const exists = await redis.exists(key);
+    const isDisabled = await redis.exists(key);
 
-    if (exists) {
-        showToast(
-            context,
-            `Flair management is currently disabled for u/${username}`
-        );
-    } else {
-        showToast(
-            context,
-            `Flair management is currently enabled for u/${username}`
-        );
-    }
+    showToast(
+        context,
+        isDisabled
+            ? `Flair management is currently DISABLED for u/${username}`
+            : `Flair management is currently ENABLED for u/${username}`
+    );
 }
 
 export async function getAuthorFromTarget(
@@ -272,9 +224,30 @@ export async function manualSetFlairManagementFormHandler(
         return;
     }
 
-    const key = `flairToggle:${username}`;
+    const key = `flairToggle:${user.username}`;
+    const isCurrentlyDisabled = await redis.exists(key);
+    const wantsEnabled = enabled.test(value);
+    const wantsDisabled = disabled.test(value);
 
-    if (enabled.test(value)) {
+    // Check whether the user is already in the requested state.
+    if (wantsEnabled && !isCurrentlyDisabled) {
+        showToast(
+            context,
+            `Flair management for u/${user.username} is already enabled`
+        );
+        return;
+    }
+
+    if (wantsDisabled && isCurrentlyDisabled) {
+        showToast(
+            context,
+            `Flair management for u/${user.username} is already disabled`
+        );
+        return;
+    }
+
+    // Apply the requested state.
+    if (wantsEnabled) {
         await redis.del(key);
     } else {
         await redis.set(key, "disabled");
@@ -282,12 +255,14 @@ export async function manualSetFlairManagementFormHandler(
 
     showToast(
         context,
-        `Flair management for u/${user.username} is now ${value}`
+        `Flair management for u/${user.username} is now ${
+            wantsEnabled ? "enabled" : "disabled"
+        }`
     );
 }
 
 export async function handleFlairToggleForUser(
-    _event: MenuItemRequest,
+    _: MenuItemRequest,
     context: Context
 ): Promise<void> {
     const fields = [

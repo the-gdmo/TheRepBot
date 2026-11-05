@@ -1,8 +1,15 @@
-
 import { Hono } from "hono";
-import type { UiResponse } from "@devvit/web/shared";
+import type { JsonObject, UiResponse } from "@devvit/web/shared";
 import { reddit, redis, settings } from "@devvit/web/server";
 import { POINTS_STORE_KEY } from "../core/utils/redisKeys";
+import {
+    createRequestContext,
+    toUiResponse,
+    UiCapture,
+} from "../core/request-context";
+import { logger } from "../core/utils/logger";
+import { manualSetPointsFormHandler } from "../core/utils/mod-utilities";
+import { FormOnSubmitEvent } from "../core/moderation";
 
 type CreatePostFormValues = {
     postTitle?: string;
@@ -66,15 +73,12 @@ forms.post("/create-post", async (c) => {
                     await oldPost.remove();
                     console.log("Removed existing leaderboard post");
                 } catch (error) {
-                    // Continue creating the new post if the old one
-                    // cannot be found or removed.
                     console.warn("Failed to remove old post:", error);
                 }
             }
         }
 
-        const postTitle =
-            values.postTitle?.trim() || "TheRepBot High Scores";
+        const postTitle = values.postTitle?.trim() || "RepBot High Scores";
 
         // Create the leaderboard post.
         const post = await reddit.submitCustomPost({
@@ -133,5 +137,33 @@ forms.post("/create-post", async (c) => {
         };
 
         return c.json<UiResponse>(response, 500);
+    }
+});
+
+forms.post("/set-points", async (c) => {
+    const data = await c.req.json().catch(() => ({}));
+    const capture: UiCapture = {};
+
+    try {
+        const context = await createRequestContext(data, capture);
+
+        await manualSetPointsFormHandler(
+            data as FormOnSubmitEvent<JsonObject>,
+            context
+        );
+
+        return c.json<UiResponse>(toUiResponse(capture), 200);
+    } catch (error) {
+        logger.error(`Manual points form submission failed: ${error}`);
+
+        return c.json<UiResponse>(
+            {
+                showToast: {
+                    text: "Failed to update the user's score",
+                    appearance: "neutral",
+                },
+            },
+            500
+        );
     }
 });

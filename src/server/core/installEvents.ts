@@ -13,9 +13,8 @@ import {
     UPGRADE_NOTIFIER_CRON,
     UPGRADE_NOTIFIER_JOB,
 } from "./clientCore/constants";
-// import { createCompatContext } from "./compat";
 
-function jsonResponse(body: TriggerResponse, status = 200): Response {
+function jsonResponse(body: TriggerResponse, status = 200 | 500): Response {
     return new Response(JSON.stringify(body), {
         status,
         headers: {
@@ -24,7 +23,8 @@ function jsonResponse(body: TriggerResponse, status = 200): Response {
     });
 }
 
-export const onAppInstall = async (_c: Context): Promise<Response> => {
+// figure out why this fails (presumably does since upgrade fails to run properly)
+export const onAppInstall = async (_: Context): Promise<Response> => {
     logger.info("App install triggered");
 
     try {
@@ -42,7 +42,8 @@ export const onAppInstall = async (_c: Context): Promise<Response> => {
     }
 };
 
-export const onAppUpgrade = async (_c: Context): Promise<Response> => {
+// figure out why this fails
+export const onAppUpgrade = async (_: Context): Promise<Response> => {
     logger.info("App upgrade triggered");
 
     let totalJobs = 0;

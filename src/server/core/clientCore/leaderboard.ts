@@ -12,10 +12,11 @@ export function capitalize(word: string): string {
 /**
  * Escapes text that will be inserted into Reddit/CommonMark markdown.
  *
- * This deliberately includes backslash itself in the same single pass as every
- * ASCII punctuation character that CommonMark allows to be backslash-escaped.
- * That is important for strings such as `\\[` or `\\*`: both the existing
- * backslash and the following markdown character must be escaped independently.
+ * This deliberately includes backslash itself in the same single pass as the
+ * punctuation Reddit's markdown can use. That is important for strings such as
+ * `\\[` or `\\*`: both the existing backslash and the following markdown
+ * character must be escaped independently. Other characters are left alone,
+ * because Reddit shows the backslash in `\\?` instead of removing it.
  *
  * Newlines/tabs are collapsed so user-controlled text cannot create a new wiki
  * table row/cell or otherwise change the surrounding markdown structure.
@@ -23,7 +24,7 @@ export function capitalize(word: string): string {
 export function escapeMarkdownText(input: string): string {
     return String(input)
         .replace(/[\r\n\t]+/g, " ")
-        .replace(/[\x20-\x2F\x3A-\x40\x5B-\x60\x7B-\x7E]/g, "\\$&");
+        .replace(/[\\`*_{}[\]()#+\-.!:|&<>^~]/g, "\\$&");
 }
 
 /**
@@ -140,12 +141,12 @@ export function parseLeaderboardWikiEntries(
 }
 
 /**
- * On the first run after this migration is introduced, replace POINTS_STORE_KEY
- * with the contents of an already-existing leaderboard wiki page. The marker is
- * scoped to the subreddit and configured wiki page name, so changing the wiki
- * page can intentionally seed Redis from that page once as well.
+ * Brings the scores on an already-existing leaderboard wiki page into
+ * POINTS_STORE_KEY once. Scores are merged, keeping each user's higher total,
+ * so pointing the setting at a shorter page can never remove anyone's points.
  */
 export async function replaceLeaderboardRedisFromExistingWikiOnce(
+    _: unknown,
     subredditName: string,
     wikiPageName: string,
     wikiPage: WikiPage
@@ -162,16 +163,25 @@ export async function replaceLeaderboardRedisFromExistingWikiOnce(
         return;
     }
 
-    // The wiki is authoritative for this migration: remove the old sorted set
-    // completely before inserting the values parsed from the page.
-    await redis.del(POINTS_STORE_KEY);
-    if (entries.length > 0) {
-        await redis.zAdd(POINTS_STORE_KEY, ...entries);
-    }
+    const currentScores = new Map(
+        (await getAllSortedSetEntries(POINTS_STORE_KEY)).map((entry) => [
+            entry.member.toLowerCase(),
+            entry.score,
+        ])
+    );
+
+    await zAddInBatches(
+        POINTS_STORE_KEY,
+        entries.filter(
+            (entry) =>
+                entry.score >
+                (currentScores.get(entry.member.toLowerCase()) ?? -1)
+        )
+    );
 
     await redis.set(importKey, new Date().toISOString());
 
-    logger.info("📥 Replaced leaderboard Redis data from existing wiki", {
+    logger.info("📥 Merged scores from existing leaderboard wiki", {
         subredditName,
         wikiPageName,
         importedUsers: entries.length,
@@ -1033,13 +1043,35 @@ export async function refreshLifetimeTotalsOnPages(
         );
 
         if (updated !== current) {
-            await reddit.updateWikiPage({
+            await updateOlderUserWikiPage(
                 subredditName,
-                page: pagePath,
-                content: updated,
-                reason: `Updated lifetime wiki totals for ${username}`,
-            });
+                pagePath,
+                updated,
+                `Updated lifetime wiki totals for ${username}`
+            );
         }
+    }
+}
+
+/**
+ * Totals and newest-page links on a user's pages are only a convenience, so a
+ * page Reddit refuses to save doesn't stop the award being recorded. An old
+ * page that is already near Reddit's size limit is refused once these
+ * sentences make it slightly longer.
+ */
+async function updateOlderUserWikiPage(
+    subredditName: string,
+    page: string,
+    content: string,
+    reason: string
+) {
+    try {
+        await reddit.updateWikiPage({ subredditName, page, content, reason });
+    } catch (error) {
+        logger.warn("⚠️ Couldn't update a user wiki page; left as it was", {
+            page,
+            error: error instanceof Error ? error.message : String(error),
+        });
     }
 }
 
@@ -1124,12 +1156,12 @@ export async function refreshLatestPageLinks(
         );
 
         if (updated !== current) {
-            await reddit.updateWikiPage({
+            await updateOlderUserWikiPage(
                 subredditName,
-                page: pagePath,
-                content: updated,
-                reason: `Updated newest-page link for ${username}`,
-            });
+                pagePath,
+                updated,
+                `Updated newest-page link for ${username}`
+            );
         }
     }
 }
@@ -1676,6 +1708,7 @@ export function normalizeLeaderboardUsernameForLookup(value: string): string {
  * returns a clean top-N leaderboard.
  */
 export async function getCanonicalLeaderboardScores(
+    _: unknown,
     leaderboardSize: number
 ): Promise<CanonicalLeaderboardEntry[]> {
     // Fetch extra rows because multiple Redis members can represent one account.
@@ -1733,6 +1766,19 @@ export async function getCanonicalLeaderboardScores(
     for (const variants of groups.values()) {
         const firstEntry = variants[0];
         if (!firstEntry) continue;
+
+        // A single clean entry has nothing to repair, so it needs no lookup.
+        // This keeps the job light on subreddits with a large leaderboard.
+        if (
+            variants.length === 1 &&
+            firstEntry.member === firstEntry.lookupUsername
+        ) {
+            normalizedEntries.push({
+                member: firstEntry.member,
+                score: firstEntry.score,
+            });
+            continue;
+        }
 
         const highestScoringEntry = variants.reduce(
             (highest, current) =>
@@ -1853,54 +1899,42 @@ export async function getCanonicalLeaderboardScores(
 }
 
 export async function updateLeaderboard(c: Context): Promise<Response> {
-    const subredditName = await getSubredditName();
-
     try {
-        // ---------------------------------------------------------
-        // 1. Read settings
-        // ---------------------------------------------------------
+        const settingPointName = await settings.get<string>("pointName");
+        // const leaderboardMode = await settings.get<string>("leaderboardMode");
+        const settingLeaderboardName = await settings.get<string>(
+            "leaderboardName"
+        );
+        const settingLeaderboardSize = await settings.get<number>(
+            "leaderboardSize"
+        );
+        const settingPointSystemHelpPage = await settings.get<string>(
+            "pointSystemHelpPage"
+        );
 
-        const [
-            settingPointName,
-            settingLeaderboardName,
-            settingLeaderboardSize,
-            settingPointSystemHelpPage,
-        ] = await Promise.all([
-            settings.get<string>("pointName"),
-            settings.get<string>("leaderboardName"),
-            settings.get<number>("leaderboardSize"),
-            settings.get<string>("pointSystemHelpPage"),
-        ]);
+        // if (
+        //     !leaderboardMode ||
+        //     leaderboardMode.length === 0 ||
+        //     leaderboardMode === "off"
+        // ) {
+        //     logger.debug("🏁 Leaderboard mode off — skipping update.");
+        //     return c.json("Leaderboard mode is off — skipping update.", 200);
+        // }
 
-        const wikiPageName = settingLeaderboardName?.trim() || "leaderboard";
+        const wikiPageName =
+            (settingLeaderboardName as string | undefined) ?? "leaderboard";
+        const leaderboardSize =
+            (settingLeaderboardSize as number | undefined) ?? 50;
 
-        // ---------------------------------------------------------
-        // 2. Normalize settings
-        // ---------------------------------------------------------
+        const subredditName = await getSubredditName();
+        const pointName = (settingPointName as string) ?? "point";
+        const helpPage = settingPointSystemHelpPage as string | undefined;
 
-        const rawLeaderboardSize = Number(settingLeaderboardSize ?? 50);
-
-        const leaderboardSize = Number.isFinite(rawLeaderboardSize)
-            ? Math.min(1000, Math.max(1, Math.floor(rawLeaderboardSize)))
-            : 50;
-
-        const pointName = settingPointName?.trim() || "point";
-
-        const helpPage = settingPointSystemHelpPage?.trim();
-
-        logger.info("Leaderboard: starting update", {
-            subreddit: subredditName,
-            wikiPageName,
-            leaderboardSize,
-            pointName,
-        });
-
-        // ---------------------------------------------------------
-        // 3. Existing wiki -> Redis migration
-        // ---------------------------------------------------------
-
+        // ──────────────── Existing wiki -> Redis migration ────────────────
+        // If a leaderboard wiki page already exists, its scores are merged into
+        // Redis on the first run. A per-page marker stops later scheduled updates
+        // from reading it again.
         const safeWiki = new SafeWikiClient(reddit);
-
         const wikiPage = await safeWiki.getWikiPage(
             subredditName,
             wikiPageName
@@ -1908,80 +1942,64 @@ export async function updateLeaderboard(c: Context): Promise<Response> {
 
         if (wikiPage) {
             await replaceLeaderboardRedisFromExistingWikiOnce(
+                undefined,
                 subredditName,
                 wikiPageName,
                 wikiPage
             );
         }
 
-        // ---------------------------------------------------------
-        // 4. Fetch + normalize scores
-        // ---------------------------------------------------------
+        // ──────────────── Fetch + normalize scores ────────────────
+        // Resolve stored members through Reddit so escaped/encoded/specially-cased
+        // usernames are repaired before the leaderboard is rendered.
+        const highScores = await getCanonicalLeaderboardScores(
+            undefined,
+            leaderboardSize
+        );
 
-        const highScores = await getCanonicalLeaderboardScores(leaderboardSize);
-
-        // ---------------------------------------------------------
-        // 5. Build markdown
-        // ---------------------------------------------------------
-
+        // ──────────────── Build markdown ────────────────
         let wikiContents = `# ${capitalize(
             pointName
         )}board for ${subredditName}\n\n`;
 
         if (helpPage) {
-            wikiContents +=
-                `[How to award ${pointName}s on /r/${subredditName}]` +
-                `(https://reddit.com/r/${subredditName}/wiki/${helpPage})\n\n`;
+            wikiContents += `[How to award ${pointName}s on /r/${subredditName}](https://reddit.com/r/${subredditName}/wiki/${helpPage})\n\n`;
         }
 
-        wikiContents += `User | ${capitalize(pointName)}s Earned\n-|- \n`;
+        wikiContents += `User | ${capitalize(pointName)}s Earned\n-|-\n`;
 
         if (highScores.length > 0) {
             wikiContents += highScores
                 .map((entry) => {
                     const displayUsername = markdownEscape(entry.member);
-
                     const urlUsername = encodeURIComponent(entry.member);
 
-                    return (
-                        `[${displayUsername}]` +
-                        `(https://old.reddit.com/r/${subredditName}/wiki/user/${urlUsername}/1)|` +
-                        `${entry.score.toLocaleString("en")}`
-                    );
+                    return `[${displayUsername}](https://old.reddit.com/r/${subredditName}/wiki/user/${urlUsername}/1)|${entry.score.toLocaleString(
+                        "en"
+                    )}`;
                 })
                 .join("\n");
         } else {
             wikiContents += "No users have been awarded yet.";
         }
 
-        wikiContents +=
-            `\n\nThe leaderboard shows the top ${leaderboardSize.toLocaleString(
-                "en"
-            )} ` +
-            `${pluralize("user", leaderboardSize)} who ${pluralize(
-                "has",
-                leaderboardSize
-            )} ` +
-            `been awarded at least one ${pointName}`;
+        wikiContents += `\n\nThe leaderboard shows the top ${leaderboardSize.toLocaleString(
+            "en"
+        )} ${pluralize("user", leaderboardSize)} who ${pluralize(
+            "has",
+            leaderboardSize
+        )} been awarded at least one ${pointName}`;
 
         const installDateTimestamp = await redis.get("InstallDate");
 
         if (installDateTimestamp) {
-            const installDate = new Date(
-                Number.parseInt(installDateTimestamp, 10)
-            );
-
-            if (!Number.isNaN(installDate.getTime())) {
-                wikiContents += ` since ${installDate.toUTCString()}`;
-            }
+            const installDate = new Date(parseInt(installDateTimestamp));
+            wikiContents += ` since ${installDate.toUTCString()}`;
         }
 
         wikiContents += ".";
 
-        // ---------------------------------------------------------
-        // 6. Create or update wiki page
-        // ---------------------------------------------------------
-
+        // ──────────────── Safe wiki handling ────────────────
         let currentWikiPage = wikiPage;
 
         const wikiPageOptions = {
@@ -1991,122 +2009,125 @@ export async function updateLeaderboard(c: Context): Promise<Response> {
             reason: "Updated leaderboard",
         };
 
-        let pageCreated = false;
-        let pageUpdated = false;
-
         if (currentWikiPage) {
             if (getWikiMarkdown(currentWikiPage) !== wikiContents) {
                 await reddit.updateWikiPage(wikiPageOptions);
-
-                pageUpdated = true;
-
-                logger.info("Leaderboard wiki page updated.", {
-                    subreddit: subredditName,
-                    wikiPageName,
-                });
+                logger.info("🏆 Leaderboard wiki page updated.");
             } else {
-                logger.debug("Leaderboard wiki page is already up to date.", {
-                    subreddit: subredditName,
-                    wikiPageName,
-                });
+                logger.info("ℹ️ Leaderboard is already up to date.");
             }
         } else {
             currentWikiPage = await reddit.createWikiPage(wikiPageOptions);
 
-            pageCreated = true;
+            // This bot wrote the page, so it must never be imported back over Redis.
+            await redis.set(
+                leaderboardWikiImportKey(subredditName, wikiPageName),
+                new Date().toISOString()
+            );
 
-            logger.info("Leaderboard wiki page created.", {
-                subreddit: subredditName,
-                wikiPageName,
-            });
+            logger.info("🏆 Leaderboard wiki page created.");
         }
 
+        // const mode = leaderboardMode[0];
+
+        // let correctPermissionLevel: number;
+
+        // switch (mode) {
+        //     case "subredditpermissions":
+        //         correctPermissionLevel = 0;
+        //         break;
+
+        //     case "approvedcontributorsonly":
+        //         correctPermissionLevel = 1;
+        //         break;
+
+        //     case "modonly":
+        //         correctPermissionLevel = 2;
+        //         break;
+
+        //     default:
+        //         logger.warn("⚠️ Unknown leaderboard mode, defaulting to mod only", {
+        //             mode,
+        //         });
+        //         correctPermissionLevel = 2;
+        //         break;
+        // }
+
         if (!currentWikiPage) {
-            throw new Error(
+            logger.error(
                 `Failed to create or retrieve wiki page ${wikiPageName}`
+            );
+
+            return c.json(
+                {
+                    message: `Failed to create or retrieve wiki page ${wikiPageName}`,
+                },
+                500
             );
         }
 
-        // ---------------------------------------------------------
-        // 7. Restore wiki permissions
-        // ---------------------------------------------------------
+        // const wikiPageSettings = await currentWikiPage.getSettings();
 
-        // Your previous leaderboard permission logic remains
-        // commented out here, exactly as in the supplied function.
-        //
-        // To reactivate it, the leaderboardMode setting and
-        // page.getSettings()/page.updateSettings() logic
-        // need to be restored.
+        // if (wikiPageSettings.permLevel !== correctPermissionLevel) {
+        //     logger.info("🔐 Updating leaderboard wiki page permissions", {
+        //         mode,
+        //         correctPermissionLevel,
+        //         currentPermLevel: wikiPageSettings.permLevel,
+        //     });
 
-        // ---------------------------------------------------------
-        // 8. Successful response
-        // ---------------------------------------------------------
+        //     await reddit.updateWikiPageSettings({
+        //         subredditName,
+        //         page: wikiPageName,
+        //         listed: true,
+        //         permLevel: correctPermissionLevel,
+        //     });
+        // } else {
+        //     logger.info(
+        //         "🔐 Leaderboard wiki page permissions set to current wiki settings, no changes made",
+        //         {
+        //             mode,
+        //             correctPermissionLevel,
+        //             currentPermLevel: wikiPageSettings.permLevel,
+        //         }
+        //     );
+        // }
 
-        logger.info("Leaderboard update completed successfully.", {
-            subreddit: subredditName,
-            wikiPageName,
-            leaderboardSize,
-            scoresReturned: highScores.length,
-            pageCreated,
-            pageUpdated,
+        return c.json({ message: "Leaderboard updated successfully" }, 200);
+    } catch (err) {
+        logger.error("❌ Error updating leaderboard", {
+            error: String(err),
         });
 
-        return c.json({
-            success: true,
-            updated: true,
-            subreddit: subredditName,
-            wikiPageName,
-            leaderboardSize,
-            scoresReturned: highScores.length,
-            pageCreated,
-            pageUpdated,
-        });
-    } catch (error) {
-        const errorMessage =
-            error instanceof Error ? error.message : String(error);
-
-        logger.error("Leaderboard update failed.", {
-            subreddit: subredditName,
-            error: errorMessage,
-            stack: error instanceof Error ? error.stack : undefined,
-        });
-
-        return c.json(
-            {
-                success: false,
-                updated: false,
-                message: "Leaderboard update failed.",
-                error: errorMessage,
-            },
-            500
-        );
+        return c.json({ message: "Failed to update leaderboard" }, 500);
     }
 }
 
 export function modInfoTemplate(subredditName: string): string {
     return (
-        `# TheRepBot Mod Info for r/${subredditName}\n\n` +
-        `***This page is automatically managed by TheRepBot. Any edits will be overwritten.***\n\n` +
+        `# RepBot Mod Info for r/${subredditName}\n\n` +
+        `***This page is automatically managed by RepBot. Any edits will be overwritten.***\n\n` +
         `---\n\n` +
         `## Leaderboard Configuration\n\n` +
         `* If no help page is set, the leaderboard post will not include a link to a help page.\n\n` +
         `* If you want to change the name of the help page, you must update the "Point System Help Page" setting.\n\n` +
         `* **Note:** If you change the leaderboard name in settings, the wiki page link will be updated in the leaderboard post but the old page's contents` +
-        ` will not be pulled and you will have to edit the new one manually.\n\n`
+        ` will not be pulled and you will have to edit the new one manually or transfer it via the "Transfer wiki page" button in the subreddit-level modmenu.`
     );
 }
 
-export async function modInfoJob(_: unknown) {
+export async function modInfoJob(c: Context): Promise<Response> {
     const subreddit = await reddit.getCurrentSubreddit();
     const subredditName = subreddit.name;
     const safeWiki = new SafeWikiClient(reddit);
-    const wikiPath = "therepbot/modinfo";
+    const wikiPath = "RepBot/modinfo";
 
     const template = modInfoTemplate(subredditName);
 
-    let existingPage = undefined;
     try {
-        existingPage = await safeWiki.getWikiPage(subredditName, wikiPath);
+        const existingPage = await safeWiki.getWikiPage(
+            subredditName,
+            wikiPath
+        );
 
         if (!existingPage) {
             await safeWiki.createWikiPage({
@@ -2115,21 +2136,38 @@ export async function modInfoJob(_: unknown) {
                 content: template,
                 reason: "Mod info wiki page setup",
             });
+
             logger.info(`📘 No existing wiki page found — created ${wikiPath}`);
         } else {
             logger.info("ℹ️ Existing mod info wiki page found");
         }
+
+        if (getWikiMarkdown(existingPage) === template) {
+            logger.info(
+                `📘 Mod info wiki page ${wikiPath} already matches template content`
+            );
+            return c.json(
+                { message: "Mod info wiki page already up to date" },
+                200
+            );
+        }
+
+        await reddit.updateWikiPage({
+            subredditName,
+            page: wikiPath,
+            content: template,
+            reason: "Set page to template content",
+        });
+
+        logger.info(
+            `📘 Updated mod info wiki page ${wikiPath} to template content`
+        );
+        return c.json({ message: "Mod info wiki page updated" }, 200);
     } catch (err) {
-        logger.error("❌ Error retrieving mod info wiki page", {
+        logger.error("❌ Error updating mod info wiki page", {
             error: String(err),
         });
-    }
-    // ──────────────── set page content to template ────────────────
 
-    await reddit.updateWikiPage({
-        subredditName,
-        page: wikiPath,
-        content: template,
-        reason: `Set page to template content`,
-    });
+        return c.json({ message: "Failed to update mod info wiki page" }, 500);
+    }
 }

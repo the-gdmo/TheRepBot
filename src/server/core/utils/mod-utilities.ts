@@ -1,6 +1,6 @@
 import { reddit, redis, scheduler, settings } from "@devvit/web/server";
 import type { Context, User } from "@devvit/web/server";
-import type { MenuItemRequest } from "@devvit/web/shared";
+import type { JsonObject, MenuItemRequest } from "@devvit/web/shared";
 
 import { showToast, showForm } from "../request-context";
 import { logger } from "./logger";
@@ -16,7 +16,10 @@ import {
 } from "../moderation";
 import { getCurrentScore } from "./user-utilities";
 import type { ScoreResult } from "./common-utilities";
-import { getUserWikiLifetimeTotalsForUser, setUserWikiLifetimeTotalsForUser } from "../clientCore/leaderboard";
+import {
+    getUserWikiLifetimeTotalsForUser,
+    setUserWikiLifetimeTotalsForUser,
+} from "../clientCore/leaderboard";
 import { setUserScore } from "../clientCore/triggers/handlePostOrComment";
 import { UPDATE_LEADERBOARD_JOB } from "../clientCore/constants";
 
@@ -26,96 +29,6 @@ type FormOnSubmitEvent<T extends Record<string, any> = Record<string, any>> = {
     values: T;
     data?: Record<string, unknown>;
 };
-
-export async function handleUserRestrictionCheck(
-    event: MenuItemRequest,
-    context: Context
-): Promise<void> {
-    let contentType: "post" | "comment" | undefined;
-    let targetId: string | undefined;
-    let targetAuthor: string | undefined;
-
-    if (event.location === "post" && event.targetId) {
-        contentType = "post";
-        targetId = event.targetId;
-
-        const post = await reddit.getPostById(targetId as `t3_${string}`);
-
-        targetAuthor = post?.authorName;
-    }
-
-    if (event.location === "comment" && event.targetId) {
-        contentType = "comment";
-        targetId = event.targetId;
-
-        const comment = await reddit.getCommentById(targetId as `t1_${string}`);
-
-        targetAuthor = comment?.authorName;
-    }
-
-    if (!contentType || !targetId || !targetAuthor) {
-        showToast(context, "Unable to determine target content or author");
-        return;
-    }
-
-    const user = await reddit.getUserByUsername(targetAuthor);
-
-    if (!user) {
-        showToast(context, "Unable to resolve the target user");
-        return;
-    }
-
-    const settingAwardsRequiredToCreateNewPosts = await settings.get(
-        "awardsRequiredToCreateNewPosts"
-    );
-
-    const settingModeratorsExempt = await settings.get("moderatorsExempt");
-
-    const awardsRequired =
-        (settingAwardsRequiredToCreateNewPosts as number) ?? 0;
-
-    if (awardsRequired <= 0) {
-        showToast(context, "Awarding is not required to post");
-        return;
-    }
-
-    const awardsRequiredKey = await getAwardsRequiredKey(user);
-    const raw = await redis.get(awardsRequiredKey);
-
-    const restrictedFlagExists = await restrictedKeyExists(
-        targetAuthor
-    );
-
-    const subreddit = await reddit.getCurrentSubreddit();
-    const subredditName = subreddit.name;
-    const modsExempt = (settingModeratorsExempt as boolean) ?? true;
-
-    const filteredModeratorList = await reddit
-        .getModerators({
-            subredditName,
-            username: targetAuthor,
-        })
-        .all();
-
-    const isMod = filteredModeratorList.length > 0;
-
-    if (modsExempt && isMod) {
-        showToast(context, "Mods are exempt from restriction");
-        return;
-    }
-
-    if (!restrictedFlagExists) {
-        showToast(context, `${targetAuthor} is not restricted`);
-        return;
-    }
-
-    const currentCount = Number(raw) || 0;
-
-    showToast(
-        context,
-        `${currentCount}/${awardsRequired} awards given by ${targetAuthor}`
-    );
-}
 
 export async function handlePostRestrictionCheck(
     event: MenuItemRequest,
@@ -157,9 +70,7 @@ export async function handlePostRestrictionCheck(
     const awardsRequiredKey = await getAwardsRequiredKey(user);
     const raw = await redis.get(awardsRequiredKey);
 
-    const restrictedFlagExists = await restrictedKeyExists(
-        user.username
-    );
+    const restrictedFlagExists = await restrictedKeyExists(user.username);
 
     const subreddit = await reddit.getCurrentSubreddit();
     const subredditName = subreddit.name;
@@ -384,10 +295,10 @@ export async function manualSetUserWikiTotalsFormHandler(
             return;
         }
 
-        await setUserWikiLifetimeTotalsForUser(
-            user.username,
-            { received, given }
-        );
+        await setUserWikiLifetimeTotalsForUser(user.username, {
+            received,
+            given,
+        });
 
         logger.info("Moderator changed user wiki totals", {
             username: user.username,
@@ -411,91 +322,106 @@ export async function manualSetUserWikiTotalsFormHandler(
 }
 
 export async function handleManualPointSetting(
-    event: MenuItemRequest,
+    _: MenuItemRequest,
     context: Context
 ): Promise<void> {
-    const targetAuthor = await resolveMenuTargetUsername(event, context);
-
-    if (!targetAuthor || targetAuthor === "[deleted]") {
-        showToast(context, "Unable to determine the target user");
-        return;
-    }
-
-    let user: User | undefined;
-
     try {
-        user = await reddit.getUserByUsername(targetAuthor);
-    } catch {
-        // The user may not be available.
+        const targetAuthor = await resolveMenuTargetUsername(_, context);
+
+        if (!targetAuthor || targetAuthor === "[deleted]") {
+            showToast(context, "Unable to determine the target user");
+            return;
+        }
+
+        let user: User | undefined;
+
+        try {
+            user = await reddit.getUserByUsername(targetAuthor);
+        } catch {
+            // The target user may no longer be available.
+        }
+
+        if (!user) {
+            showToast(
+                context,
+                "Cannot set points. User may be shadowbanned"
+            );
+            return;
+        }
+
+        const currentScore = await getCurrentScore(user);
+
+        if (!currentScore) {
+            showToast(
+                context,
+                "Unable to retrieve current score for user"
+            );
+            return;
+        }
+
+        const fields = [
+            {
+                name: "newScore",
+                type: "number",
+                defaultValue: currentScore.score,
+                label: `Enter a new score for ${targetAuthor}`,
+                helpText:
+                    "Warning: This will overwrite the score that currently exists",
+                multiSelect: false,
+                required: true,
+            },
+        ];
+
+        showForm(context, manualSetPointsForm, { fields });
+    } catch (error) {
+        logger.error(
+            `Error opening manual points form: ${error}`
+        );
+        showToast(context, "Unable to open the manual points form");
     }
-
-    if (!user) {
-        showToast(context, "Cannot set points. User may be shadowbanned");
-        return;
-    }
-
-    const currentScore = await getCurrentScore(user);
-
-    if (!currentScore) {
-        showToast(context, "Unable to retrieve current score for user");
-        return;
-    }
-
-    const fields = [
-        {
-            name: "newScore",
-            type: "number",
-            defaultValue: currentScore.score,
-            label: `Enter a new score for ${targetAuthor}`,
-            helpText:
-                "Warning: This will overwrite the score that currently exists",
-            multiSelect: false,
-            required: true,
-        },
-    ];
-
-    showForm(context, manualSetPointsForm, { fields });
 }
 
 export async function manualSetPointsFormHandler(
-    event: FormOnSubmitEvent<JSONObject>,
+    event: FormOnSubmitEvent<JsonObject>,
     context: Context
 ): Promise<void> {
-    const targetAuthor = await resolveFormTargetUsername(context);
-
-    if (!targetAuthor || targetAuthor === "[deleted]") {
-        showToast(context, "An error occurred setting the user's score");
-        return;
-    }
-
-    const entry = event.values.newScore as number | undefined;
-
-    if (
-        typeof entry !== "number" ||
-        !Number.isFinite(entry) ||
-        !Number.isInteger(entry) ||
-        entry < 0
-    ) {
-        showToast(context, "You must enter a whole-number score (0 or higher)");
-        return;
-    }
-
-    let awardee: User | undefined;
-
     try {
-        awardee = await reddit.getUserByUsername(targetAuthor);
-    } catch {
-        // The target user may no longer be available.
-    }
+        const targetAuthor = await resolveFormTargetUsername(context);
 
-    if (!awardee) {
-        showToast(context, "Cannot set points. User may be shadowbanned");
-        return;
-    }
+        if (!targetAuthor || targetAuthor === "[deleted]") {
+            showToast(context, "An error occurred setting the user's score");
+            return;
+        }
 
-    let awarder: User | undefined;
+        const entry = event.values?.newScore;
 
-    try {
+        if (
+            typeof entry !== "number" ||
+            !Number.isSafeInteger(entry) ||
+            entry < 0
+        ) {
+            showToast(
+                context,
+                "You must enter a whole-number score (0 or higher)"
+            );
+            return;
+        }
+
+        let awardee: User | undefined;
+
+        try {
+            awardee = await reddit.getUserByUsername(targetAuthor);
+        } catch (error) {
+            logger.warn(
+                `Could not resolve recipient ${targetAuthor}: ${String(error)}`
+            );
+        }
+
+        if (!awardee) {
+            showToast(context, "Cannot set points. User may be shadowbanned");
+            return;
+        }
+
         if (!context.username) {
             logger.error(
                 "Could not find username in manualSetPointsFormHandler"
@@ -504,40 +430,62 @@ export async function manualSetPointsFormHandler(
             return;
         }
 
-        awarder = await reddit.getUserByUsername(context.username);
-    } catch {
-        // The current user could not be resolved.
-    }
+        let awarder: User | undefined;
 
-    if (!awarder) {
+        try {
+            awarder = await reddit.getUserByUsername(context.username);
+        } catch (error) {
+            logger.warn(
+                `Could not resolve moderator ${context.username}: ${String(
+                    error
+                )}`
+            );
+        }
+
+        if (!awarder) {
+            showToast(
+                context,
+                "Cannot set score manually because the moderator could not be identified."
+            );
+            return;
+        }
+
+        const recipientKey = `flairToggle:${awardee.username}`;
+        const recipientKeyExists = await redis.exists(recipientKey);
+
+        // Preserve the recipient's current flair-management preference.
+        const currentScore = await getCurrentScore(awardee);
+
+        if (!currentScore) {
+            showToast(context, "Unable to retrieve the user's current score");
+            return;
+        }
+
+        const newScore: ScoreResult = {
+            ...currentScore,
+            score: entry,
+            flairShouldBeManaged: !recipientKeyExists,
+        };
+
+        await setUserScore(awardee.username, awarder.username, newScore);
+
+        await scheduler.runJob({
+            name: UPDATE_LEADERBOARD_JOB,
+            runAt: new Date(),
+            data: {
+                reason: `Updated score for ${awardee.username}. New score: ${entry}`,
+            },
+        });
+
+        showToast(context, `Score for ${awardee.username} is now ${entry}`);
+    } catch (error) {
+        logger.error(`manualSetPointsFormHandler failed: ${String(error)}`);
+
         showToast(
             context,
-            "Cannot set score manually because the awarder could not be identified."
+            "Failed to update the user's score. Check the server logs."
         );
-        return;
     }
-
-    const recipientKey = `flairToggle:${awardee.username}`;
-    const recipientKeyExists = await redis.exists(recipientKey);
-
-    const newScore: ScoreResult = {
-        score: entry,
-        userHasFlair: false,
-        flairIsNumber: false,
-        flairShouldBeManaged: !recipientKeyExists,
-    };
-
-    await setUserScore(awardee.username, awarder.username, newScore);
-
-    await scheduler.runJob({
-        name: UPDATE_LEADERBOARD_JOB,
-        runAt: new Date(),
-        data: {
-            reason: `Updated score for ${awardee.username}. New score: ${entry}`,
-        },
-    });
-
-    showToast(context, `Score for ${awardee.username} is now ${entry}`);
 }
 
 export async function handleManualPostRestrictionRemoval(

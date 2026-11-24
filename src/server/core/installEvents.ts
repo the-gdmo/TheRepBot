@@ -3,6 +3,7 @@ import type { TriggerResponse } from "@devvit/web/shared";
 import { context, redis, scheduler } from "@devvit/web/server";
 import { logger } from "./utils/logger";
 import { populateCleanupLogAndScheduleCleanup } from "./utils/cleanupTasks";
+import { ensurePointsStoreIsSortedSet } from "./clientCore/leaderboard";
 import {
     MOD_DIGEST_CRON,
     MOD_DIGEST_JOB,
@@ -28,6 +29,8 @@ export const onAppInstall = async (_: Context): Promise<Response> => {
     logger.info("App install triggered");
 
     try {
+        await ensurePointsStoreIsSortedSet();
+
         const existing = await redis.get("InstallDate");
 
         if (!existing) {
@@ -51,6 +54,9 @@ export const onAppUpgrade = async (_: Context): Promise<Response> => {
     let failedJobs = 0;
 
     try {
+        // Repair the reputation store before canceling any existing jobs.
+        await ensurePointsStoreIsSortedSet();
+
         const existing = await redis.get("InstallDate");
 
         if (!existing) {

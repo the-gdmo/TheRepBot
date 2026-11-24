@@ -51,7 +51,7 @@
             },
             "cleanupDeletedAccounts": {
                 "endpoint": "/internal/scheduler/cleanup",
-                "cron": "0 23 * * *"
+                "cron": "0 0 * * *"
             },
             "cleanupDeletedAccountsAdhoc": {
                 "endpoint": "/internal/scheduler/cleanup-adhoc"
@@ -376,7 +376,7 @@
                     "notifyOpOnLegendReply": {
                         "type": "boolean",
                         "label": "Tell the OP when a Legend comments on their post",
-                        "helpText": "Replies to the first top-level comment a Legend makes on a post, mentioning the OP. This happens once per post",
+                        "helpText": "Creates or updates a comment on the OP's post when a Legend comments on it, notifying them of the Legend's comment",
                         "defaultValue": true
                     }
                 }
@@ -926,7 +926,7 @@
                     "leaderboardMode": {
                         "type": "select",
                         "label": "Leaderboard Wiki Permissions",
-                        "helpText": "Choose who can view and edit the leaderboard wiki page. Subreddit permissions use your community's existing wiki permissions.",
+                        "helpText": "Choose who can view the leaderboard wiki page. I currently cannot get this to work.",
                         "defaultValue": "modonly",
                         "options": [
                             {

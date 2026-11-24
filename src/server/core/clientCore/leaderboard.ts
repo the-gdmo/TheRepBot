@@ -188,6 +188,358 @@ export async function replaceLeaderboardRedisFromExistingWikiOnce(
     });
 }
 
+/**
+ * Recover POINTS_STORE_KEY when an older installation left it with a non-ZSET
+ * Redis type. Current code writes this key only with ZADD; this migration is
+ * specifically for pre-existing data written by an older version or manually.
+ *
+ * The old value is renamed to a backup key and is never deleted. Scores are
+ * restored from a legacy hash/JSON value when its shape is recognizable, and
+ * merged with the configured leaderboard wiki page when available.
+ */
+const POINTS_STORE_MIGRATION_BACKUP_POINTER = `${POINTS_STORE_KEY}:migration:backup`;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function toValidScore(value: unknown): number | undefined {
+    const score =
+        typeof value === "number"
+            ? value
+            : typeof value === "string" && value.trim() !== ""
+            ? Number(value)
+            : Number.NaN;
+
+    return Number.isFinite(score) && score >= 0 ? score : undefined;
+}
+
+function normalizeLegacyScoreEntries(
+    entries: Array<{ member: unknown; score: unknown }>
+): LeaderboardWikiEntry[] {
+    const normalized = new Map<string, LeaderboardWikiEntry>();
+
+    for (const entry of entries) {
+        if (typeof entry.member !== "string" || !entry.member.trim()) continue;
+
+        const member = normalizeLeaderboardUsernameForLookup(entry.member);
+        const score = toValidScore(entry.score);
+
+        if (!member || score === undefined) continue;
+
+        const indexKey = member.toLowerCase();
+        const existing = normalized.get(indexKey);
+
+        if (!existing || score > existing.score) {
+            normalized.set(indexKey, { member, score });
+        }
+    }
+
+    return [...normalized.values()];
+}
+
+/**
+ * Accepts only recognizable formats:
+ *   - [{ member|username, score|points }]
+ *   - { username: numericScore }
+ *   - { scores: { username: numericScore } }
+ *   - { entries: [...] }
+ *
+ * Unknown string formats are not guessed or discarded.
+ */
+function parseLegacyPointsJson(
+    raw: string
+): LeaderboardWikiEntry[] | undefined {
+    let parsed: unknown;
+
+    try {
+        parsed = JSON.parse(raw) as unknown;
+    } catch {
+        return undefined;
+    }
+
+    if (Array.isArray(parsed)) {
+        const entries = parsed.flatMap((item) => {
+            if (!isRecord(item)) return [];
+
+            const member =
+                item.member ?? item.username ?? item.user ?? item.name;
+            const score =
+                item.score ?? item.points ?? item.total ?? item.reputation;
+
+            return [{ member, score }];
+        });
+
+        const normalized = normalizeLegacyScoreEntries(entries);
+
+        return entries.length === 0 || normalized.length > 0
+            ? normalized
+            : undefined;
+    }
+
+    if (!isRecord(parsed)) return undefined;
+
+    const nestedEntries = Array.isArray(parsed.entries)
+        ? parsed.entries
+        : Array.isArray(parsed.users)
+        ? parsed.users
+        : undefined;
+
+    if (nestedEntries) {
+        return parseLegacyPointsJson(JSON.stringify(nestedEntries));
+    }
+
+    const scoreMap = isRecord(parsed.scores)
+        ? parsed.scores
+        : isRecord(parsed.points)
+        ? parsed.points
+        : parsed;
+
+    const entries = Object.entries(scoreMap).flatMap(([member, value]) => {
+        if (["version", "updatedAt", "timestamp"].includes(member)) return [];
+
+        if (isRecord(value)) {
+            const score =
+                value.score ?? value.points ?? value.total ?? value.reputation;
+
+            return [{ member: value.username ?? member, score }];
+        }
+
+        return [{ member, score: value }];
+    });
+
+    const normalized = normalizeLegacyScoreEntries(entries);
+
+    return entries.length === 0 || normalized.length > 0
+        ? normalized
+        : undefined;
+}
+
+async function readLegacyPointsEntries(
+    key: string,
+    keyType: string
+): Promise<LeaderboardWikiEntry[] | undefined> {
+    if (keyType === "hash") {
+        const values = (await redis.hGetAll(key)) ?? {};
+        const entries = normalizeLegacyScoreEntries(
+            Object.entries(values).map(([member, score]) => ({
+                member,
+                score,
+            }))
+        );
+
+        // Do not mistake a non-empty but unrecognized hash for an empty
+        // leaderboard; leave it untouched unless another source can recover it.
+        return Object.keys(values).length === 0 || entries.length > 0
+            ? entries
+            : undefined;
+    }
+
+    if (keyType === "string") {
+        const raw = await redis.get(key);
+        return raw === undefined || raw === null
+            ? undefined
+            : parseLegacyPointsJson(raw);
+    }
+
+    return undefined;
+}
+
+function mergePointsEntries(
+    ...groups: Array<LeaderboardWikiEntry[] | undefined>
+): LeaderboardWikiEntry[] {
+    const merged = new Map<string, LeaderboardWikiEntry>();
+
+    for (const group of groups) {
+        if (!group) continue;
+
+        for (const entry of group) {
+            const key = entry.member.toLowerCase();
+            const existing = merged.get(key);
+
+            if (!existing || entry.score > existing.score) {
+                merged.set(key, entry);
+            }
+        }
+    }
+
+    return [...merged.values()];
+}
+
+async function getConfiguredWikiLeaderboardEntries(): Promise<
+    LeaderboardWikiEntry[] | undefined
+> {
+    try {
+        const subredditName = await getSubredditName();
+        const wikiPageName =
+            (await settings.get<string>("leaderboardName"))?.trim() ||
+            "leaderboard";
+
+        const wikiPage = await new SafeWikiClient(reddit).getWikiPage(
+            subredditName,
+            wikiPageName
+        );
+
+        if (!wikiPage) return undefined;
+
+        return parseLeaderboardWikiEntries(getWikiMarkdown(wikiPage));
+    } catch (error) {
+        logger.warn("Could not read leaderboard wiki during points migration", {
+            error: error instanceof Error ? error.message : String(error),
+        });
+
+        return undefined;
+    }
+}
+
+/**
+ * Ensures that POINTS_STORE_KEY is either a sorted set or absent (Redis does
+ * not retain empty sorted sets). An absent key is safe for ZRANGE/ZADD and the
+ * first subsequent ZADD will create it as a ZSET.
+ */
+export async function ensurePointsStoreIsSortedSet(): Promise<void> {
+    const currentType = await redis.type(POINTS_STORE_KEY);
+
+    if (currentType === "zset") {
+        // A previous migration may have completed but failed to clear its marker.
+        if (await redis.exists(POINTS_STORE_MIGRATION_BACKUP_POINTER)) {
+            await redis.del(POINTS_STORE_MIGRATION_BACKUP_POINTER);
+        }
+        return;
+    }
+
+    if (currentType === "none") {
+        const pendingBackup = await redis.get(
+            POINTS_STORE_MIGRATION_BACKUP_POINTER
+        );
+
+        if (!pendingBackup) return;
+        // Continue below and recover from the archived value.
+    }
+
+    let backupKey = await redis.get(POINTS_STORE_MIGRATION_BACKUP_POINTER);
+    let preloadedLegacyEntries: LeaderboardWikiEntry[] | undefined;
+    let preloadedWikiEntries: LeaderboardWikiEntry[] | undefined;
+    let wikiWasLoaded = false;
+
+    if (!backupKey) {
+        const timestamp = Date.now();
+        const backupPrefix = `${POINTS_STORE_KEY}:wrongtype-backup:${timestamp}`;
+        backupKey = backupPrefix;
+
+        let suffix = 0;
+        while ((await redis.type(backupKey)) !== "none") {
+            backupKey = `${backupPrefix}:${++suffix}`;
+        }
+
+        // Read the legacy value before moving it. If it is not recognizable and
+        // no valid wiki source exists, fail without touching the live key.
+        preloadedLegacyEntries =
+            currentType === "none"
+                ? undefined
+                : await readLegacyPointsEntries(POINTS_STORE_KEY, currentType);
+
+        preloadedWikiEntries = await getConfiguredWikiLeaderboardEntries();
+        wikiWasLoaded = true;
+
+        if (
+            preloadedLegacyEntries === undefined &&
+            preloadedWikiEntries === undefined
+        ) {
+            throw new Error(
+                `Cannot safely convert ${POINTS_STORE_KEY} from Redis type ` +
+                    `"${currentType}" to zset: its legacy format is unknown and ` +
+                    "the configured leaderboard wiki could not be read. " +
+                    "The original Redis key was left untouched."
+            );
+        }
+
+        await redis.set(POINTS_STORE_MIGRATION_BACKUP_POINTER, backupKey);
+
+        try {
+            await redis.rename(POINTS_STORE_KEY, backupKey);
+        } catch (error) {
+            // If another invocation already moved the key, continue from the
+            // pointer. Otherwise preserve the original failure.
+            const actualType = await redis.type(POINTS_STORE_KEY);
+            const backupType = await redis.type(backupKey);
+
+            if (backupType === "none" && actualType !== "none") {
+                await redis.del(POINTS_STORE_MIGRATION_BACKUP_POINTER);
+                throw error;
+            }
+        }
+    }
+
+    // A pending backup pointer also handles retries after a failure between
+    // RENAME and ZADD.
+    let backupType = await redis.type(backupKey);
+
+    if (backupType === "none" && currentType !== "none") {
+        const liveType = await redis.type(POINTS_STORE_KEY);
+
+        if (liveType !== "none" && liveType !== "zset") {
+            await redis.rename(POINTS_STORE_KEY, backupKey);
+            backupType = await redis.type(backupKey);
+        }
+    }
+
+    const archivedLegacyEntries =
+        backupType === "none"
+            ? undefined
+            : await readLegacyPointsEntries(backupKey, backupType);
+
+    const legacyEntries = archivedLegacyEntries ?? preloadedLegacyEntries;
+
+    const wikiEntries = wikiWasLoaded
+        ? preloadedWikiEntries
+        : await getConfiguredWikiLeaderboardEntries();
+
+    if (legacyEntries === undefined && wikiEntries === undefined) {
+        throw new Error(
+            `Could not recover the archived ${POINTS_STORE_KEY} data from ` +
+                `"${backupKey}". The original value remains preserved.`
+        );
+    }
+
+    const restoredEntries = mergePointsEntries(legacyEntries, wikiEntries);
+
+    await zAddInBatches(POINTS_STORE_KEY, restoredEntries);
+
+    const restoredType = await redis.type(POINTS_STORE_KEY);
+
+    if (restoredEntries.length > 0 && restoredType !== "zset") {
+        throw new Error(
+            `POINTS_STORE_KEY migration verification failed: expected zset, ` +
+                `found "${restoredType}". Backup: "${backupKey}".`
+        );
+    }
+
+    // The wiki data has now been imported during recovery. Prevent the regular
+    // one-time import from unnecessarily processing the same page again.
+    if (wikiEntries !== undefined) {
+        const subredditName = await getSubredditName();
+        const wikiPageName =
+            (await settings.get<string>("leaderboardName"))?.trim() ||
+            "leaderboard";
+
+        await redis.set(
+            leaderboardWikiImportKey(subredditName, wikiPageName),
+            new Date().toISOString()
+        );
+    }
+
+    await redis.del(POINTS_STORE_MIGRATION_BACKUP_POINTER);
+
+    logger.info("POINTS_STORE_KEY migration completed", {
+        previousType: currentType,
+        backupKey,
+        restoredEntries: restoredEntries.length,
+        restoredType,
+        wikiUsed: wikiEntries !== undefined,
+    });
+}
+
 export function formatDate(dateValue: string | number | Date): string {
     const d = new Date(dateValue);
     return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
@@ -1898,66 +2250,266 @@ export async function getCanonicalLeaderboardScores(
     return normalizedEntries.slice(0, leaderboardSize);
 }
 
+// Figure out how to make this properly update page permissions
 export async function updateLeaderboard(c: Context): Promise<Response> {
+    const startedAt = Date.now();
+
+    let step = "initialization";
+    let stepStartedAt = Date.now();
+
+    const startStep = (
+        name: string,
+        details: Record<string, unknown> = {}
+    ): void => {
+        step = name;
+        stepStartedAt = Date.now();
+
+        logger.info(`🏁 Leaderboard: START - ${name}`, {
+            ...details,
+        });
+    };
+
+    const completeStep = (details: Record<string, unknown> = {}): void => {
+        logger.info(`✅ Leaderboard: COMPLETE - ${step}`, {
+            durationMs: Date.now() - stepStartedAt,
+            ...details,
+        });
+    };
+
     try {
-        const settingPointName = await settings.get<string>("pointName");
-        // const leaderboardMode = await settings.get<string>("leaderboardMode");
-        const settingLeaderboardName = await settings.get<string>(
+        logger.info("🏆 Starting leaderboard update", {
+            timestamp: new Date().toISOString(),
+        });
+
+        // ---------------------------------------------------------
+        // Validate Redis points store
+        // ---------------------------------------------------------
+
+        startStep("validating points Redis store");
+
+        await ensurePointsStoreIsSortedSet();
+
+        completeStep();
+
+        // ---------------------------------------------------------
+        // Read settings
+        // ---------------------------------------------------------
+
+        startStep("loading leaderboard settings");
+
+        // ---------------------------------------------------------
+        // Read settings individually for precise error tracking
+        // ---------------------------------------------------------
+
+        const readSetting = async <T>(key: string): Promise<T | undefined> => {
+            startStep(`loading setting: ${key}`, { key });
+
+            logger.info("⚙️ Reading leaderboard setting", {
+                key,
+            });
+
+            try {
+                const value = await settings.get<T>(key);
+
+                logger.info("✅ Leaderboard setting retrieved", {
+                    key,
+                    configured: value !== undefined && value !== null,
+                    valueType: typeof value,
+                    durationMs: Date.now() - stepStartedAt,
+                });
+
+                completeStep({
+                    key,
+                    configured: value !== undefined && value !== null,
+                });
+
+                return value;
+            } catch (error) {
+                logger.error("❌ Failed to retrieve leaderboard setting", {
+                    key,
+                    durationMs: Date.now() - stepStartedAt,
+                    error:
+                        error instanceof Error
+                            ? {
+                                  name: error.name,
+                                  message: error.message,
+                                  stack: error.stack,
+                              }
+                            : String(error),
+                });
+
+                throw error;
+            }
+        };
+
+        const settingPointName = await readSetting<string>("pointName");
+
+        const leaderboardMode = await readSetting<string>("leaderboardMode");
+
+        const settingLeaderboardName = await readSetting<string>(
             "leaderboardName"
         );
-        const settingLeaderboardSize = await settings.get<number>(
+
+        const settingLeaderboardSize = await readSetting<number>(
             "leaderboardSize"
         );
-        const settingPointSystemHelpPage = await settings.get<string>(
+
+        const settingPointSystemHelpPage = await readSetting<string>(
             "pointSystemHelpPage"
         );
 
-        // if (
-        //     !leaderboardMode ||
-        //     leaderboardMode.length === 0 ||
-        //     leaderboardMode === "off"
-        // ) {
-        //     logger.debug("🏁 Leaderboard mode off — skipping update.");
-        //     return c.json("Leaderboard mode is off — skipping update.", 200);
-        // }
+        // ---------------------------------------------------------
+        // Resolve subreddit separately
+        // ---------------------------------------------------------
 
-        const wikiPageName =
-            (settingLeaderboardName as string | undefined) ?? "leaderboard";
+        startStep("resolving subreddit name");
+
+        logger.info("🔍 Retrieving current subreddit name");
+
+        const currentSubreddit = await reddit.getCurrentSubreddit();
+        const subredditName = currentSubreddit?.name;
+
+        if (!subredditName || typeof subredditName !== "string") {
+            throw new Error(
+                `getSubredditName() returned an invalid subreddit name: ${String(
+                    subredditName
+                )}`
+            );
+        }
+
+        logger.info("✅ Subreddit name retrieved", {
+            subredditName,
+        });
+
+        completeStep({
+            subredditName,
+        });
+
+        // ---------------------------------------------------------
+        // Normalize settings
+        // ---------------------------------------------------------
+
+        const pointName = settingPointName || "point";
+        const wikiPageName = settingLeaderboardName || "leaderboard";
+
         const leaderboardSize =
-            (settingLeaderboardSize as number | undefined) ?? 50;
+            typeof settingLeaderboardSize === "number" &&
+            Number.isFinite(settingLeaderboardSize) &&
+            settingLeaderboardSize > 0
+                ? Math.floor(settingLeaderboardSize)
+                : 50;
 
-        const subredditName = await getSubredditName();
-        const pointName = (settingPointName as string) ?? "point";
-        const helpPage = settingPointSystemHelpPage as string | undefined;
+        const helpPage = settingPointSystemHelpPage;
 
-        // ──────────────── Existing wiki -> Redis migration ────────────────
-        // If a leaderboard wiki page already exists, its scores are merged into
-        // Redis on the first run. A per-page marker stops later scheduled updates
-        // from reading it again.
+        logger.info("📋 Final leaderboard configuration", {
+            subredditName,
+            pointName,
+            leaderboardMode,
+            wikiPageName,
+            leaderboardSize,
+            hasHelpPage: Boolean(helpPage),
+        });
+
+        completeStep();
+
+        // ---------------------------------------------------------
+        // Check leaderboard mode
+        // ---------------------------------------------------------
+
+        const mode = leaderboardMode;
+
+        if (!mode || mode === "off") {
+            logger.info("⏭️ Leaderboard mode is off. Update skipped.", {
+                leaderboardMode,
+                durationMs: Date.now() - startedAt,
+            });
+
+            return c.json("Leaderboard mode is off — skipping update.", 200);
+        }
+
+        // ---------------------------------------------------------
+        // Retrieve existing wiki page
+        // ---------------------------------------------------------
+
+        startStep("retrieving existing leaderboard wiki page", {
+            subredditName,
+            wikiPageName,
+        });
+
         const safeWiki = new SafeWikiClient(reddit);
-        const wikiPage = await safeWiki.getWikiPage(
+
+        let currentWikiPage = await safeWiki.getWikiPage(
             subredditName,
             wikiPageName
         );
 
-        if (wikiPage) {
+        logger.info("📖 Leaderboard wiki lookup completed", {
+            exists: Boolean(currentWikiPage),
+            wikiPageName,
+            wikiVersion: currentWikiPage?.wikiVersion ?? null,
+        });
+
+        completeStep({
+            exists: Boolean(currentWikiPage),
+        });
+
+        // ---------------------------------------------------------
+        // Existing wiki -> Redis migration
+        // ---------------------------------------------------------
+
+        if (currentWikiPage) {
+            startStep("checking existing wiki leaderboard migration");
+
+            logger.info(
+                "🔄 Checking whether existing wiki scores need importing",
+                {
+                    wikiPageName,
+                }
+            );
+
             await replaceLeaderboardRedisFromExistingWikiOnce(
                 undefined,
                 subredditName,
                 wikiPageName,
-                wikiPage
+                currentWikiPage
             );
+
+            completeStep();
+        } else {
+            logger.info("ℹ️ No existing leaderboard wiki page found", {
+                wikiPageName,
+            });
         }
 
-        // ──────────────── Fetch + normalize scores ────────────────
-        // Resolve stored members through Reddit so escaped/encoded/specially-cased
-        // usernames are repaired before the leaderboard is rendered.
+        // ---------------------------------------------------------
+        // Fetch canonical leaderboard scores
+        // ---------------------------------------------------------
+
+        startStep("fetching canonical leaderboard scores", {
+            leaderboardSize,
+        });
+
         const highScores = await getCanonicalLeaderboardScores(
             undefined,
             leaderboardSize
         );
 
-        // ──────────────── Build markdown ────────────────
+        logger.info("📊 Leaderboard scores retrieved", {
+            totalEntries: highScores.length,
+            leaderboardSize,
+            hasEntries: highScores.length > 0,
+        });
+
+        completeStep({
+            totalEntries: highScores.length,
+        });
+
+        // ---------------------------------------------------------
+        // Build markdown
+        // ---------------------------------------------------------
+
+        startStep("generating leaderboard markdown");
+
         let wikiContents = `# ${capitalize(
             pointName
         )}board for ${subredditName}\n\n`;
@@ -1993,14 +2545,30 @@ export async function updateLeaderboard(c: Context): Promise<Response> {
         const installDateTimestamp = await redis.get("InstallDate");
 
         if (installDateTimestamp) {
-            const installDate = new Date(parseInt(installDateTimestamp));
-            wikiContents += ` since ${installDate.toUTCString()}`;
+            const installDate = new Date(parseInt(installDateTimestamp, 10));
+
+            if (!Number.isNaN(installDate.getTime())) {
+                wikiContents += ` since ${installDate.toUTCString()}`;
+            } else {
+                logger.warn("⚠️ Invalid InstallDate value found", {
+                    installDateTimestamp,
+                });
+            }
         }
 
         wikiContents += ".";
 
-        // ──────────────── Safe wiki handling ────────────────
-        let currentWikiPage = wikiPage;
+        logger.info("📝 Leaderboard markdown generated", {
+            characters: wikiContents.length,
+            entries: highScores.length,
+            hasHelpPage: Boolean(helpPage),
+        });
+
+        completeStep();
+
+        // ---------------------------------------------------------
+        // Create or update wiki page
+        // ---------------------------------------------------------
 
         const wikiPageOptions = {
             subredditName,
@@ -2010,95 +2578,311 @@ export async function updateLeaderboard(c: Context): Promise<Response> {
         };
 
         if (currentWikiPage) {
-            if (getWikiMarkdown(currentWikiPage) !== wikiContents) {
+            startStep("checking whether leaderboard wiki needs updating");
+
+            const existingContents = getWikiMarkdown(currentWikiPage);
+
+            const needsContentUpdate = existingContents !== wikiContents;
+
+            logger.info("🔍 Comparing leaderboard wiki contents", {
+                needsUpdate: needsContentUpdate,
+                existingCharacters: existingContents.length,
+                newCharacters: wikiContents.length,
+                wikiVersion: currentWikiPage.wikiVersion,
+            });
+
+            completeStep();
+
+            if (needsContentUpdate) {
+                startStep("updating leaderboard wiki content", {
+                    wikiPageName,
+                    wikiVersion: currentWikiPage.wikiVersion,
+                });
+
                 await reddit.updateWikiPage(wikiPageOptions);
-                logger.info("🏆 Leaderboard wiki page updated.");
+
+                logger.info("🏆 Leaderboard wiki content updated");
+
+                completeStep();
+
+                // Retrieve the latest wiki version before updating settings.
+                startStep("refreshing wiki page after content update");
+
+                const refreshedWikiPage = await safeWiki.getWikiPage(
+                    subredditName,
+                    wikiPageName
+                );
+
+                if (!refreshedWikiPage) {
+                    throw new Error(
+                        `Wiki page "${wikiPageName}" could not be retrieved after updating its content.`
+                    );
+                }
+
+                currentWikiPage = refreshedWikiPage;
+
+                logger.info("🔄 Retrieved latest leaderboard wiki version", {
+                    wikiPageName,
+                    wikiVersion: currentWikiPage.wikiVersion,
+                });
+
+                completeStep({
+                    wikiVersion: currentWikiPage.wikiVersion,
+                });
             } else {
-                logger.info("ℹ️ Leaderboard is already up to date.");
+                logger.info("ℹ️ Leaderboard wiki content already up to date");
             }
         } else {
+            startStep("creating leaderboard wiki page", {
+                wikiPageName,
+            });
+
             currentWikiPage = await reddit.createWikiPage(wikiPageOptions);
 
-            // This bot wrote the page, so it must never be imported back over Redis.
+            logger.info("🏆 Leaderboard wiki page created", {
+                wikiPageName,
+                wikiVersion: currentWikiPage.wikiVersion,
+            });
+
+            completeStep();
+
+            // Mark the page as created by this bot.
+            startStep("saving wiki migration marker");
+
             await redis.set(
                 leaderboardWikiImportKey(subredditName, wikiPageName),
                 new Date().toISOString()
             );
 
-            logger.info("🏆 Leaderboard wiki page created.");
+            completeStep();
         }
 
-        // const mode = leaderboardMode[0];
+        // ---------------------------------------------------------
+        // Determine wiki permissions
+        // ---------------------------------------------------------
 
-        // let correctPermissionLevel: number;
-
-        // switch (mode) {
-        //     case "subredditpermissions":
-        //         correctPermissionLevel = 0;
-        //         break;
-
-        //     case "approvedcontributorsonly":
-        //         correctPermissionLevel = 1;
-        //         break;
-
-        //     case "modonly":
-        //         correctPermissionLevel = 2;
-        //         break;
-
-        //     default:
-        //         logger.warn("⚠️ Unknown leaderboard mode, defaulting to mod only", {
-        //             mode,
-        //         });
-        //         correctPermissionLevel = 2;
-        //         break;
-        // }
-
-        if (!currentWikiPage) {
-            logger.error(
-                `Failed to create or retrieve wiki page ${wikiPageName}`
-            );
-
-            return c.json(
-                {
-                    message: `Failed to create or retrieve wiki page ${wikiPageName}`,
-                },
-                500
-            );
-        }
-
-        // const wikiPageSettings = await currentWikiPage.getSettings();
-
-        // if (wikiPageSettings.permLevel !== correctPermissionLevel) {
-        //     logger.info("🔐 Updating leaderboard wiki page permissions", {
-        //         mode,
-        //         correctPermissionLevel,
-        //         currentPermLevel: wikiPageSettings.permLevel,
-        //     });
-
-        //     await reddit.updateWikiPageSettings({
-        //         subredditName,
-        //         page: wikiPageName,
-        //         listed: true,
-        //         permLevel: correctPermissionLevel,
-        //     });
-        // } else {
-        //     logger.info(
-        //         "🔐 Leaderboard wiki page permissions set to current wiki settings, no changes made",
-        //         {
-        //             mode,
-        //             correctPermissionLevel,
-        //             currentPermLevel: wikiPageSettings.permLevel,
-        //         }
-        //     );
-        // }
-
-        return c.json({ message: "Leaderboard updated successfully" }, 200);
-    } catch (err) {
-        logger.error("❌ Error updating leaderboard", {
-            error: String(err),
+        startStep("determining wiki permission level", {
+            mode,
         });
 
-        return c.json({ message: "Failed to update leaderboard" }, 500);
+        let correctPermissionLevel: number;
+
+        switch (mode) {
+            case "subredditpermissions":
+                correctPermissionLevel = 0;
+                break;
+
+            case "approvedcontributorsonly":
+                correctPermissionLevel = 1;
+                break;
+
+            case "modonly":
+                correctPermissionLevel = 2;
+                break;
+
+            default:
+                logger.warn(
+                    "⚠️ Unknown leaderboard mode. Defaulting to mod only.",
+                    {
+                        mode,
+                    }
+                );
+
+                correctPermissionLevel = 2;
+                break;
+        }
+
+        logger.info("🔐 Target wiki permissions determined", {
+            mode,
+            correctPermissionLevel,
+            wikiPageName,
+        });
+
+        completeStep();
+
+        // ---------------------------------------------------------
+        // Validate current wiki page
+        // ---------------------------------------------------------
+
+        if (!currentWikiPage) {
+            throw new Error(
+                `Failed to create or retrieve wiki page "${wikiPageName}".`
+            );
+        }
+
+        // ---------------------------------------------------------
+        // Retrieve current wiki permissions
+        // ---------------------------------------------------------
+
+        startStep("retrieving current wiki page permissions", {
+            wikiPageName,
+            wikiVersion: currentWikiPage.wikiVersion,
+        });
+
+        const wikiPageSettings = await currentWikiPage.getSettings();
+
+        const currentPermLevel = wikiPageSettings.permLevel;
+        const currentListed = wikiPageSettings.listed;
+
+        logger.info("🔐 Current leaderboard wiki settings retrieved", {
+            wikiPageName,
+            currentPermLevel,
+            currentListed,
+            correctPermissionLevel,
+        });
+
+        completeStep();
+
+        // ---------------------------------------------------------
+        // Compare permissions
+        // ---------------------------------------------------------
+
+        startStep("comparing wiki page permissions");
+
+        const needsSettingsUpdate =
+            currentPermLevel !== correctPermissionLevel || !currentListed;
+
+        logger.info("🔍 Wiki permission comparison", {
+            needsUpdate: needsSettingsUpdate,
+            currentPermLevel,
+            requiredPermLevel: correctPermissionLevel,
+            currentListed,
+            requiredListed: true,
+            permissionMatches: currentPermLevel === correctPermissionLevel,
+            listedMatches: currentListed === true,
+        });
+
+        completeStep({
+            needsSettingsUpdate,
+        });
+
+        // ---------------------------------------------------------
+        // Update wiki permissions
+        // ---------------------------------------------------------
+
+        if (needsSettingsUpdate) {
+            startStep("updating leaderboard wiki page permissions", {
+                wikiPageName,
+                mode,
+                currentPermLevel,
+                correctPermissionLevel,
+                currentListed,
+                wikiVersion: currentWikiPage.wikiVersion,
+            });
+
+            logger.info("🔐 Sending wiki page settings update request", {
+                subredditName,
+                wikiPageName,
+                listed: true,
+                permLevel: correctPermissionLevel,
+                wikiVersion: currentWikiPage.wikiVersion,
+            });
+
+            await reddit.updateWikiPageSettings({
+                subredditName,
+                page: wikiPageName,
+                listed: true,
+                permLevel: correctPermissionLevel,
+                wikiVersion: currentWikiPage.wikiVersion,
+            });
+
+            logger.info("✅ Wiki page settings update request completed", {
+                wikiPageName,
+                correctPermissionLevel,
+            });
+
+            completeStep();
+
+            // -----------------------------------------------------
+            // Verify updated settings
+            // -----------------------------------------------------
+
+            startStep("verifying updated wiki page permissions");
+
+            const verifiedSettings = await currentWikiPage.getSettings();
+
+            logger.info("🔎 Wiki permission verification result", {
+                wikiPageName,
+                expectedPermLevel: correctPermissionLevel,
+                actualPermLevel: verifiedSettings.permLevel,
+                expectedListed: true,
+                actualListed: verifiedSettings.listed,
+            });
+
+            const permissionsCorrect =
+                verifiedSettings.permLevel === correctPermissionLevel &&
+                verifiedSettings.listed === true;
+
+            if (!permissionsCorrect) {
+                throw new Error(
+                    `Wiki permission verification failed. ` +
+                        `Expected permLevel=${correctPermissionLevel}, listed=true. ` +
+                        `Received permLevel=${verifiedSettings.permLevel}, listed=${verifiedSettings.listed}.`
+                );
+            }
+
+            logger.info(
+                "✅ Leaderboard wiki permissions successfully verified"
+            );
+
+            completeStep();
+        } else {
+            logger.info(
+                "🔐 Leaderboard wiki permissions already correct. No update required.",
+                {
+                    wikiPageName,
+                    currentPermLevel,
+                    correctPermissionLevel,
+                    currentListed,
+                }
+            );
+        }
+
+        // ---------------------------------------------------------
+        // Finished
+        // ---------------------------------------------------------
+
+        logger.info("🎉 Leaderboard update completed successfully", {
+            subredditName,
+            wikiPageName,
+            mode,
+            leaderboardEntries: highScores.length,
+            durationMs: Date.now() - startedAt,
+        });
+
+        return c.json(
+            {
+                message: "Leaderboard updated successfully",
+            },
+            200
+        );
+    } catch (err) {
+        const errorDetails =
+            err instanceof Error
+                ? {
+                      name: err.name,
+                      message: err.message,
+                      stack: err.stack,
+                  }
+                : {
+                      message: String(err),
+                  };
+
+        logger.error("❌ LEADERBOARD UPDATE FAILED", {
+            step,
+            stepDurationMs: Date.now() - stepStartedAt,
+            totalDurationMs: Date.now() - startedAt,
+            timestamp: new Date().toISOString(),
+            error: errorDetails,
+        });
+
+        return c.json(
+            {
+                message: "Failed to update leaderboard",
+                step,
+            },
+            500
+        );
     }
 }
 

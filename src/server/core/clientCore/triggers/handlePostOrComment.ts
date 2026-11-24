@@ -800,7 +800,7 @@ export async function executeUserCommand(
     // 🏆 Award point + side effects
     await awardPointToUserNormalCommand(event, awarder, awardee);
 
-    // Auto Superuser logic
+    // Auto Legend logic
     const commandUsed =
         (await settings.get<string>("pointTriggerWords")) ?? "!snipe";
 
@@ -971,7 +971,7 @@ export async function awardPointToUserModCommand(
     // 🔒 Prevent duplicates
     await setModDupKey(event, "1");
 
-    // ⭐ Auto-superuser logic
+    // ⭐ Auto-legend logic
     const modCommand = (settingModAwardCommand as string) ?? "";
     await handleAutoSuperuserPromotion(event, newScore.score, modCommand);
     await handleLegendPromotion(event, newScore.score);
@@ -1050,7 +1050,7 @@ export async function awardPointToUserModCommand(
         await notifyUser({
             mode: trustedUserNotifyMode,
             to: awarder,
-            subject: "Superuser Award Successful",
+            subject: "Legend Award Successful",
             text: trustedUserMessage,
             commentId: event.comment.id,
         });

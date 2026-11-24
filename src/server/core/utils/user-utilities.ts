@@ -103,7 +103,7 @@ export async function handleAutoSuperuserPromotion(
     if (threshold <= 0 || newScore < threshold) return;
 
     if (await redis.exists(`superUserHandled:${awardee}`)) {
-        logger.info(`User has already been notified they are a superuser`, {
+        logger.info(`User has already been notified they are a legend`, {
             awardee,
             threshold,
         });
@@ -143,12 +143,12 @@ export async function handleAutoSuperuserPromotion(
         //     await superUserNotificationMessage.distinguish();
         // }
 
-        logger.info("⭐ Auto-superuser notification sent", {
+        logger.info("⭐ Auto-legend notification sent", {
             awardee,
             newScore,
         });
     } catch (err) {
-        logger.error("❌ Failed auto-superuser notification", {
+        logger.error("❌ Failed auto-legend notification", {
             awardee,
             err,
         });

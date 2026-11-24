@@ -11,7 +11,8 @@ import {
     getUserIsSuperuser,
     isModerator,
 } from "./user-utilities";
-export { POINTS_STORE_KEY } from "../../../shared/constants";
+export const POINTS_STORE_KEY = "thanksPointsStore";
+export const CLEANUP_LOG_KEY = "cleanupStore";
 
 const AUTO_SUPERUSER_TEMPLATE_DEFAULT =
     "Hello {awardee},\n\nNow that you have reached {threshold} points you can now award points yourself, even if normal users do not have permission to. Please use the command `{command}` if you'd like to do this.";
@@ -99,7 +100,7 @@ export async function userBecomesSuperUser(
     try {
         recipientUser = await reddit.getUserByUsername(recipient);
     } catch (err) {
-        logger.warn("Could not look up auto-superuser notification recipient", {
+        logger.warn("Could not look up auto-legend notification recipient", {
             recipient,
             err,
         });
@@ -123,7 +124,7 @@ export async function userBecomesSuperUser(
         );
         await redis.set(notificationKey, "1");
     } catch (err) {
-        logger.error("Failed to send auto-superuser notification", {
+        logger.error("Failed to send auto-legend notification", {
             recipient,
             mode: notifyOnAutoSuperuserMode,
             err,
@@ -149,7 +150,7 @@ export async function _replyToUser(
             to: toUserName,
         });
 
-        logger.info("Auto-superuser private message sent", {
+        logger.info("Auto-legend private message sent", {
             commentId,
             toUserName,
         });
@@ -174,14 +175,14 @@ export async function _replyToUser(
         await newComment.distinguish();
         await redis.set(redisKey, "1");
 
-        logger.info("Auto-superuser public comment reply sent", {
+        logger.info("Auto-legend public comment reply sent", {
             commentId,
             toUserName,
         });
         return;
     }
 
-    logger.warn("Unknown auto-superuser notification mode", {
+    logger.warn("Unknown auto-legend notification mode", {
         commentId,
         replyMode,
     });

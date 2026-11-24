@@ -113,7 +113,7 @@ export async function getTriggers() {
         .map((w) => w.trim())
         .filter(Boolean);
 
-    // Superuser/Mod award command
+    // Legend/Mod award command
     const modCommand = ((settingModAwardCommand as string) ?? "!modaward")
         .toLowerCase()
         .trim();

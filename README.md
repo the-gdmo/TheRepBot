@@ -32,10 +32,10 @@ NOTE: All placeholders can use single or double curly braces (ie {placeholderBei
 * `total`: The total amount of points a user has.
 * `helpPage`: Link to a page explaining how to use the bot. Uses the Old Reddit version of this page.
 * `leaderboard`: Link to a page of the subreddit's leaderboard. Uses the Old Reddit version of this page.
-* `threshold`: Threshold to become a superuser. Specified in 'Auto Superuser Threshold'.
-* `command`: Notifies the user who has reached the threshold of a special command they can use. Specified in 'Superuser/Mod award command'.
-* `commandsWithOr`: Lists all valid non-superuser/non-mod command(s) specified in 'Trigger Words'. (comma-separated list (if more than 1) (eg "!award, ?award, or /award", "!award or /award")).
-* `commandsWithAnd`: Lists all valid non-superuser/non-mod command(s) specified in 'Trigger Words'. (comma-separated list (if more than 1) (eg "!award, ?award, and /award", "!award and /award")). 
+* `threshold`: Threshold to become a legend. Specified in 'Legend Threshold'.
+* `command`: Notifies the user who has reached the threshold of a special command they can use. Specified in 'Legend/Mod award command'.
+* `commandsWithOr`: Lists all valid non-legend/non-mod command(s) specified in 'Trigger Words'. (comma-separated list (if more than 1) (eg "!award, ?award, or /award", "!award or /award")).
+* `commandsWithAnd`: Lists all valid non-legend/non-mod command(s) specified in 'Trigger Words'. (comma-separated list (if more than 1) (eg "!award, ?award, and /award", "!award and /award")). 
 * `markdownGuide`: Link to Reddit's Markdown Guide.
 * `subreddit`: Get the name of the subreddit. Will not contain 'r/'.
 * `awardeePage`: Link to a recipient's individual page. Logs all points received and given.
